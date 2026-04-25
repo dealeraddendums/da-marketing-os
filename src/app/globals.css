@@ -1,0 +1,56 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --navy:           #2a2b3c;
+  --orange:         #ffa500;
+  --blue:           #1976d2;
+  --blue-light:     #2196f3;
+  --success:        #4caf50;
+  --error:          #ff5252;
+  --warning:        #ff9800;
+  --bg-app:         #3a6897;
+  --bg-surface:     #ffffff;
+  --bg-subtle:      #f5f6f7;
+  --text-primary:   #333333;
+  --text-secondary: #55595c;
+  --text-muted:     #78828c;
+  --text-inverse:   #ffffff;
+  --border:         #e0e0e0;
+  --border-strong:  #c0c0c0;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #333333;
+  background: #ffffff;
+}
+
+@keyframes skeleton-pulse {
+  0%   { opacity: 0.6; }
+  50%  { opacity: 1; }
+  100% { opacity: 0.6; }
+}
+
+.skeleton-pulse {
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
