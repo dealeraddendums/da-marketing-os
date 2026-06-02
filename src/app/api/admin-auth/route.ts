@@ -13,7 +13,8 @@ export async function POST(req: NextRequest) {
     secure: process.env.NODE_ENV === 'production',
     maxAge: 60 * 60 * 24 * 7,
     sameSite: 'strict',
-    path: '/admin',
+    // Site-wide so the single admin login also gates /reputation/* (was '/admin').
+    path: '/',
   })
   return res
 }

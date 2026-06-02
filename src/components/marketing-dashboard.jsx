@@ -1088,6 +1088,19 @@ export default function App() {
               {t.label}
             </button>
           ))}
+          {/* Reputation Manager — separate route (not an in-SPA tab) */}
+          <a href="/reputation" style={{
+            padding: "10px 16px",
+            background: "none",
+            borderLeft: "3px solid transparent",
+            color: "rgba(255,255,255,0.8)",
+            fontSize: 14, cursor: "pointer",
+            fontFamily: "Roboto, sans-serif",
+            textDecoration: "none",
+            display: "flex", alignItems: "center", gap: 6,
+          }}>
+            <span aria-hidden>★</span> Reputation
+          </a>
         </div>
 
         <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>
