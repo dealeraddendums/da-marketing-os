@@ -1,6 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { getAttribution, pushSignupEvent } from '@/lib/attribution'
+import Turnstile from './Turnstile'
 
 interface FormState {
   name: string
@@ -11,8 +12,11 @@ interface FormState {
 
 export default function CTASection() {
   const [form, setForm] = useState<FormState>({ name: '', email: '', dealership: '', phone: '' })
+  const [accountKind, setAccountKind] = useState<'single' | 'group'>('single')
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [errorMsg, setErrorMsg] = useState('')
+  const [turnstileToken, setTurnstileToken] = useState('')
+  const [existing, setExisting] = useState(false)
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm(f => ({ ...f, [e.target.name]: e.target.value }))
@@ -30,9 +34,17 @@ export default function CTASection() {
       const res = await fetch('/api/leads', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, ...getAttribution() }),
+        body: JSON.stringify({
+          ...form,
+          ...getAttribution(),
+          accountKind,
+          groupName: accountKind === 'group' ? form.dealership : undefined,
+          turnstileToken,
+        }),
       })
       if (res.ok) {
+        const data = await res.json().catch(() => ({} as { existing?: boolean }))
+        setExisting(!!data.existing)
         setStatus('success')
         pushSignupEvent()
       } else {
@@ -154,11 +166,14 @@ export default function CTASection() {
                   fontSize: 22,
                 }}>✓</div>
                 <h3 style={{ fontSize: 18, fontWeight: 600, color: '#333333', margin: '0 0 10px' }}>
-                  You're all set!
+                  {existing ? 'You already have an account' : 'Check your email!'}
                 </h3>
                 <p style={{ fontSize: 14, color: '#55595c', lineHeight: 1.6, margin: 0 }}>
-                  We'll reach out within one business day to get your account set up.
-                  Check your email for next steps.
+                  {existing ? (
+                    <>It looks like an account already exists for this email. <a href="https://app.dealeraddendums.com" style={{ color: '#1976d2' }}>Log in here</a>.</>
+                  ) : (
+                    <>We just emailed you a secure link to finish setting up your account. Click it to activate your free trial.</>
+                  )}
                 </p>
               </div>
             ) : (
@@ -173,6 +188,36 @@ export default function CTASection() {
                 }}>
                   Start Your Free Trial
                 </h3>
+
+                {/* Single store / Dealer group choice */}
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  border: '1px solid #cccccc',
+                  borderRadius: 6,
+                  overflow: 'hidden',
+                  marginBottom: 16,
+                }}>
+                  {(['single', 'group'] as const).map(kind => (
+                    <button
+                      key={kind}
+                      type="button"
+                      onClick={() => setAccountKind(kind)}
+                      style={{
+                        height: 40,
+                        border: 'none',
+                        background: accountKind === kind ? '#1976d2' : '#ffffff',
+                        color: accountKind === kind ? '#ffffff' : '#555555',
+                        fontSize: 13,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        fontFamily: "'Roboto', sans-serif",
+                      }}
+                    >
+                      {kind === 'single' ? 'Single store' : 'Dealer group'}
+                    </button>
+                  ))}
+                </div>
 
                 <div style={{ display: 'grid', gap: 16 }}>
                   <div>
@@ -209,7 +254,7 @@ export default function CTASection() {
 
                   <div>
                     <label htmlFor="dealership" style={{ ...labelStyle, color: '#55595c' }}>
-                      Dealership Name <span style={{ color: '#ff5252' }}>*</span>
+                      {accountKind === 'group' ? 'Group Name' : 'Dealership Name'} <span style={{ color: '#ff5252' }}>*</span>
                     </label>
                     <input
                       id="dealership"
@@ -217,7 +262,7 @@ export default function CTASection() {
                       type="text"
                       value={form.dealership}
                       onChange={handleChange}
-                      placeholder="Smith Ford Lincoln"
+                      placeholder={accountKind === 'group' ? 'Acme Auto Group' : 'Smith Ford Lincoln'}
                       style={inputStyle}
                       required
                     />
@@ -241,6 +286,8 @@ export default function CTASection() {
                   {errorMsg && (
                     <p style={{ margin: 0, fontSize: 12, color: '#ff5252' }}>{errorMsg}</p>
                   )}
+
+                  <Turnstile onVerify={setTurnstileToken} />
 
                   <button
                     type="submit"

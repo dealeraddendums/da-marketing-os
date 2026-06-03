@@ -3,6 +3,7 @@ import { useState } from 'react'
 import Image from 'next/image'
 import type { PersonalizationContext } from '@/lib/personalization'
 import { getAttribution, pushSignupEvent } from '@/lib/attribution'
+import Turnstile from './Turnstile'
 
 interface Props {
   personalization: PersonalizationContext
@@ -119,6 +120,8 @@ export default function LayoutA({ personalization }: Props) {
   })
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [errorMsg, setErrorMsg] = useState('')
+  const [turnstileToken, setTurnstileToken] = useState('')
+  const [existing, setExisting] = useState(false)
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setForm(f => ({ ...f, [e.target.name]: e.target.value }))
@@ -140,12 +143,17 @@ export default function LayoutA({ personalization }: Props) {
           ...form,
           ...getAttribution(),
           accountType: activeTab,
+          accountKind: activeTab === 'group' ? 'group' : 'single',
+          groupName: activeTab === 'group' ? form.dealership : undefined,
+          turnstileToken,
           layoutVariant: 'a',
           abVariant: personalization.abVariant,
           utmTerm: personalization.utmTerm,
         }),
       })
       if (res.ok) {
+        const data = await res.json().catch(() => ({} as { existing?: boolean }))
+        setExisting(!!data.existing)
         setStatus('success')
         pushSignupEvent()
         fetch('/api/ab-track', {
@@ -606,11 +614,14 @@ export default function LayoutA({ personalization }: Props) {
             }}>
               <div style={{ fontSize: 40, marginBottom: 16 }}>✓</div>
               <h3 style={{ fontSize: 20, fontWeight: 700, color: '#2a2b3c', margin: '0 0 10px' }}>
-                You're all set!
+                {existing ? 'You already have an account' : 'Check your email!'}
               </h3>
               <p style={{ fontSize: 14, color: '#55595c', lineHeight: 1.6, margin: 0 }}>
-                We'll reach out within one business day to get your account set up.
-                Check your email for next steps.
+                {existing ? (
+                  <>It looks like an account already exists for this email. <a href="https://app.dealeraddendums.com" style={{ color: '#1976d2' }}>Log in here</a>.</>
+                ) : (
+                  <>We just emailed you a secure link to finish setting up your account. Click it to activate your free trial.</>
+                )}
               </p>
             </div>
           ) : (
@@ -727,6 +738,8 @@ export default function LayoutA({ personalization }: Props) {
               {errorMsg && (
                 <p style={{ margin: 0, fontSize: 13, color: '#e53935' }}>{errorMsg}</p>
               )}
+
+              <Turnstile onVerify={setTurnstileToken} />
 
               <button
                 type="submit"
