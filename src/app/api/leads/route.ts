@@ -4,6 +4,33 @@ import { supabase } from '@/lib/supabase'
 import { createOrUpdateHubSpotContact } from '@/lib/hubspot'
 import { generateText, parseJSON } from '@/lib/ai'
 import { rateLimit } from '@/lib/rate-limit'
+import { trackServerEvent } from '@/lib/analytics'
+
+const ATTR_FIELDS = [
+  'utm_source', 'utm_medium', 'utm_campaign', 'utm_term',
+  'utm_content', 'gclid', 'referrer', 'landing_page',
+] as const
+
+// Resolve attribution from the POST body, falling back to the da_attribution
+// cookie (set first-touch in middleware) when the client didn't send it. Empty
+// strings collapse to null so a direct visit stores null utm/gclid.
+function resolveAttribution(
+  body: Record<string, unknown>,
+  req: NextRequest
+): Record<string, string | null> {
+  let cookieAttr: Record<string, unknown> = {}
+  try {
+    const raw = req.cookies.get('da_attribution')?.value
+    if (raw) cookieAttr = JSON.parse(raw)
+  } catch {
+    // malformed cookie — ignore, fall back to body only
+  }
+  const out: Record<string, string | null> = {}
+  for (const f of ATTR_FIELDS) {
+    out[f] = (body[f] as string) || (cookieAttr[f] as string) || null
+  }
+  return out
+}
 
 function getResend() {
   return new Resend(process.env.RESEND_API_KEY || 'placeholder')
@@ -17,6 +44,7 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json()
   const { name, email, dealership, phone } = body
+  const attribution = resolveAttribution(body, req)
 
   if (!name || !email || !dealership) {
     return NextResponse.json(
@@ -65,6 +93,7 @@ Based on the dealership name and email domain, provide a brief intelligence summ
       dealership,
       phone: phone || null,
       source: 'website',
+      ...attribution,
       ai_enrichment: aiEnrichment,
       status: 'new',
     })
@@ -75,6 +104,9 @@ Based on the dealership name and email domain, provide a brief intelligence summ
     console.error('Supabase insert error:', dbError)
     return NextResponse.json({ error: 'Failed to save lead — please try again.' }, { status: 500 })
   }
+
+  // Server-side analytics with attribution (non-blocking)
+  trackServerEvent('signup', { dealership, ...attribution }, email)
 
   // HubSpot sync (non-blocking)
   createOrUpdateHubSpotContact({

@@ -3,6 +3,12 @@ import { Roboto } from 'next/font/google'
 import './globals.css'
 import PostHogProvider from '@/components/PostHogProvider'
 
+// Google Tag Manager — env-gated, inert when NEXT_PUBLIC_GTM_ID is unset. The
+// container owns GA4 + the Google Ads conversion (nothing hardcoded here). The
+// signup form success handlers push a `sign_up` event into the dataLayer for
+// the container to route (see lib/attribution.ts → pushSignupEvent).
+const GTM_ID = process.env.NEXT_PUBLIC_GTM_ID
+
 const roboto = Roboto({
   weight: ['400', '500', '700'],
   subsets: ['latin'],
@@ -30,7 +36,27 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={roboto.className}>
+      {GTM_ID && (
+        <head>
+          {/* Google Tag Manager — container snippet, as high in <head> as possible */}
+          <script
+            dangerouslySetInnerHTML={{
+              __html: `(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','${GTM_ID}');`,
+            }}
+          />
+        </head>
+      )}
       <body>
+        {GTM_ID && (
+          <noscript>
+            <iframe
+              src={`https://www.googletagmanager.com/ns.html?id=${GTM_ID}`}
+              height="0"
+              width="0"
+              style={{ display: 'none', visibility: 'hidden' }}
+            />
+          </noscript>
+        )}
         <PostHogProvider>{children}</PostHogProvider>
       </body>
     </html>

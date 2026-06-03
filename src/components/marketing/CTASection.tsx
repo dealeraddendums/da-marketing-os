@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import { getAttribution, pushSignupEvent } from '@/lib/attribution'
 
 interface FormState {
   name: string
@@ -29,10 +30,11 @@ export default function CTASection() {
       const res = await fetch('/api/leads', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, ...getAttribution() }),
       })
       if (res.ok) {
         setStatus('success')
+        pushSignupEvent()
       } else {
         const data = await res.json()
         setErrorMsg(data.error || 'Submission failed — please try again.')

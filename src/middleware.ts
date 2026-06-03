@@ -46,6 +46,30 @@ export function middleware(request: NextRequest) {
   const utmSource   = searchParams.get('utm_source')   || ''
   const utmMedium   = searchParams.get('utm_medium')   || ''
 
+  // First-touch traffic attribution — set once, persist ~90 days. Readable by
+  // client JS (getAttribution) so signup forms can attach it, and by the server
+  // /api/leads route as a fallback. Not httpOnly (non-sensitive) unlike the A/B
+  // cookies below. Value is plain JSON — Next URL-encodes it on the wire and
+  // decodes it back on request.cookies.get(); document.cookie is decoded client-side.
+  if (!request.cookies.get('da_attribution')) {
+    const attribution = {
+      utm_source:   searchParams.get('utm_source')   || null,
+      utm_medium:   searchParams.get('utm_medium')   || null,
+      utm_campaign: searchParams.get('utm_campaign') || null,
+      utm_term:     searchParams.get('utm_term')     || null,
+      utm_content:  searchParams.get('utm_content')  || null,
+      gclid:        searchParams.get('gclid')        || null,
+      referrer:     request.headers.get('referer')   || null,
+      landing_page: new URL(request.url).pathname,
+    }
+    response.cookies.set('da_attribution', JSON.stringify(attribution), {
+      maxAge: 60 * 60 * 24 * 90,
+      httpOnly: false,
+      sameSite: 'lax',
+      path: '/',
+    })
+  }
+
   // Sticky copy A/B variant via cookie (generic / personalized / dealertype)
   const abCookie  = request.cookies.get('da_hero_ab')?.value
   const abVariant = abCookie ?? weightedPick(

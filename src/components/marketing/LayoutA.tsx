@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import Image from 'next/image'
 import type { PersonalizationContext } from '@/lib/personalization'
+import { getAttribution, pushSignupEvent } from '@/lib/attribution'
 
 interface Props {
   personalization: PersonalizationContext
@@ -137,6 +138,7 @@ export default function LayoutA({ personalization }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...form,
+          ...getAttribution(),
           accountType: activeTab,
           layoutVariant: 'a',
           abVariant: personalization.abVariant,
@@ -145,6 +147,7 @@ export default function LayoutA({ personalization }: Props) {
       })
       if (res.ok) {
         setStatus('success')
+        pushSignupEvent()
         fetch('/api/ab-track', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
