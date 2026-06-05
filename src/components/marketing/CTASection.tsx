@@ -351,13 +351,17 @@ export default function CTASection() {
           </span>
         </div>
         <div style={{ display: 'flex', gap: 20 }}>
-          {['Privacy Policy', 'Terms of Service', 'Support'].map(link => (
+          {[
+            { label: 'Privacy Policy', href: '/privacy' },
+            { label: 'Terms of Service', href: '/terms' },
+            { label: 'Support', href: 'mailto:support@dealeraddendums.com' },
+          ].map(link => (
             <a
-              key={link}
-              href="#"
+              key={link.label}
+              href={link.href}
               style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', cursor: 'pointer' }}
             >
-              {link}
+              {link.label}
             </a>
           ))}
         </div>

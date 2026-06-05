@@ -3,10 +3,10 @@ const PLANS = [
     name: 'Trial / Manual Load',
     price: '$100',
     period: '/month',
-    desc: 'Start with a free trial. Perfect for dealers who load vehicles manually or via spreadsheet.',
+    desc: 'Start free — no credit card. Perfect for dealers who load vehicles manually or via spreadsheet.',
     cta: 'Start Free Trial',
     features: [
-      'Up to 75 addendums/month',
+      'Unlimited addendums',
       'Print addendums, buyers guides, info sheets & QR stickers',
       '25 free labels included',
       'Single vehicle or Excel import',

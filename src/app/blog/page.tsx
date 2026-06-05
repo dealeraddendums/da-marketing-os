@@ -361,9 +361,13 @@ export default function BlogIndex() {
           © 2025 DealerAddendums. All rights reserved.
         </span>
         <div style={{ display: 'flex', gap: 20 }}>
-          {['Privacy Policy', 'Terms of Service', 'Support'].map(link => (
-            <a key={link} href="#" style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', textDecoration: 'none' }}>
-              {link}
+          {[
+            { label: 'Privacy Policy', href: '/privacy' },
+            { label: 'Terms of Service', href: '/terms' },
+            { label: 'Support', href: 'mailto:support@dealeraddendums.com' },
+          ].map(link => (
+            <a key={link.label} href={link.href} style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', textDecoration: 'none' }}>
+              {link.label}
             </a>
           ))}
         </div>

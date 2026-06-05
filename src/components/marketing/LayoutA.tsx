@@ -763,6 +763,13 @@ export default function LayoutA({ personalization }: Props) {
               <p style={{ fontSize: 12, color: '#78828c', textAlign: 'center', margin: 0 }}>
                 Month-to-month · No setup fees · US-based support · Cancel anytime
               </p>
+
+              <p style={{ fontSize: 12, color: '#78828c', textAlign: 'center', margin: 0 }}>
+                By signing up, you agree to our{' '}
+                <a href="/terms" style={{ color: '#1976d2', textDecoration: 'none' }}>Terms of Use</a>{' '}
+                and{' '}
+                <a href="/privacy" style={{ color: '#1976d2', textDecoration: 'none' }}>Privacy Policy</a>.
+              </p>
             </form>
           )}
         </div>
@@ -792,9 +799,13 @@ export default function LayoutA({ personalization }: Props) {
           </span>
         </div>
         <div style={{ display: 'flex', gap: 20 }}>
-          {['Privacy Policy', 'Terms of Service', 'Support'].map(link => (
-            <a key={link} href="#" style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', textDecoration: 'none' }}>
-              {link}
+          {[
+            { label: 'Privacy Policy', href: '/privacy' },
+            { label: 'Terms of Service', href: '/terms' },
+            { label: 'Support', href: 'mailto:support@dealeraddendums.com' },
+          ].map(link => (
+            <a key={link.label} href={link.href} style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', textDecoration: 'none' }}>
+              {link.label}
             </a>
           ))}
         </div>
