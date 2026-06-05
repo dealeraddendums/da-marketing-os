@@ -317,6 +317,13 @@ export default function CTASection() {
                   }}>
                     14-day free trial · Month-to-month · Cancel anytime
                   </p>
+
+                  <p style={{ fontSize: 12, color: '#78828c', textAlign: 'center', margin: 0 }}>
+                    By signing up, you agree to our{' '}
+                    <a href="/terms" style={{ color: '#1976d2', textDecoration: 'none' }}>Terms of Use</a>{' '}
+                    and{' '}
+                    <a href="/privacy" style={{ color: '#1976d2', textDecoration: 'none' }}>Privacy Policy</a>.
+                  </p>
                 </div>
               </form>
             )}
