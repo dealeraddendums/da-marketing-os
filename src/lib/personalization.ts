@@ -167,13 +167,13 @@ export const STATIC_TERM_MAP: Record<string, PersonalizationVariant> = {
     headline: 'Scan a VIN. Print an Addendum. Done.',
     subheadline: 'The DA Installer iOS app lets your team scan VINs and print addendums from the lot.',
     cta: 'See the iOS App',
-    socialProof: 'iOS app available — $10/mo add-on',
+    socialProof: 'iOS DA Installer app included with every plan',
   },
   'qr code lead generation car dealer': {
-    headline: 'Turn Your Addendums Into Lead Machines',
-    subheadline: 'QR codes on every addendum capture buyer name, phone, and vehicle interest automatically.',
-    cta: 'See SMS Lead Capture',
-    socialProof: 'SMS lead capture — $50/mo add-on',
+    headline: 'Put Your Addendums to Work Online',
+    subheadline: 'The Magic Button shows shoppers the exact PDF addendum from the lot right on your VDP — the same disclosures online as on the printed sticker.',
+    cta: 'See How It Works',
+    socialProof: 'Trusted by 1,600+ dealerships since 2014',
   },
   'dealer inventory feed': {
     headline: '2-Way Inventory Data. Zero Manual Work.',
@@ -268,7 +268,7 @@ export const DEALERTYPE_COPY: Record<string, PersonalizationVariant> = {
     headline: 'Scan a VIN. Print an Addendum. Walk Away.',
     subheadline: 'The DA Installer iOS app lets your team scan VINs and print addendums anywhere on the lot.',
     cta: 'See the iOS App',
-    socialProof: 'iOS app add-on — $10/month',
+    socialProof: 'iOS DA Installer app included with every plan',
   },
   general: {
     headline: 'The Professional Addendum Platform for Car Dealers',

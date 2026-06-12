@@ -4,12 +4,32 @@ const FEATURES = [
   {
     icon: '📄',
     title: 'Vehicle Addendums',
-    desc: 'Print professional, branded addendums in seconds. Auto-applies products based on year, make, model, trim, bodystyle, and mileage — set it once, done forever.',
+    desc: 'Print professional, branded addendums in seconds. With automatic inventory and rules-based products, addendums build themselves — virtually eliminating manual-entry error.',
+  },
+  {
+    icon: '🔄',
+    title: 'Automatic Inventory — Any Provider',
+    desc: 'Inventory flows in automatically from any website provider, syndication company, or DMS — your lot syncs itself, no manual VIN entry. Addendum data feeds back out, too.',
+  },
+  {
+    icon: '⚙️',
+    title: 'Rules-Based Products',
+    desc: 'Set a product once with rules — make, model, trim, year, body style, mileage, fuel type — and it auto-applies to every matching vehicle. New inventory is addended automatically.',
   },
   {
     icon: '⚖️',
     title: 'FTC Buyers Guides',
     desc: 'As-Is, Implied, or Warranty Buyers Guides in English and Spanish — printed in seconds with a single click. FTC-compliant templates built in.',
+  },
+  {
+    icon: '🪄',
+    title: 'Magic Button',
+    desc: 'Embed a one-click Magic Button on your VDP that shows shoppers the exact PDF addendum from the lot — your online listing carries the same disclosures as the printed sticker.',
+  },
+  {
+    icon: '🧾',
+    title: 'Combo Addendum',
+    desc: 'One addendum that clearly separates Required add-ons from Suggested (optional) ones — buyers see what’s mandatory vs optional at a glance.',
   },
   {
     icon: '🏷️',
@@ -18,13 +38,8 @@ const FEATURES = [
   },
   {
     icon: '📱',
-    title: 'iOS Mobile App',
-    desc: 'The DA Installer app lets your team scan VINs, QR codes, or barcodes remotely, then create, manage, and print addendums right from the lot. ($10/mo add-on)',
-  },
-  {
-    icon: '🔲',
-    title: 'SMS Lead Capture',
-    desc: 'QR codes on every addendum direct buyers to your VDP and capture their name, phone, and vehicle of interest automatically via SMS. ($50/mo add-on)',
+    title: 'iOS Mobile App — Included',
+    desc: 'The DA Installer app lets your team scan VINs, QR codes, or barcodes remotely, then create, manage, and print addendums right from the lot. Included with every plan.',
   },
   {
     icon: '🤖',
@@ -32,9 +47,9 @@ const FEATURES = [
     desc: 'Tired of writing SEO-compliant vehicle descriptions? Our AI CarDescriptions tool generates them automatically for every unit on your lot.',
   },
   {
-    icon: '🔄',
-    title: '2-Way Inventory Sync',
-    desc: 'We pull your inventory automatically and push addendum data back out to your website or syndication partners — zero manual work.',
+    icon: '🎨',
+    title: 'Color-Matched Vehicle Images',
+    desc: 'Show a stock photo matched to each vehicle’s actual color right on the addendum. ($50/mo add-on)',
   },
   {
     icon: '🏢',
@@ -42,7 +57,7 @@ const FEATURES = [
     desc: 'Manage all your locations from one account. Group discounts and consistent branding across every store in your dealer group.',
   },
   {
-    icon: '🎨',
+    icon: '🖌️',
     title: 'Custom Branding',
     desc: 'Your dealership logo, pricing, and watermarks on every document. Hard vs. soft add templates available. Look as professional as the largest franchise groups.',
   },
@@ -93,8 +108,8 @@ export default function FeaturesSection() {
               margin: '0 auto',
               lineHeight: 1.6,
             }}>
-              From addendum printing to lead capture — DealerAddendums handles
-              the paperwork so your team can focus on selling.
+              From automatic inventory to one-click printing — DealerAddendums
+              handles the paperwork so your team can focus on selling.
             </p>
           </div>
 

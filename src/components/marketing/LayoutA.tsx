@@ -13,7 +13,7 @@ const FEATURES = [
   {
     icon: '📄',
     title: 'Vehicle Addendums',
-    desc: 'Auto-applies products based on year, make, model, trim, bodystyle, and mileage. Set it once — runs forever.',
+    desc: 'Rules-based products by make, model, trim, year, body style, mileage, and fuel type. Set it once — every matching vehicle is addended automatically.',
   },
   {
     icon: '⚖️',
@@ -27,13 +27,13 @@ const FEATURES = [
   },
   {
     icon: '📱',
-    title: 'iOS Mobile App',
-    desc: 'Scan VINs on the lot, create and print addendums remotely with the DA Installer iOS app. ($10/mo add-on)',
+    title: 'iOS Mobile App — Included',
+    desc: 'Scan VINs on the lot, create and print addendums remotely with the DA Installer iOS app. Included with every plan.',
   },
   {
-    icon: '🔲',
-    title: 'SMS Lead Capture',
-    desc: 'QR codes on addendums capture buyer name, phone, and vehicle interest automatically via SMS. ($50/mo add-on)',
+    icon: '🪄',
+    title: 'Magic Button',
+    desc: 'A one-click button on your VDP shows shoppers the exact PDF addendum from the lot — online listings carry the same disclosures as the printed sticker.',
   },
   {
     icon: '🤖',
@@ -42,8 +42,8 @@ const FEATURES = [
   },
   {
     icon: '🔄',
-    title: '2-Way Inventory Sync',
-    desc: 'We pull your inventory automatically and push addendum data back to your website and syndication partners.',
+    title: 'Automatic Inventory — Any Provider',
+    desc: 'Inventory syncs itself from any website provider, syndication company, or DMS — no manual VIN entry — and addendum data feeds back out.',
   },
   {
     icon: '🏢',
@@ -87,7 +87,7 @@ const PLANS = [
     name: 'Automatic — Web',
     price: '$150',
     period: '/mo',
-    features: ['Unlimited addendums', 'Automatic inventory import', 'All document types', 'FTC Buyers Guides (EN + ES)', 'CPO Info Sheets', 'Multi-rooftop discounts', '24/7 support'],
+    features: ['Unlimited addendums', 'Automatic inventory from any provider', 'Rules-based product assignment', 'All document types', 'FTC Buyers Guides (EN + ES)', 'iOS app included', 'Multi-rooftop discounts', '24/7 support'],
     highlight: true,
   },
   {
