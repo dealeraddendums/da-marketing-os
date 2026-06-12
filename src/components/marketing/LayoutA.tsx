@@ -94,7 +94,7 @@ const PLANS = [
     name: 'Automatic — DMS',
     price: '$200',
     period: '/mo',
-    features: ['Everything in Web plan', 'Direct DMS integration', '2-way inventory feed', 'AI vehicle descriptions', '24/7 priority support'],
+    features: ['Everything in Web plan', 'Direct DMS integration', '2-way inventory feed', 'Labels 22–30¢ each depending on quantity', 'AI vehicle descriptions', '24/7 priority support'],
     highlight: false,
   },
 ]

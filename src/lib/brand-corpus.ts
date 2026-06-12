@@ -9,7 +9,10 @@
 //   3.6 million+ addendums (actual 3,596,230), $800 million+ value (actual
 //   $800,832,000), 1,600+ dealerships. Precise frozen figures removed.
 // - "526 addendums printed today" removed — live daily counter, not a fact.
-// - Per-label price ($0.22) removed — unconfirmed. "25 free labels" stays.
+// - Label pricing confirmed by Allan 2026-06-12: 22–30¢ each by quantity. The
+//   corpus carries ONLY the floor ("as low as $0.22 — volume pricing") so the
+//   generator can never quote the 30¢ high end; the static PricingSection may
+//   show the full range. "25 free labels" stays.
 // - Pricing $100/$150/$200 and the named dealer groups confirmed as-is.
 //
 // HARD BANS (enforced by prompt + validator, listed here as the contract):
@@ -20,7 +23,7 @@
 // - No numbers that do not appear in this file
 // ============================================================================
 
-export const CORPUS_VERSION = '2026-06-12.1' // bump when facts change
+export const CORPUS_VERSION = '2026-06-12.2' // bump when facts change
 export const CORPUS_REVIEWED_BY: string | null = 'allan' // reviewed 2026-06-12
 
 // Free-form facts the generator may draw on for headlines/subheadlines.
@@ -51,6 +54,7 @@ export const FACTS: string[] = [
   'Plans: Trial/Manual Load $100/month, Automatic — Web $150/month (most popular), Automatic — DMS $200/month.',
   'iOS DA Installer App add-on +$10/month; SMS/QR Lead Capture add-on +$50/month.',
   '25 free labels included on the entry plan.',
+  'Labels as low as $0.22 each — volume pricing.',
   '30-day free trial (print up to 30 vehicles) — no credit card required.',
   'Month-to-month. No contracts. No setup fees. Cancel anytime.',
   'US-based support; 24/7 support.',

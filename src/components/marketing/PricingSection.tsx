@@ -49,6 +49,7 @@ const PLANS = [
       'Everything in Automatic — Web',
       'Direct DMS integration',
       '2-way inventory data feed',
+      'Labels 22–30¢ each depending on quantity',
       'AI vehicle descriptions',
       'Multi-rooftop group discounts',
       '24/7 priority support',
