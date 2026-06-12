@@ -97,19 +97,15 @@ export default function HeroSection({ hero, tracking, warm }: Props) {
         top: 0,
         zIndex: 100,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{
-            background: '#ffa500',
-            color: '#2a2b3c',
-            fontWeight: 700,
-            fontSize: 11,
-            padding: '3px 8px',
-            borderRadius: 4,
-            letterSpacing: '0.08em',
-          }}>DA</span>
-          <span style={{ fontSize: 14, fontWeight: 600, color: '#ffffff' }}>
-            DealerAddendums
-          </span>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/images/logo-light.svg"
+            alt="DealerAddendums"
+            width={195}
+            height={22}
+            style={{ display: 'block' }}
+          />
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -198,7 +194,7 @@ export default function HeroSection({ hero, tracking, warm }: Props) {
             }}>
               {(tracking.heroSource === 'cache' || tracking.heroSource === 'static-term') && tracking.keyword
                 ? `Personalized for ${tracking.keyword}`
-                : '1,644 Dealerships · $993M in Addendums'}
+                : '1,600+ Dealerships · $800M+ in Addendums'}
             </div>
 
             <h1
@@ -293,10 +289,10 @@ export default function HeroSection({ hero, tracking, warm }: Props) {
           {/* Right: live stats */}
           <div style={{ display: 'grid', gap: 12, width: 210 }}>
             {[
-              { value: '1,644', label: 'Active Dealerships' },
-              { value: '526', label: 'Addendums Today' },
-              { value: '2,347,023', label: 'Total Printed' },
-              { value: '$993M+', label: 'Addendum Value' },
+              { value: '1,600+', label: 'Active Dealerships' },
+              { value: '3.6M+', label: 'Addendums Printed' },
+              { value: '$800M+', label: 'Addendum Value' },
+              { value: '2014', label: 'Serving Dealers Since' },
             ].map(stat => (
               <div
                 key={stat.label}

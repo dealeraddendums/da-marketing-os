@@ -1,17 +1,16 @@
 // ============================================================================
 // BRAND CORPUS — the ONLY facts the hero generator may use.
 //
-// ⚠️ STATUS: PENDING ALLAN'S REVIEW (seeded 2026-06-11 by Claude Code).
-// Every line below was lifted verbatim-or-near-verbatim from copy already on
-// the new marketing site (HeroSection, FeaturesSection, PricingSection,
-// CTASection, LayoutA, lib/personalization.ts). Nothing was invented — but
-// Allan/Marlena should vet each fact before real ad traffic hits the engine,
-// because generated copy auto-publishes with no human gate.
-//
-// Known inconsistency to resolve at review: CTASection says "14-day free
-// trial" while the DA Platform account lifecycle is 30 days / 30 vehicles.
-// The corpus therefore says "free trial" with NO duration — the generator is
-// not allowed to emit a trial length until Allan picks one.
+// ✅ STATUS: REVIEWED AND LOCKED by Allan 2026-06-12.
+// Review outcomes baked in:
+// - Trial is 30 days / up to 30 vehicles printed, no credit card — the
+//   generator MAY state this length.
+// - Big stats are stated ROUNDED with a "+" so copy never goes stale:
+//   3.6 million+ addendums (actual 3,596,230), $800 million+ value (actual
+//   $800,832,000), 1,600+ dealerships. Precise frozen figures removed.
+// - "526 addendums printed today" removed — live daily counter, not a fact.
+// - Per-label price ($0.22) removed — unconfirmed. "25 free labels" stays.
+// - Pricing $100/$150/$200 and the named dealer groups confirmed as-is.
 //
 // HARD BANS (enforced by prompt + validator, listed here as the contract):
 // - No inventing features, integrations, or partners
@@ -21,8 +20,8 @@
 // - No numbers that do not appear in this file
 // ============================================================================
 
-export const CORPUS_VERSION = '2026-06-11.1' // bump when facts change
-export const CORPUS_REVIEWED_BY: string | null = null // set to 'allan' after review
+export const CORPUS_VERSION = '2026-06-12.1' // bump when facts change
+export const CORPUS_REVIEWED_BY: string | null = 'allan' // reviewed 2026-06-12
 
 // Free-form facts the generator may draw on for headlines/subheadlines.
 export const FACTS: string[] = [
@@ -39,12 +38,11 @@ export const FACTS: string[] = [
   'Multi-rooftop group accounts: manage all locations from one account with group discounts and consistent branding.',
   'Custom branding: dealership logo, pricing, and watermarks on every document; hard-add and soft-add templates available.',
   'Brand-specific addendum templates (e.g. Kia, Ford, Toyota, Honda, Chevrolet, Nissan) with the dealer\'s own logo, products, and pricing.',
-  // Stats / trust (verbatim from the live hero/stat cards)
-  'Trusted by 1,644 active dealerships (1,600+).',
+  // Stats / trust (rounded with "+" per Allan 2026-06-12 so copy never goes stale)
+  'Trusted by 1,600+ active dealerships.',
   'In business since 2014.',
-  'Over 2.3 million addendums printed (2,347,023 total).',
-  '$993M+ in addendum value printed.',
-  '526 addendums printed today.',
+  '3.6 million+ addendums printed.',
+  '$800 million+ in addendum value printed.',
   '32,000+ updates driven by dealer feedback.',
   'Addendums print in under 30 seconds.',
   'Used by franchise and independent dealers nationwide.',
@@ -52,8 +50,8 @@ export const FACTS: string[] = [
   // Pricing (from PricingSection — exact figures only)
   'Plans: Trial/Manual Load $100/month, Automatic — Web $150/month (most popular), Automatic — DMS $200/month.',
   'iOS DA Installer App add-on +$10/month; SMS/QR Lead Capture add-on +$50/month.',
-  'Labels from $0.22 each; 25 free labels included on the entry plan.',
-  'Free trial — no credit card required. (Do NOT state a trial length; under review.)',
+  '25 free labels included on the entry plan.',
+  '30-day free trial (print up to 30 vehicles) — no credit card required.',
   'Month-to-month. No contracts. No setup fees. Cancel anytime.',
   'US-based support; 24/7 support.',
   'Up and running in minutes.',
@@ -94,10 +92,10 @@ export const CTA_OPTIONS: string[] = [
 
 // proofLine must be one of these, verbatim.
 export const PROOF_OPTIONS: string[] = [
-  'Trusted by 1,644 dealerships since 2014',
-  '2.3M+ addendums printed',
-  '$993M+ in addendum value printed',
-  '526 addendums printed today',
+  'Trusted by 1,600+ dealerships since 2014',
+  '3.6M+ addendums printed',
+  '$800M+ in addendum value printed',
+  '30-day free trial — no credit card required',
   'Month-to-month. Cancel anytime.',
   'No credit card required',
   'Used by franchise and independent dealers nationwide',

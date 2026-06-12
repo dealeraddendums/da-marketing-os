@@ -12,14 +12,14 @@ export const STATIC_TERM_MAP: Record<string, PersonalizationVariant> = {
     headline: 'The #1 Addendum Software for Car Dealers',
     subheadline: 'Stop printing addendums by hand. 1,600+ dealers automate it in seconds.',
     cta: 'Start Free Trial',
-    socialProof: 'Trusted by 1,644 dealerships since 2014',
-    heroStat: '526 addendums printed today',
+    socialProof: 'Trusted by 1,600+ dealerships since 2014',
+    heroStat: '3.6M+ addendums printed',
   },
   'vehicle addendum': {
     headline: 'Vehicle Addendums. Done in 30 Seconds.',
     subheadline: 'Customized, compliant addendums for every vehicle on your lot — printed or digital.',
     cta: 'See How It Works',
-    socialProof: '2.3M+ addendums printed',
+    socialProof: '3.6M+ addendums printed',
   },
   'dealer addendum': {
     headline: 'The Addendum Platform Dealers Actually Love',
@@ -57,7 +57,7 @@ export const STATIC_TERM_MAP: Record<string, PersonalizationVariant> = {
     headline: 'Used Car Buyers Guides — Fast & Compliant',
     subheadline: 'One-click FTC Buyers Guides for your entire used inventory.',
     cta: 'Try It Free',
-    socialProof: '1,644 dealers print buyers guides with us',
+    socialProof: '1,600+ dealers print buyers guides with us',
     testimonialFilter: 'used-car',
   },
   'new car dealer addendum': {
@@ -105,7 +105,7 @@ export const STATIC_TERM_MAP: Record<string, PersonalizationVariant> = {
     headline: 'Ford Dealer Addendums — Done Right',
     subheadline: 'Ford-compliant addendum templates with your dealer branding and preloaded F&I products.',
     cta: 'Start Free Trial',
-    socialProof: '1,644 dealers trust DealerAddendums',
+    socialProof: '1,600+ dealers trust DealerAddendums',
     testimonialFilter: 'ford',
   },
   'toyota dealer addendum': {
@@ -130,7 +130,7 @@ export const STATIC_TERM_MAP: Record<string, PersonalizationVariant> = {
     headline: 'Nissan Dealer Addendums Done in Seconds',
     subheadline: 'Print compliant, branded Nissan addendums for every vehicle on your lot.',
     cta: 'Start Free Trial',
-    socialProof: '526 addendums printed today',
+    socialProof: '3.6M+ addendums printed',
   },
   'ftc compliance car dealer': {
     headline: 'Stay FTC Compliant. Automatically.',
@@ -143,13 +143,13 @@ export const STATIC_TERM_MAP: Record<string, PersonalizationVariant> = {
     headline: "Compliance That Doesn't Slow You Down",
     subheadline: 'FTC-compliant addendums and buyers guides printed in seconds, not hours.',
     cta: 'Start Free Trial',
-    socialProof: 'Trusted by 1,644 dealers',
+    socialProof: 'Trusted by 1,600+ dealers',
   },
   'dealeraddendums alternative': {
     headline: 'You Found the Original. Welcome.',
     subheadline: 'DealerAddendums has been the #1 addendum platform since 2014. See why 1,600+ dealers agree.',
     cta: 'Start Free Trial',
-    socialProof: '2.3M+ addendums printed',
+    socialProof: '3.6M+ addendums printed',
   },
   'addendum software alternative': {
     headline: "The Last Addendum Software You'll Ever Try",
@@ -210,7 +210,7 @@ export const DEALERTYPE_COPY: Record<string, PersonalizationVariant> = {
     headline: 'Ford Dealer Paperwork — Automated',
     subheadline: 'Ford-compliant addendum templates with your dealer branding, preloaded F&I products, and instant printing.',
     cta: 'Start Free Trial',
-    socialProof: '1,644 dealers choose DealerAddendums',
+    socialProof: '1,600+ dealers choose DealerAddendums',
     testimonialFilter: 'franchise',
   },
   toyota: {
@@ -235,7 +235,7 @@ export const DEALERTYPE_COPY: Record<string, PersonalizationVariant> = {
     headline: 'Nissan Dealers: From Scan to Addendum in Seconds',
     subheadline: 'Print branded Nissan addendums for every unit on your lot — from your desk or the lot.',
     cta: 'Start Free Trial',
-    socialProof: '526 addendums printed today',
+    socialProof: '3.6M+ addendums printed',
   },
   bmw: {
     headline: 'BMW Dealers: Addendums That Match Your Standard',
@@ -274,7 +274,7 @@ export const DEALERTYPE_COPY: Record<string, PersonalizationVariant> = {
     headline: 'The Professional Addendum Platform for Car Dealers',
     subheadline: 'Vehicle addendums, buyers guides, and info sheets — professional, compliant, and fast.',
     cta: 'Start Free Trial',
-    socialProof: 'Trusted by 1,644 dealerships since 2014',
+    socialProof: 'Trusted by 1,600+ dealerships since 2014',
   },
 }
 
@@ -284,7 +284,7 @@ export const GENERIC_COPY: PersonalizationVariant = {
   headline: 'The #1 Addendum Platform for Car Dealers',
   subheadline: 'Easily print customized vehicle addendums, buyers guides, and info sheets from any device. 1,600+ dealerships trust DealerAddendums.',
   cta: 'Start Free Trial',
-  socialProof: 'Trusted by 1,644 dealerships since 2014',
+  socialProof: 'Trusted by 1,600+ dealerships since 2014',
 }
 
 export interface PersonalizationContext {

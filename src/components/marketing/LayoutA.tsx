@@ -94,7 +94,7 @@ const PLANS = [
     name: 'Automatic — DMS',
     price: '$200',
     period: '/mo',
-    features: ['Everything in Web plan', 'Direct DMS integration', '2-way inventory feed', 'Labels from $0.22 each', 'AI vehicle descriptions', '24/7 priority support'],
+    features: ['Everything in Web plan', 'Direct DMS integration', '2-way inventory feed', 'AI vehicle descriptions', '24/7 priority support'],
     highlight: false,
   },
 ]
@@ -218,19 +218,15 @@ export default function LayoutA({ personalization }: Props) {
         top: 0,
         zIndex: 100,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{
-            background: '#ffa500',
-            color: '#2a2b3c',
-            fontWeight: 700,
-            fontSize: 12,
-            padding: '4px 10px',
-            borderRadius: 4,
-            letterSpacing: '0.06em',
-          }}>DA</span>
-          <span style={{ fontSize: 16, fontWeight: 700, color: '#2a2b3c' }}>
-            DealerAddendums
-          </span>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/images/logo-dark.svg"
+            alt="DealerAddendums"
+            width={212}
+            height={24}
+            style={{ display: 'block' }}
+          />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {['Features', 'Pricing', 'Testimonials'].map(label => (
@@ -373,10 +369,10 @@ export default function LayoutA({ personalization }: Props) {
             gap: 20,
           }}>
             {[
-              { value: '1,644', label: 'Number of Dealers' },
-              { value: '526', label: 'Printed Today' },
-              { value: '2,347,023', label: 'Addendums Printed' },
-              { value: '$993M+', label: 'Total Addendum Value' },
+              { value: '1,600+', label: 'Number of Dealers' },
+              { value: '3.6M+', label: 'Addendums Printed' },
+              { value: '$800M+', label: 'Total Addendum Value' },
+              { value: '2014', label: 'Serving Dealers Since' },
             ].map(s => (
               <div key={s.label}>
                 <div style={{
@@ -607,6 +603,40 @@ export default function LayoutA({ personalization }: Props) {
             ))}
           </div>
 
+          {activeTab === 'group' && (
+            <div style={{
+              background: '#f5f6f7',
+              border: '1px solid #e0e0e0',
+              borderRadius: 6,
+              padding: '14px 16px',
+              marginBottom: 24,
+              fontSize: 13,
+              color: '#55595c',
+              lineHeight: 1.6,
+            }}>
+              A Group account is one master login for an organization running multiple
+              dealership locations — shared templates, pricing, and billing across every
+              rooftop. If you&apos;re a single store — even one owned by a larger group —{' '}
+              <button
+                type="button"
+                onClick={() => setActiveTab('dealer')}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  padding: 0,
+                  font: 'inherit',
+                  color: '#1976d2',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  textDecoration: 'underline',
+                }}
+              >
+                sign up on the &ldquo;I&apos;m a Dealer&rdquo; tab
+              </button>
+              . Your group&apos;s head office can add you to a Group account later.
+            </div>
+          )}
+
           {status === 'success' ? (
             <div style={{
               textAlign: 'center',
@@ -788,17 +818,17 @@ export default function LayoutA({ personalization }: Props) {
         flexWrap: 'wrap',
         gap: 16,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{
-            background: '#ffa500',
-            color: '#2a2b3c',
-            fontWeight: 700,
-            fontSize: 11,
-            padding: '3px 8px',
-            borderRadius: 4,
-          }}>DA</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/images/logo-light.svg"
+            alt="DealerAddendums"
+            width={160}
+            height={18}
+            style={{ display: 'block' }}
+          />
           <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)' }}>
-            DealerAddendums · Eastsound, WA · (801) 415-9435
+            Eastsound, WA · (801) 415-9435
           </span>
         </div>
         <div style={{ display: 'flex', gap: 20 }}>

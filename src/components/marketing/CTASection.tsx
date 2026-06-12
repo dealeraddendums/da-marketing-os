@@ -1,5 +1,5 @@
 'use client'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getAttribution, pushSignupEvent } from '@/lib/attribution'
 import Turnstile from './Turnstile'
 import { capture } from './HeroSection'
@@ -25,6 +25,14 @@ export default function CTASection({ tracking }: Props) {
   const [turnstileToken, setTurnstileToken] = useState('')
   const [existing, setExisting] = useState(false)
   const formStarted = useRef(false)
+
+  // Deep-linkable tab: /?signup=group#signup preselects the Dealer group tab
+  // (set post-mount to avoid a hydration mismatch).
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('signup') === 'group') {
+      setAccountKind('group')
+    }
+  }, [])
 
   const handleFormStart = () => {
     if (formStarted.current || !tracking) return
@@ -116,7 +124,58 @@ export default function CTASection({ tracking }: Props) {
           alignItems: 'start',
         }}>
 
-          {/* Left: copy */}
+          {/* Left: copy — swaps when the Dealer group tab is selected */}
+          {accountKind === 'group' ? (
+            <div>
+              <h2 style={{
+                fontSize: 28,
+                fontWeight: 600,
+                color: '#ffffff',
+                margin: '0 0 16px',
+                lineHeight: 1.3,
+              }}>
+                Managing more than one store?
+              </h2>
+              <p style={{
+                fontSize: 15,
+                color: 'rgba(255,255,255,0.75)',
+                lineHeight: 1.7,
+                margin: '0 0 20px',
+              }}>
+                A Group account is one master login for an organization that runs multiple
+                dealership locations — set templates, products, and pricing once, print
+                across every rooftop, and handle billing and multi-rooftop discounts from
+                a single place.
+              </p>
+              <p style={{
+                fontSize: 15,
+                color: 'rgba(255,255,255,0.75)',
+                lineHeight: 1.7,
+                margin: 0,
+              }}>
+                Most dealerships belong to a group of some kind, but that&apos;s not what
+                this is for: if you&apos;re a single store — even one owned by a larger
+                group —{' '}
+                <button
+                  type="button"
+                  onClick={() => setAccountKind('single')}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: 0,
+                    font: 'inherit',
+                    color: '#ffa500',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    textDecoration: 'underline',
+                  }}
+                >
+                  sign up on the Single store tab
+                </button>
+                . Your group&apos;s head office can add you to a Group account later.
+              </p>
+            </div>
+          ) : (
           <div>
             <h2 style={{
               fontSize: 28,
@@ -133,8 +192,8 @@ export default function CTASection({ tracking }: Props) {
               lineHeight: 1.7,
               margin: '0 0 28px',
             }}>
-              Start your free 14-day trial. No credit card required. No contract.
-              Be up and running in under 30 minutes.
+              Start your free 30-day trial — print up to 30 vehicles. No credit card
+              required. No contract. Be up and running in under 30 minutes.
             </p>
 
             <div style={{ display: 'grid', gap: 14 }}>
@@ -163,6 +222,7 @@ export default function CTASection({ tracking }: Props) {
               ))}
             </div>
           </div>
+          )}
 
           {/* Right: form */}
           <div style={{
@@ -334,7 +394,7 @@ export default function CTASection({ tracking }: Props) {
                     textAlign: 'center',
                     margin: 0,
                   }}>
-                    14-day free trial · Month-to-month · Cancel anytime
+                    30-day free trial · Month-to-month · Cancel anytime
                   </p>
 
                   <p style={{ fontSize: 12, color: '#78828c', textAlign: 'center', margin: 0 }}>
@@ -362,18 +422,17 @@ export default function CTASection({ tracking }: Props) {
         flexWrap: 'wrap',
         gap: 16,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{
-            background: '#ffa500',
-            color: '#2a2b3c',
-            fontWeight: 700,
-            fontSize: 11,
-            padding: '3px 8px',
-            borderRadius: 4,
-            letterSpacing: '0.08em',
-          }}>DA</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/images/logo-light.svg"
+            alt="DealerAddendums"
+            width={160}
+            height={18}
+            style={{ display: 'block' }}
+          />
           <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)' }}>
-            DealerAddendums · dealeraddendums.com
+            dealeraddendums.com
           </span>
         </div>
         <div style={{ display: 'flex', gap: 20 }}>

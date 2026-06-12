@@ -95,8 +95,8 @@ export async function GET(req: NextRequest) {
           },
         },
         ...[
-          { value: '1,644', label: 'Active Dealers' },
-          { value: '2.3M+', label: 'Addendums Printed' },
+          { value: '1,600+', label: 'Active Dealers' },
+          { value: '3.6M+', label: 'Addendums Printed' },
           { value: 'Since 2014', label: 'In Business' },
         ].map(s =>
           React.createElement(

@@ -17,7 +17,7 @@ const roboto = Roboto({
 
 export const metadata: Metadata = {
   title: 'DealerAddendums — Vehicle Addendum Software for Car Dealers',
-  description: 'Print customized vehicle addendums, buyers guides, and info sheets in seconds. Used by 1,644+ dealerships since 2014. Month-to-month, no contracts.',
+  description: 'Print customized vehicle addendums, buyers guides, and info sheets in seconds. Used by 1,600+ dealerships since 2014. Month-to-month, no contracts.',
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || 'https://dealeraddendums.com'),
   openGraph: {
     title: 'DealerAddendums — The #1 Addendum Platform for Car Dealers',

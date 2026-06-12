@@ -95,17 +95,9 @@ export default function BlogIndex() {
         top: 0,
         zIndex: 100,
       }}>
-        <a href="/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{
-            background: '#ffa500',
-            color: '#2a2b3c',
-            fontWeight: 700,
-            fontSize: 11,
-            padding: '3px 8px',
-            borderRadius: 4,
-            letterSpacing: '0.08em',
-          }}>DA</span>
-          <span style={{ fontSize: 14, fontWeight: 600, color: '#ffffff' }}>DealerAddendums</span>
+        <a href="/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center' }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/images/logo-light.svg" alt="DealerAddendums" width={195} height={22} style={{ display: 'block' }} />
         </a>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <a href="/blog" style={{ fontSize: 14, color: '#ffffff', textDecoration: 'none', fontWeight: 500 }}>
@@ -328,7 +320,7 @@ export default function BlogIndex() {
           Ready to streamline your dealership's paperwork?
         </h3>
         <p style={{ fontSize: 15, color: 'rgba(255,255,255,0.7)', margin: '0 0 24px' }}>
-          Join 1,644 dealerships using DealerAddendums. Month-to-month. No credit card required.
+          Join 1,600+ dealerships using DealerAddendums. Month-to-month. No credit card required.
         </p>
         <a href="/#signup" style={{
           display: 'inline-flex',

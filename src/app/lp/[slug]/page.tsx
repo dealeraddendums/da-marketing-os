@@ -70,7 +70,7 @@ export default async function LPPage({ params }: PageProps) {
     headline: fm.headline,
     subheadline: fm.subheadline,
     ctaText: fm.ctaText || 'Start Free Trial',
-    proofLine: fm.socialProof || 'Trusted by 1,644 dealerships since 2014',
+    proofLine: fm.socialProof || 'Trusted by 1,600+ dealerships since 2014',
     featuredBenefits: [],
   }
 
@@ -108,17 +108,15 @@ export default async function LPPage({ params }: PageProps) {
         alignItems: 'center',
         padding: '0 24px',
       }}>
-        <a href="/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{
-            background: '#ffa500',
-            color: '#2a2b3c',
-            fontWeight: 700,
-            fontSize: 13,
-            padding: '4px 10px',
-            borderRadius: 4,
-            letterSpacing: '0.06em',
-          }}>DA</span>
-          <span style={{ color: '#ffffff', fontSize: 15, fontWeight: 500 }}>DealerAddendums</span>
+        <a href="/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center' }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/images/logo-light.svg"
+            alt="DealerAddendums"
+            width={195}
+            height={22}
+            style={{ display: 'block' }}
+          />
         </a>
         <div style={{ marginLeft: 'auto' }}>
           <a

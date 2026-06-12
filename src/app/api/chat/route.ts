@@ -15,7 +15,7 @@ Key facts:
 - Auto-applies products by year, make, model, trim, bodystyle, mileage
 - Pricing: $100/mo (manual), $150/mo (auto-web), $200/mo (auto-DMS)
 - Add-ons: iOS app $10/mo, SMS lead capture $50/mo
-- 1,644+ active dealers, 2.3M+ addendums printed
+- 1,600+ active dealers, 3.6M+ addendums printed
 - Month-to-month, no contracts, no setup fees
 - US-based support, 24/7
 - Multi-rooftop group accounts available
