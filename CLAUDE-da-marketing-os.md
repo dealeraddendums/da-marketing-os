@@ -11,7 +11,9 @@
 ## Identity
 
 **Repo:** `github.com/dealeraddendums/da-marketing-os`
-**EC2:** Same infrastructure as other DA services
+**EC2:** `i-0965cc6c6fa4e8b5f` · **us-west-1** · Ubuntu 26.04 · EIP **54.176.9.39** (`eipalloc-0737a00723eefd707`) · SG `sg-01a790aeb9459684e` ("HomePageServer")
+**SSH:** `ssh -i ~/ssh/DAHomePage.pem ubuntu@ec2-54-176-9-39.us-west-1.compute.amazonaws.com`
+**App path:** `/home/ubuntu/da-marketing-os` — stood up 2026-06-02 (runbook steps 2–5: packages, build, PM2, Nginx). **TLS + DNS cutover + cron re-point still pending.**
 **PM2 app:** `da-marketing` (port 3020)
 **Supabase:** `https://huqohncglbshwuzeguvb.supabase.co`
 **Deploy:** `git pull && npm run build && pm2 restart da-marketing`
@@ -25,7 +27,7 @@ Handles UTM personalization, A/B testing, AI blog generation, social automation,
 
 - Next.js 14
 - Supabase
-- Keystatic CMS (content managed by Marlena/Claire)
+- Keystatic CMS — **Keystatic Cloud (Pro)** in prod (seamless team auth, no GitHub accounts for editors; see `docs/keystatic-cloud.md`). All editors (Marlena, Claire, Alex, Allan) can edit all collections; home-page/Landing-Pages edits are by team policy (Allan's OK), not a technical gate.
 - HubSpot API (portal ID: `23896347`, private app token `pat-na1-` prefix)
 - PM2 + EC2
 

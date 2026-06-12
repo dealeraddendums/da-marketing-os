@@ -28,7 +28,7 @@ All on one EC2, one PM2 process, one Nginx config.
 - Separate from DA Platform EC2 — clean DNS, independent deploys
 - Or: add to existing `ec2-54-89-142-76` on a new port behind Nginx subdomain
 
-**SSH:** `ssh -i ~/ssh/DA2026.pem ubuntu@<new-ec2-ip>`
+**SSH:** `ssh -i ~/ssh/DAHomePage.pem ubuntu@ec2-54-176-9-39.us-west-1.compute.amazonaws.com` (us-west-1, EIP 54.176.9.39, instance `i-0965cc6c6fa4e8b5f`, stood up 2026-06-02 — see `docs/deploy-us-west-1-runbook.md`)
 
 **Nginx config** (dealeraddendums.com → port 3020):
 ```nginx
