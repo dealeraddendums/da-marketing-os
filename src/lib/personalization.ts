@@ -299,6 +299,13 @@ export interface PersonalizationContext {
   subheadline: string | null
   cta: string | null
   socialProof: string | null
+  // Dynamic Landing Engine (Phase 1) — optional so legacy consumers compile
+  contextKey?: string
+  variationId?: string
+  keyword?: string
+  device?: string
+  returning?: boolean
+  heroSource?: string
 }
 
 export function buildPersonalizationContext(

@@ -15,6 +15,8 @@ export async function POST(req: NextRequest) {
       headline:        body.headline,
       ai_generated:    body.aiGenerated ?? false,
       session_id:      body.sessionId,
+      context_key:     body.contextKey ?? null,
+      variation_id:    body.variationId ?? null,
     })
 
     return NextResponse.json({ ok: true })

@@ -1,14 +1,9 @@
-import { cookies } from 'next/headers'
+import { cookies, headers } from 'next/headers'
 import { Suspense } from 'react'
-import {
-  STATIC_TERM_MAP,
-  DEALERTYPE_COPY,
-  GENERIC_COPY,
-  detectDealerType,
-  type PersonalizationContext,
-  type PersonalizationVariant,
-} from '@/lib/personalization'
-import HeroSection from '@/components/marketing/HeroSection'
+import { CTX_HEADERS, buildSignals, type Device } from '@/lib/context-key'
+import { resolveHero, type HeroTracking } from '@/lib/hero-engine'
+import type { PersonalizationContext } from '@/lib/personalization'
+import HeroSection, { type WarmPayload } from '@/components/marketing/HeroSection'
 import FeaturesSection from '@/components/marketing/FeaturesSection'
 import PricingSection from '@/components/marketing/PricingSection'
 import TestimonialsSection from '@/components/marketing/TestimonialsSection'
@@ -32,52 +27,67 @@ function getString(v: string | string[] | undefined): string {
   return v || ''
 }
 
-function resolveVariant(
-  abVariant: string,
-  utmTerm: string,
-  dealerType: string
-): { variant: PersonalizationVariant | null; needsAI: boolean } {
-  const normalizedTerm = utmTerm.toLowerCase().trim()
-
-  if (abVariant === 'generic') {
-    return { variant: GENERIC_COPY, needsAI: false }
-  }
-
-  if (abVariant === 'dealertype') {
-    const typeVariant = DEALERTYPE_COPY[dealerType] || DEALERTYPE_COPY['general']
-    return { variant: typeVariant, needsAI: false }
-  }
-
-  // Default: 'personalized'
-  const staticVariant = normalizedTerm ? STATIC_TERM_MAP[normalizedTerm] || null : null
-  const needsAI = !staticVariant && !!normalizedTerm
-  return { variant: staticVariant, needsAI }
-}
-
 export default async function HomePage({ searchParams }: PageProps) {
-  const utmTerm     = getString(searchParams.utm_term)
-  const utmCampaign = getString(searchParams.utm_campaign)
-  const utmSource   = getString(searchParams.utm_source)
+  const h = headers()
+  const cookieStore = cookies()
+  const abVariant     = cookieStore.get('da_hero_ab')?.value || 'personalized'
+  const layoutVariant = cookieStore.get('da_layout')?.value  || 'b'
 
-  const cookieStore   = cookies()
-  const abVariant     = cookieStore.get('da_hero_ab')?.value   || 'personalized'
-  const layoutVariant = cookieStore.get('da_layout')?.value    || 'b'
-  const dealerType    = detectDealerType(utmTerm + ' ' + utmCampaign)
+  // Signals from middleware request headers; falls back to deriving them
+  // inline (e.g. direct render without middleware).
+  const utmCampaign = h.get(CTX_HEADERS.campaign) ?? getString(searchParams.utm_campaign)
+  const keyword =
+    h.get(CTX_HEADERS.keyword) ??
+    (getString(searchParams.utm_term) || getString(searchParams.keyword) || getString(searchParams.kw))
+  const derived = buildSignals({
+    keyword,
+    utmCampaign,
+    userAgent: h.get('user-agent') || '',
+    returning: h.get(CTX_HEADERS.returning) === '1',
+  })
+  const signals = {
+    ...derived,
+    keywordCluster: h.get(CTX_HEADERS.cluster) ?? derived.keywordCluster,
+    dealerType: h.get(CTX_HEADERS.dealerType) ?? derived.dealerType,
+    device: (h.get(CTX_HEADERS.device) as Device) ?? derived.device,
+    contextKey: h.get(CTX_HEADERS.contextKey) ?? derived.contextKey,
+  }
 
-  const { variant, needsAI } = resolveVariant(abVariant, utmTerm, dealerType)
+  const resolved = await resolveHero(signals, abVariant)
+
+  const tracking: HeroTracking = {
+    contextKey: signals.contextKey,
+    variationId: resolved.variationId,
+    heroSource: resolved.source,
+    keyword: signals.keyword,
+    dealerType: signals.dealerType,
+    abVariant,
+    layoutVariant,
+    headline: resolved.hero.headline,
+  }
+
+  const warm: WarmPayload | null = resolved.needsWarm
+    ? { keyword: signals.keyword, utmCampaign: signals.utmCampaign, returning: signals.returning }
+    : null
 
   const ctx: PersonalizationContext = {
     abVariant,
     layoutVariant,
-    utmTerm,
-    utmCampaign,
-    dealerType,
-    staticMatch: !!variant && !needsAI,
-    needsAI,
-    headline:    variant?.headline    || null,
-    subheadline: variant?.subheadline || null,
-    cta:         variant?.cta         || null,
-    socialProof: variant?.socialProof || null,
+    utmTerm: signals.keyword,
+    utmCampaign: signals.utmCampaign,
+    dealerType: signals.dealerType,
+    staticMatch: resolved.source === 'static-term',
+    needsAI: false, // generation is out-of-band now; the page never waits on AI
+    headline:    resolved.hero.headline,
+    subheadline: resolved.hero.subheadline,
+    cta:         resolved.hero.ctaText,
+    socialProof: resolved.hero.proofLine,
+    contextKey:  signals.contextKey,
+    variationId: resolved.variationId,
+    keyword:     signals.keyword,
+    device:      signals.device,
+    returning:   signals.returning,
+    heroSource:  resolved.source,
   }
 
   // Layout A — classic style (mirrors current dealeraddendums.com)
@@ -95,12 +105,12 @@ export default async function HomePage({ searchParams }: PageProps) {
   return (
     <main>
       <Suspense fallback={<HeroSkeleton />}>
-        <HeroSection personalization={ctx} />
+        <HeroSection hero={resolved.hero} tracking={tracking} warm={warm} />
       </Suspense>
       <FeaturesSection />
       <PricingSection />
       <TestimonialsSection dealerType={ctx.dealerType} />
-      <CTASection />
+      <CTASection tracking={tracking} />
     </main>
   )
 }

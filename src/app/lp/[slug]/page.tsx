@@ -1,11 +1,19 @@
 import { notFound } from 'next/navigation'
+import { cookies, headers } from 'next/headers'
 import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import matter from 'gray-matter'
 import { MDXRemote } from 'next-mdx-remote/rsc'
 import CTASection from '@/components/marketing/CTASection'
+import HeroTelemetry from '@/components/marketing/HeroTelemetry'
+import { CTX_HEADERS, buildSignals, type Device } from '@/lib/context-key'
+import { resolveHero, type HeroContent, type HeroTracking } from '@/lib/hero-engine'
+import type { WarmPayload } from '@/components/marketing/HeroSection'
 
-export const revalidate = 3600
+// Dynamic Landing Engine: heroes vary per visitor context, so these pages
+// render per-request (was ISR). The mdx body itself is still the static base
+// and the guaranteed fallback.
+export const dynamic = 'force-dynamic'
 
 interface LPFrontmatter {
   headline: string
@@ -31,28 +39,66 @@ function getLP(slug: string): { frontmatter: LPFrontmatter; content: string } | 
   return { frontmatter: data as LPFrontmatter, content }
 }
 
-export async function generateStaticParams() {
-  try {
-    const { readdirSync } = await import('fs')
-    const files = readdirSync(join(process.cwd(), 'content', 'lp'))
-    return files
-      .filter(f => f.endsWith('.mdx') || f.endsWith('.md'))
-      .map(f => ({ slug: f.replace(/\.(mdx|md)$/, '') }))
-  } catch {
-    return []
-  }
-}
-
 export default async function LPPage({ params }: PageProps) {
   const lp = getLP(params.slug)
   if (!lp) notFound()
 
   const { frontmatter: fm, content } = lp
   const ctaHref = fm.ctaHref || '#signup'
-  const ctaText = fm.ctaText || 'Start Free Trial'
+
+  const h = headers()
+  const cookieStore = cookies()
+  const abVariant     = cookieStore.get('da_hero_ab')?.value || 'personalized'
+  const layoutVariant = cookieStore.get('da_layout')?.value  || 'b'
+
+  const derived = buildSignals({
+    keyword: h.get(CTX_HEADERS.keyword) || '',
+    utmCampaign: h.get(CTX_HEADERS.campaign) || '',
+    userAgent: h.get('user-agent') || '',
+    returning: h.get(CTX_HEADERS.returning) === '1',
+  })
+  const signals = {
+    ...derived,
+    keywordCluster: h.get(CTX_HEADERS.cluster) ?? derived.keywordCluster,
+    dealerType: h.get(CTX_HEADERS.dealerType) ?? derived.dealerType,
+    device: (h.get(CTX_HEADERS.device) as Device) ?? derived.device,
+    contextKey: h.get(CTX_HEADERS.contextKey) ?? derived.contextKey,
+  }
+
+  // The page's curated frontmatter is this LP's static hero (and fallback).
+  const fmHero: HeroContent = {
+    headline: fm.headline,
+    subheadline: fm.subheadline,
+    ctaText: fm.ctaText || 'Start Free Trial',
+    proofLine: fm.socialProof || 'Trusted by 1,644 dealerships since 2014',
+    featuredBenefits: [],
+  }
+
+  const resolved = await resolveHero(signals, abVariant, {
+    hero: fmHero,
+    variationId: `lp:${params.slug}`,
+  })
+
+  const tracking: HeroTracking = {
+    contextKey: signals.contextKey,
+    variationId: resolved.variationId,
+    heroSource: resolved.source,
+    keyword: signals.keyword,
+    dealerType: signals.dealerType,
+    abVariant,
+    layoutVariant,
+    headline: resolved.hero.headline,
+  }
+
+  const warm: WarmPayload | null = resolved.needsWarm
+    ? { keyword: signals.keyword, utmCampaign: signals.utmCampaign, returning: signals.returning }
+    : null
+
+  const hero = resolved.hero
 
   return (
     <main style={{ fontFamily: "'Roboto', sans-serif" }}>
+      <HeroTelemetry tracking={tracking} warm={warm} />
 
       {/* Nav */}
       <nav style={{
@@ -77,6 +123,7 @@ export default async function LPPage({ params }: PageProps) {
         <div style={{ marginLeft: 'auto' }}>
           <a
             href={ctaHref}
+            data-track="hero-cta"
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -91,7 +138,7 @@ export default async function LPPage({ params }: PageProps) {
               letterSpacing: '0.02em',
             }}
           >
-            {ctaText}
+            {hero.ctaText}
           </a>
         </div>
       </nav>
@@ -121,14 +168,18 @@ export default async function LPPage({ params }: PageProps) {
             </div>
           )}
 
-          <h1 style={{
-            fontSize: 40,
-            fontWeight: 700,
-            color: '#ffffff',
-            lineHeight: 1.2,
-            margin: '0 0 20px',
-          }}>
-            {fm.headline}
+          <h1
+            data-hero-source={resolved.source}
+            data-variation-id={resolved.variationId}
+            style={{
+              fontSize: 40,
+              fontWeight: 700,
+              color: '#ffffff',
+              lineHeight: 1.2,
+              margin: '0 0 20px',
+            }}
+          >
+            {hero.headline}
           </h1>
 
           <p style={{
@@ -137,12 +188,13 @@ export default async function LPPage({ params }: PageProps) {
             lineHeight: 1.65,
             margin: '0 0 36px',
           }}>
-            {fm.subheadline}
+            {hero.subheadline}
           </p>
 
           <div style={{ display: 'flex', gap: 14, justifyContent: 'center', flexWrap: 'wrap' }}>
             <a
               href={ctaHref}
+              data-track="hero-cta"
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -156,7 +208,7 @@ export default async function LPPage({ params }: PageProps) {
                 textDecoration: 'none',
               }}
             >
-              {ctaText}
+              {hero.ctaText}
             </a>
             <a
               href="/"
@@ -178,16 +230,14 @@ export default async function LPPage({ params }: PageProps) {
             </a>
           </div>
 
-          {fm.socialProof && (
-            <p style={{
-              marginTop: 24,
-              fontSize: 13,
-              color: 'rgba(255,255,255,0.45)',
-              letterSpacing: '0.02em',
-            }}>
-              {fm.socialProof}
-            </p>
-          )}
+          <p style={{
+            marginTop: 24,
+            fontSize: 13,
+            color: 'rgba(255,255,255,0.45)',
+            letterSpacing: '0.02em',
+          }}>
+            {hero.proofLine}
+          </p>
         </div>
       </section>
 
@@ -263,7 +313,7 @@ export default async function LPPage({ params }: PageProps) {
       </section>
 
       {/* CTA / Form */}
-      <CTASection />
+      <CTASection tracking={tracking} />
 
     </main>
   )

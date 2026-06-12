@@ -149,6 +149,9 @@ export default function LayoutA({ personalization }: Props) {
           layoutVariant: 'a',
           abVariant: personalization.abVariant,
           utmTerm: personalization.utmTerm,
+          contextKey: personalization.contextKey,
+          variationId: personalization.variationId,
+          headlineSeen: personalization.headline ?? undefined,
         }),
       })
       if (res.ok) {

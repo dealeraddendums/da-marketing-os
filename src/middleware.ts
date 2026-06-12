@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { buildSignals, CTX_HEADERS } from '@/lib/context-key'
 
 // Static map keys for fast lookup (no import needed in middleware edge runtime)
 const STATIC_TERMS = new Set([
@@ -14,19 +15,6 @@ const STATIC_TERMS = new Set([
   'dealer inventory feed',
 ])
 
-const MAKE_REGEX = /kia|ford|toyota|honda|chevy|chevrolet|nissan|gm|bmw|mercedes|audi|hyundai|subaru|mazda|jeep|dodge|ram/i
-
-function detectDealerType(text: string): string {
-  const t = text.toLowerCase()
-  const makeMatch = t.match(MAKE_REGEX)
-  if (makeMatch) return makeMatch[0] === 'chevy' ? 'chevrolet' : makeMatch[0]
-  if (t.match(/used|independent|cpo|certified/)) return 'used-car'
-  if (t.match(/franchise|group|multi|rooftop/)) return 'franchise'
-  if (t.match(/ftc|compliance|buyers guide/)) return 'compliance'
-  if (t.match(/ios|app|mobile|scan|vin/)) return 'mobile'
-  return 'general'
-}
-
 function weightedPick(options: string[], weights: number[]): string {
   const r = Math.random()
   let cumulative = 0
@@ -37,14 +25,57 @@ function weightedPick(options: string[], weights: number[]): string {
   return options[0]
 }
 
+// Returning visitor = first seen more than 30 minutes ago (da_fs cookie,
+// set once below). The da_attribution cookie can't be used directly — it
+// appears on the second pageview of the same session.
+const SESSION_WINDOW_MS = 30 * 60 * 1000
+
 export function middleware(request: NextRequest) {
   const { searchParams } = new URL(request.url)
-  const response = NextResponse.next()
 
   const utmTerm     = searchParams.get('utm_term')     || ''
   const utmCampaign = searchParams.get('utm_campaign') || ''
   const utmSource   = searchParams.get('utm_source')   || ''
   const utmMedium   = searchParams.get('utm_medium')   || ''
+
+  // Matched keyword from the ad URL — Google's {keyword} ValueTrack is
+  // templated into utm_term in our final URLs; also accept keyword/kw.
+  const keyword =
+    utmTerm || searchParams.get('keyword') || searchParams.get('kw') || ''
+
+  const firstSeenRaw = request.cookies.get('da_fs')?.value
+  const firstSeen = firstSeenRaw ? parseInt(firstSeenRaw, 10) : NaN
+  const returning = Number.isFinite(firstSeen) && Date.now() - firstSeen > SESSION_WINDOW_MS
+
+  const ctx = buildSignals({
+    keyword,
+    utmCampaign,
+    userAgent: request.headers.get('user-agent') || '',
+    returning,
+  })
+
+  // Dynamic Landing Engine context → REQUEST headers so server components
+  // can read them via headers(). (Response headers are not visible to
+  // headers() — that was the gap in the old implementation.)
+  const requestHeaders = new Headers(request.headers)
+  requestHeaders.set(CTX_HEADERS.contextKey, ctx.contextKey)
+  requestHeaders.set(CTX_HEADERS.keyword, ctx.keyword)
+  requestHeaders.set(CTX_HEADERS.cluster, ctx.keywordCluster)
+  requestHeaders.set(CTX_HEADERS.dealerType, ctx.dealerType)
+  requestHeaders.set(CTX_HEADERS.campaign, utmCampaign)
+  requestHeaders.set(CTX_HEADERS.device, ctx.device)
+  requestHeaders.set(CTX_HEADERS.returning, returning ? '1' : '0')
+
+  const response = NextResponse.next({ request: { headers: requestHeaders } })
+
+  if (!firstSeenRaw) {
+    response.cookies.set('da_fs', String(Date.now()), {
+      maxAge: 60 * 60 * 24 * 90,
+      httpOnly: true,
+      sameSite: 'lax',
+      path: '/',
+    })
+  }
 
   // First-touch traffic attribution — set once, persist ~90 days. Readable by
   // client JS (getAttribution) so signup forms can attach it, and by the server
@@ -96,21 +127,19 @@ export function middleware(request: NextRequest) {
   }
 
   const normalizedTerm = utmTerm.toLowerCase().trim()
-  const dealerType     = detectDealerType(utmTerm + ' ' + utmCampaign)
   const hasStaticMatch = STATIC_TERMS.has(normalizedTerm)
 
-  // Pass context to page via headers
+  // Legacy response headers (debug visibility via curl -I; pages read the
+  // request headers above instead)
   response.headers.set('x-layout-variant', layoutVariant)
   response.headers.set('x-ab-variant',   abVariant)
   response.headers.set('x-utm-term',     utmTerm)
   response.headers.set('x-utm-campaign', utmCampaign)
   response.headers.set('x-utm-source',   utmSource)
   response.headers.set('x-utm-medium',   utmMedium)
-  response.headers.set('x-dealer-type',  dealerType)
+  response.headers.set('x-dealer-type',  ctx.dealerType)
   response.headers.set('x-static-match', hasStaticMatch ? 'true' : 'false')
-  response.headers.set('x-needs-ai',
-    (!hasStaticMatch && !!utmTerm && abVariant !== 'generic').toString()
-  )
+  response.headers.set('x-da-context-key', ctx.contextKey)
 
   return response
 }

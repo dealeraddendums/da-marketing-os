@@ -150,6 +150,11 @@ Based on the dealership name and email domain, provide a brief intelligence summ
   }
 
   // Save to Supabase
+  // Dynamic Landing Engine join keys — let later phases connect
+  // visitor → lead → trial → paid per context/variation.
+  const contextKey  = (body.contextKey as string) || null
+  const variationId = (body.variationId as string) || null
+
   const { data: lead, error: dbError } = await supabase
     .from('marketing_leads')
     .insert({
@@ -162,6 +167,10 @@ Based on the dealership name and email domain, provide a brief intelligence summ
       ...attribution,
       ai_enrichment: aiEnrichment,
       status: 'new',
+      context_key: contextKey,
+      variation_id: variationId,
+      ab_variant: (body.abVariant as string) || null,
+      headline_seen: (body.headlineSeen as string) || null,
     })
     .select()
     .single()
@@ -187,7 +196,14 @@ Based on the dealership name and email domain, provide a brief intelligence summ
     .eq('id', lead!.id)
 
   // Server-side analytics with attribution (non-blocking)
-  trackServerEvent('signup', { dealership, account_kind: accountKind, provision_status: provision.status, ...attribution }, email)
+  trackServerEvent('signup', {
+    dealership,
+    account_kind: accountKind,
+    provision_status: provision.status,
+    context_key: contextKey,
+    variation_id: variationId,
+    ...attribution,
+  }, email)
 
   // Internal notification to the team. (The lead-facing welcome is now DA
   // Platform's passkey invite — marketing no longer sends its own welcome.)

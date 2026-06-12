@@ -1,7 +1,9 @@
 'use client'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { getAttribution, pushSignupEvent } from '@/lib/attribution'
 import Turnstile from './Turnstile'
+import { capture } from './HeroSection'
+import type { HeroTracking } from '@/lib/hero-engine'
 
 interface FormState {
   name: string
@@ -10,13 +12,25 @@ interface FormState {
   phone: string
 }
 
-export default function CTASection() {
+interface Props {
+  // Dynamic Landing Engine context — optional so legacy render sites compile.
+  tracking?: HeroTracking
+}
+
+export default function CTASection({ tracking }: Props) {
   const [form, setForm] = useState<FormState>({ name: '', email: '', dealership: '', phone: '' })
   const [accountKind, setAccountKind] = useState<'single' | 'group'>('single')
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [errorMsg, setErrorMsg] = useState('')
   const [turnstileToken, setTurnstileToken] = useState('')
   const [existing, setExisting] = useState(false)
+  const formStarted = useRef(false)
+
+  const handleFormStart = () => {
+    if (formStarted.current || !tracking) return
+    formStarted.current = true
+    capture('form_start', tracking)
+  }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm(f => ({ ...f, [e.target.name]: e.target.value }))
@@ -40,6 +54,10 @@ export default function CTASection() {
           accountKind,
           groupName: accountKind === 'group' ? form.dealership : undefined,
           turnstileToken,
+          contextKey: tracking?.contextKey,
+          variationId: tracking?.variationId,
+          abVariant: tracking?.abVariant,
+          headlineSeen: tracking?.headline,
         }),
       })
       if (res.ok) {
@@ -47,6 +65,7 @@ export default function CTASection() {
         setExisting(!!data.existing)
         setStatus('success')
         pushSignupEvent()
+        if (tracking) capture('lead', tracking, { account_kind: accountKind })
       } else {
         const data = await res.json()
         setErrorMsg(data.error || 'Submission failed — please try again.')
@@ -177,7 +196,7 @@ export default function CTASection() {
                 </p>
               </div>
             ) : (
-              <form onSubmit={handleSubmit} noValidate>
+              <form onSubmit={handleSubmit} onFocus={handleFormStart} noValidate>
                 <h3 style={{
                   fontSize: 16,
                   fontWeight: 600,
