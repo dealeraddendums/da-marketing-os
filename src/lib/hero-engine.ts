@@ -236,7 +236,11 @@ async function secondaryCheck(hero: HeroContent): Promise<{ ok: boolean; errors:
     })
     const block = msg.content[0]
     const text = block.type === 'text' ? block.text : ''
-    const verdict = parseJSON<{ pass: boolean; violations?: string[] }>(text)
+    // Haiku occasionally wraps the JSON in prose — fall back to the first
+    // {...} block before failing closed.
+    const verdict =
+      parseJSON<{ pass: boolean; violations?: string[] }>(text) ??
+      parseJSON<{ pass: boolean; violations?: string[] }>(text.match(/\{[\s\S]*\}/)?.[0] || '')
     if (!verdict || typeof verdict.pass !== 'boolean') {
       return { ok: false, errors: ['secondary check: unparseable verdict'] }
     }
