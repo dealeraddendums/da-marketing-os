@@ -2,6 +2,7 @@
 import { useEffect, useRef } from 'react'
 import posthog from 'posthog-js'
 import type { HeroContent, HeroTracking } from '@/lib/hero-engine'
+import LoginMenu from './LoginMenu'
 
 // Signals the client echoes back to /api/personalize to warm the hero cache
 // for this context (server recomputes the context key — never trusts ours).
@@ -127,24 +128,9 @@ export default function HeroSection({ hero, tracking, warm }: Props) {
               {label}
             </a>
           ))}
-          <a
-            href="https://app.dealeraddendums.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              padding: '6px 14px',
-              fontSize: 14,
-              color: 'rgba(255,255,255,0.8)',
-              borderRadius: 4,
-              cursor: 'pointer',
-              marginRight: 8,
-              textDecoration: 'none',
-            }}
-            onMouseEnter={e => (e.currentTarget.style.color = '#ffffff')}
-            onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.8)')}
-          >
-            Log In
-          </a>
+          <span style={{ marginRight: 8 }}>
+            <LoginMenu variant="dark" />
+          </span>
           <a
             href="#signup"
             style={{

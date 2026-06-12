@@ -4,6 +4,7 @@ import { join } from 'path'
 import matter from 'gray-matter'
 import { MDXRemote } from 'next-mdx-remote/rsc'
 import type { Metadata } from 'next'
+import LoginMenu from '@/components/marketing/LoginMenu'
 
 interface BlogFrontmatter {
   title: string
@@ -157,6 +158,7 @@ export default async function BlogPost({ params }: PageProps) {
           <a href="/blog" style={{ fontSize: 14, color: 'rgba(255,255,255,0.7)', textDecoration: 'none' }}>
             ← Blog
           </a>
+          <LoginMenu variant="dark" />
           <a href="/#signup" style={{
             background: '#1976d2',
             color: '#ffffff',

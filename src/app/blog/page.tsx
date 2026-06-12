@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from 'fs'
 import { join } from 'path'
 import matter from 'gray-matter'
 import type { Metadata } from 'next'
+import LoginMenu from '@/components/marketing/LoginMenu'
 
 interface BlogFrontmatter {
   title: string
@@ -103,6 +104,7 @@ export default function BlogIndex() {
           <a href="/blog" style={{ fontSize: 14, color: '#ffffff', textDecoration: 'none', fontWeight: 500 }}>
             Blog
           </a>
+          <LoginMenu variant="dark" />
           <a href="/#signup" style={{
             background: '#1976d2',
             color: '#ffffff',

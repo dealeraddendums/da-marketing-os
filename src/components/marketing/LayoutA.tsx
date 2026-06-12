@@ -4,6 +4,7 @@ import Image from 'next/image'
 import type { PersonalizationContext } from '@/lib/personalization'
 import { getAttribution, pushSignupEvent } from '@/lib/attribution'
 import Turnstile from './Turnstile'
+import LoginMenu from './LoginMenu'
 
 interface Props {
   personalization: PersonalizationContext
@@ -244,20 +245,7 @@ export default function LayoutA({ personalization }: Props) {
               {label}
             </a>
           ))}
-          <a
-            href="https://app.dealeraddendums.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              padding: '6px 16px',
-              fontSize: 14,
-              color: '#1976d2',
-              textDecoration: 'none',
-              fontWeight: 500,
-            }}
-          >
-            Log In
-          </a>
+          <LoginMenu variant="light" />
           <a
             href="#signup"
             style={{

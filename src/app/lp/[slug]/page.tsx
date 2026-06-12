@@ -6,6 +6,7 @@ import matter from 'gray-matter'
 import { MDXRemote } from 'next-mdx-remote/rsc'
 import CTASection from '@/components/marketing/CTASection'
 import HeroTelemetry from '@/components/marketing/HeroTelemetry'
+import LoginMenu from '@/components/marketing/LoginMenu'
 import { CTX_HEADERS, buildSignals, type Device } from '@/lib/context-key'
 import { resolveHero, type HeroContent, type HeroTracking } from '@/lib/hero-engine'
 import type { WarmPayload } from '@/components/marketing/HeroSection'
@@ -118,7 +119,8 @@ export default async function LPPage({ params }: PageProps) {
             style={{ display: 'block' }}
           />
         </a>
-        <div style={{ marginLeft: 'auto' }}>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <LoginMenu variant="dark" />
           <a
             href={ctaHref}
             data-track="hero-cta"
