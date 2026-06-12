@@ -20,9 +20,19 @@ const LOGIN_OPTIONS = [
 interface Props {
   // dark = navy header (white trigger text), light = white header (grey text)
   variant?: 'dark' | 'light'
+  // Override the trigger text/look (e.g. the hero's link-styled trigger)
+  triggerLabel?: string
+  triggerStyle?: React.CSSProperties
+  // Which trigger edge the popover hangs from
+  align?: 'left' | 'right'
 }
 
-export default function LoginMenu({ variant = 'dark' }: Props) {
+export default function LoginMenu({
+  variant = 'dark',
+  triggerLabel = 'Log In',
+  triggerStyle,
+  align = 'right',
+}: Props) {
   const [open, setOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
 
@@ -64,11 +74,12 @@ export default function LoginMenu({ variant = 'dark' }: Props) {
           display: 'inline-flex',
           alignItems: 'center',
           gap: 5,
+          ...triggerStyle,
         }}
         onMouseEnter={e => (e.currentTarget.style.color = triggerHover)}
         onMouseLeave={e => (e.currentTarget.style.color = triggerColor)}
       >
-        Log In
+        {triggerLabel}
         <span aria-hidden="true" style={{ fontSize: 9, lineHeight: 1 }}>▼</span>
       </button>
 
@@ -78,7 +89,7 @@ export default function LoginMenu({ variant = 'dark' }: Props) {
           style={{
             position: 'absolute',
             top: 'calc(100% + 6px)',
-            right: 0,
+            ...(align === 'right' ? { right: 0 } : { left: 0 }),
             background: '#ffffff',
             border: '1px solid #e0e0e0',
             borderRadius: 6,

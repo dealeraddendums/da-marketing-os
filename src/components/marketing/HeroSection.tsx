@@ -229,21 +229,18 @@ export default function HeroSection({ hero, tracking, warm }: Props) {
               >
                 {hero.ctaText}
               </a>
-              <a
-                href="https://app.dealeraddendums.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
+              <LoginMenu
+                variant="dark"
+                align="left"
+                triggerLabel="Log into your account →"
+                triggerStyle={{
+                  padding: '0 0 1px',
                   color: 'rgba(255,255,255,0.7)',
-                  fontSize: 14,
                   fontWeight: 500,
-                  textDecoration: 'none',
+                  borderRadius: 0,
                   borderBottom: '1px solid rgba(255,255,255,0.3)',
-                  paddingBottom: 1,
                 }}
-              >
-                Log into your account →
-              </a>
+              />
             </div>
 
             {hero.featuredBenefits?.length > 0 && (
