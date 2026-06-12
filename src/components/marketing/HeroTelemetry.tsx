@@ -15,6 +15,23 @@ export default function HeroTelemetry({ tracking, warm }: { tracking: HeroTracki
 
     capture('hero_view', tracking, { headline: tracking.headline })
 
+    // Legacy A/B dashboard feed (ab_events) — same event HeroSection posts,
+    // so lp-page hero views count in the admin dashboard's Visitors number.
+    fetch('/api/ab-track', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        event: 'hero_impression',
+        abVariant: tracking.abVariant,
+        layoutVariant: tracking.layoutVariant,
+        utmTerm: tracking.keyword,
+        headline: tracking.headline,
+        aiGenerated: tracking.heroSource === 'cache',
+        contextKey: tracking.contextKey,
+        variationId: tracking.variationId,
+      }),
+    }).catch(() => {})
+
     if (warm) {
       fetch('/api/personalize', {
         method: 'POST',
