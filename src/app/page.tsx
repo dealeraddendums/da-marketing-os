@@ -31,7 +31,10 @@ export default async function HomePage({ searchParams }: PageProps) {
   const h = headers()
   const cookieStore = cookies()
   const abVariant     = cookieStore.get('da_hero_ab')?.value || 'personalized'
-  const layoutVariant = cookieStore.get('da_layout')?.value  || 'b'
+  // Layout test retired 2026-06-12 — everyone gets the new hero regardless of
+  // stale da_layout cookies. LayoutA stays in the repo for a future
+  // strong-vs-strong test; to re-enable, read the cookie here again.
+  const layoutVariant: string = 'b'
 
   // Signals from middleware request headers; falls back to deriving them
   // inline (e.g. direct render without middleware).

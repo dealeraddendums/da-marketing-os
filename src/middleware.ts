@@ -115,16 +115,15 @@ export function middleware(request: NextRequest) {
     })
   }
 
-  // Sticky layout A/B/C variant via cookie (a = classic/current-site, b = new design)
-  const layoutCookie  = request.cookies.get('da_layout')?.value
-  const layoutVariant = layoutCookie ?? weightedPick(['a', 'b'], [0.50, 0.50])
-  if (!layoutCookie) {
-    response.cookies.set('da_layout', layoutVariant, {
-      maxAge: 60 * 60 * 24 * 30,
-      httpOnly: true,
-      sameSite: 'lax',
-    })
-  }
+  // Layout test retired 2026-06-12: everyone gets the new dynamic benefit hero
+  // ('b'). LayoutA (legacy mirror) is parked, not deleted — to re-run a layout
+  // test, restore the weightedPick here AND the cookie read in page.tsx.
+  const layoutVariant = 'b'
+  response.cookies.set('da_layout', 'b', {
+    maxAge: 60 * 60 * 24 * 30,
+    httpOnly: true,
+    sameSite: 'lax',
+  })
 
   const normalizedTerm = utmTerm.toLowerCase().trim()
   const hasStaticMatch = STATIC_TERMS.has(normalizedTerm)
