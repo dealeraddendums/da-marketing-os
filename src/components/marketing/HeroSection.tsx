@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useRef } from 'react'
+import Image from 'next/image'
 import posthog from 'posthog-js'
 import type { HeroContent, HeroTracking } from '@/lib/hero-engine'
 import LoginMenu from './LoginMenu'
@@ -161,7 +162,7 @@ export default function HeroSection({ hero, tracking, warm }: Props) {
         alignItems: 'center',
         justifyContent: 'center',
       }}>
-        <div style={{ maxWidth: 1100, width: '100%', display: 'grid', gridTemplateColumns: '1fr auto', gap: 64, alignItems: 'center' }}>
+        <div className="hero-grid">
 
           {/* Left: copy */}
           <div style={{ maxWidth: 600 }}>
@@ -269,43 +270,18 @@ export default function HeroSection({ hero, tracking, warm }: Props) {
             </p>
           </div>
 
-          {/* Right: live stats */}
-          <div style={{ display: 'grid', gap: 12, width: 210 }}>
-            {[
-              { value: '1,600+', label: 'Active Dealerships' },
-              { value: '3.6M+', label: 'Addendums Printed' },
-              { value: '$800M+', label: 'Addendum Value' },
-              { value: '2014', label: 'Serving Dealers Since' },
-            ].map(stat => (
-              <div
-                key={stat.label}
-                style={{
-                  background: 'rgba(255,255,255,0.07)',
-                  border: '1px solid rgba(255,255,255,0.12)',
-                  borderRadius: 6,
-                  padding: '14px 18px',
-                  textAlign: 'center',
-                }}
-              >
-                <div style={{
-                  fontSize: 24,
-                  fontWeight: 700,
-                  color: '#ffffff',
-                  lineHeight: 1,
-                  marginBottom: 4,
-                }}>
-                  {stat.value}
-                </div>
-                <div style={{
-                  fontSize: 11,
-                  color: 'rgba(255,255,255,0.55)',
-                  fontWeight: 500,
-                  letterSpacing: '0.03em',
-                }}>
-                  {stat.label}
-                </div>
-              </div>
-            ))}
+          {/* Right: the real product — actual printed addendums (LCP element:
+              priority + explicit dimensions = fast paint, zero layout shift) */}
+          <div className="hero-visual">
+            <Image
+              src="/images/hero-addendums.webp"
+              alt="Real vehicle addendums printed with DealerAddendums, including a QR Scan-for-Info sticker"
+              width={420}
+              height={519}
+              priority
+              sizes="(max-width: 860px) 260px, 420px"
+              style={{ width: '100%', height: 'auto', display: 'block', borderRadius: 6 }}
+            />
           </div>
         </div>
       </div>
