@@ -145,6 +145,10 @@ a {
   gap: 64px;
   align-items: start;
 }
+/* min-width:0 lets columns shrink below their content's intrinsic min-width —
+   without it the fixed ~300px Turnstile widget in the form drags the whole
+   column (and its copy sibling) wider than the viewport. */
+.signup-grid > * { min-width: 0; }
 @media (max-width: 768px) {
   .signup-grid { grid-template-columns: 1fr; gap: 36px; }
 }
