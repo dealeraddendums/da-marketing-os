@@ -85,11 +85,7 @@ export default function TestimonialsSection({ dealerType = 'general' }: Props) {
           </p>
         </div>
 
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(3, 1fr)',
-          gap: 20,
-        }}>
+        <div className="testimonials-grid">
           {displayed.map((t, i) => (
             <div
               key={i}
@@ -140,11 +136,8 @@ export default function TestimonialsSection({ dealerType = 'general' }: Props) {
         </div>
 
         {/* Stats bar */}
-        <div style={{
+        <div className="stats-grid" style={{
           marginTop: 48,
-          display: 'grid',
-          gridTemplateColumns: 'repeat(4, 1fr)',
-          gap: 20,
           borderTop: '1px solid #e0e0e0',
           paddingTop: 36,
           textAlign: 'center',

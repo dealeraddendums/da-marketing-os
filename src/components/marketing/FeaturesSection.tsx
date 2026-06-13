@@ -113,11 +113,7 @@ export default function FeaturesSection() {
             </p>
           </div>
 
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(3, 1fr)',
-            gap: 20,
-          }}>
+          <div className="features-grid">
             {FEATURES.map(f => (
               <div
                 key={f.title}
@@ -175,11 +171,7 @@ export default function FeaturesSection() {
               Professional, branded documents — printed in under 30 seconds.
             </p>
           </div>
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(4, 1fr)',
-            gap: 16,
-          }}>
+          <div className="addendum-img-grid">
             {ADDENDUM_IMAGES.map((src, i) => (
               <div
                 key={i}

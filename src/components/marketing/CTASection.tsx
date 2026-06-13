@@ -117,12 +117,7 @@ export default function CTASection({ tracking }: Props) {
       }}
     >
       <div style={{ maxWidth: 900, margin: '0 auto' }}>
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap: 64,
-          alignItems: 'start',
-        }}>
+        <div className="signup-grid">
 
           {/* Left: copy — swaps when the Dealer group tab is selected */}
           {accountKind === 'group' ? (

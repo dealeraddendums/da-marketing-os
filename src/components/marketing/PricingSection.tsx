@@ -107,12 +107,7 @@ export default function PricingSection() {
           </span>
         </div>
 
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(3, 1fr)',
-          gap: 20,
-          alignItems: 'start',
-        }}>
+        <div className="pricing-grid">
           {PLANS.map(plan => (
             <div
               key={plan.name}

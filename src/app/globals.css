@@ -28,6 +28,10 @@
 html, body {
   margin: 0;
   padding: 0;
+  /* Safety net against any stray fixed-width child; real widths are fixed
+     in the responsive grid classes below, this just prevents a rogue px
+     value from producing a horizontal scrollbar on phones. */
+  overflow-x: hidden;
 }
 
 body {
@@ -74,4 +78,73 @@ a {
 @media (max-width: 860px) {
   .hero-grid { grid-template-columns: 1fr; gap: 40px; }
   .hero-visual { width: 250px; margin: 0 auto; transform: rotate(-1.5deg); }
+}
+
+/* ── Responsive section grids (≤768px = phone/tablet) ────────────────────
+   These replace hardcoded inline `gridTemplateColumns` so sections stack
+   cleanly on mobile. Desktop values match the originals exactly. */
+
+/* Pricing — 3 plan cards → single full-width stack */
+.pricing-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+@media (max-width: 768px) {
+  .pricing-grid { grid-template-columns: 1fr; }
+}
+
+/* Features — 3 cards → 2 on tablet → 1 on small phones */
+.features-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+@media (max-width: 768px) {
+  .features-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 480px) {
+  .features-grid { grid-template-columns: 1fr; }
+}
+
+/* Addendum example thumbnails — 4 → 2 */
+.addendum-img-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+@media (max-width: 768px) {
+  .addendum-img-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* Testimonials — 3 text cards → single column (quotes read better full-width) */
+.testimonials-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+@media (max-width: 768px) {
+  .testimonials-grid { grid-template-columns: 1fr; }
+}
+
+/* Stats bar — 4 figures → 2×2 */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+}
+@media (max-width: 768px) {
+  .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 28px 20px; }
+}
+
+/* Signup — copy | form split → stack (copy, then form below) */
+.signup-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 64px;
+  align-items: start;
+}
+@media (max-width: 768px) {
+  .signup-grid { grid-template-columns: 1fr; gap: 36px; }
 }
