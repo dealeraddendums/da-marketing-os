@@ -111,24 +111,29 @@ export default function HeroSection({ hero, tracking, warm }: Props) {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          {NAV_LINKS.map(label => (
-            <a
-              key={label}
-              href={`#${label.toLowerCase()}`}
-              style={{
-                padding: '6px 14px',
-                fontSize: 14,
-                color: 'rgba(255,255,255,0.8)',
-                borderRadius: 4,
-                cursor: 'pointer',
-                textDecoration: 'none',
-              }}
-              onMouseEnter={e => (e.currentTarget.style.color = '#ffffff')}
-              onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.8)')}
-            >
-              {label}
-            </a>
-          ))}
+          {/* Section anchors hide on mobile so the logo + Log In + Free Trial
+              fit without overflow; they're reachable by scrolling anyway. */}
+          <span className="hero-nav-links" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            {NAV_LINKS.map(label => (
+              <a
+                key={label}
+                href={`#${label.toLowerCase()}`}
+                style={{
+                  padding: '6px 14px',
+                  fontSize: 14,
+                  color: 'rgba(255,255,255,0.8)',
+                  borderRadius: 4,
+                  cursor: 'pointer',
+                  textDecoration: 'none',
+                  whiteSpace: 'nowrap',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.color = '#ffffff')}
+                onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.8)')}
+              >
+                {label}
+              </a>
+            ))}
+          </span>
           <span style={{ marginRight: 8 }}>
             <LoginMenu variant="dark" />
           </span>

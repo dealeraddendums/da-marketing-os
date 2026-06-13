@@ -148,3 +148,9 @@ a {
 @media (max-width: 768px) {
   .signup-grid { grid-template-columns: 1fr; gap: 36px; }
 }
+
+/* Hero nav: drop the section anchors on mobile so logo + Log In + Free Trial
+   fit (they overflowed at 375px, clipping the logo and Free Trial). */
+@media (max-width: 768px) {
+  .hero-nav-links { display: none !important; }
+}
