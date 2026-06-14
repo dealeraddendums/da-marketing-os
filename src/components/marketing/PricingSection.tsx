@@ -8,7 +8,6 @@ const PLANS = [
     features: [
       'Unlimited addendums',
       'Print addendums, buyers guides, info sheets & QR stickers',
-      '25 free labels included',
       'Single vehicle or Excel import',
       'Custom dealer logo & branding',
       'FTC Buyers Guides (English & Spanish)',

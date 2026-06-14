@@ -13,7 +13,7 @@
 
 ## 1. Finish the build + secure the preview
 - [ ] 🔴 **[CC] BLOCKER — scanner-proof OTP onboarding** (`da-platform/docs/scanner-proof-otp-onboarding.md`): replace the consumable magic link with a typed 6-digit `email_otp` code + a `/onboard` code-entry page → passkey setup. Dealer email security (Barracuda) pre-consumes magic links → `otp_expired`. Fixes self-serve **and** migrated-dealer onboarding. + [Allan] Supabase **Site URL → `https://app.dealeraddendums.com`**. **Blocks the Phase-2 browser E2E and real dealer onboarding.**
-- [ ] [CC] **HTTPS on www1:** Nginx `www1` block → `:3020` + `certbot --nginx -d www1.dealeraddendums.com` + `X-Robots-Tag: noindex`.
+- [x] [CC] **HTTPS on www1:** Nginx `www1` block → `:3020` + `certbot --nginx -d www1.dealeraddendums.com` + `X-Robots-Tag: noindex`. *(cert valid, exp 2026-09-01.)*
 - [ ] [Allan/CC] Apply **migration `004_lead_attribution`** in Supabase `huqohncglbshwuzeguvb` (before any form test).
 - [ ] [CC] Confirm the **attribution** build is live (GTM ✅; verify the `da_attribution` cookie + dataLayer push + `marketing_leads` persists the 8 fields). `marketing-attribution.md`.
 - [ ] [Allan] Create **Keystatic Cloud (Pro)** team/project on the repo + invite Allan/Alex/Marlena/Claire → give CC the `[TEAM]/[PROJECT]`. [CC] set `storage: { kind: 'cloud' }` + deploy. `keystatic-cloud.md`.
@@ -34,16 +34,31 @@
 - [ ] [CC] Sweep for any other **HubSpot-hosted assets/links/embeds** the new site references → replace.
 - [ ] ⚠️ [Allan] **Scope "decommission HubSpot" carefully — CMS/hosting only.** The HubSpot **CRM** (portal `23896347`) and the **onboarding/lifecycle workflows** STAY: DA Platform's Phase 14 sync feeds them and the Phase-5 onboarding workflow fires there. Confirm which HubSpot subscription tier the CRM + workflows need so cancelling the **website/Marketing hosting** doesn't disable them.
 
-## 4. DNS cutover (go live) — CONFIRMED PLAN (topology verified 2026-06-13)
+## 4. DNS cutover (go live) — ✅ COMPLETE + VERIFIED 2026-06-12
+
+> **✅ DONE 2026-06-12.** Changed **`www` → A `54.176.9.39`** (apex left on the ELB). Let's Encrypt cert
+> issued for `www.dealeraddendums.com` (ECDSA, exp 2026-09-10); **HTTP→HTTPS 301** live; **HSTS** active
+> over valid TLS; certbot auto-renew confirmed. Externally verified: `https://www.dealeraddendums.com` =
+> new Marketing OS site; `dealeraddendums.com/app/login` = Platform 4.0, untouched. (Cert was time-gated
+> behind LE's negative-DNS cache; landed 23:46 UTC on the scheduled retry.)
+>
+> **Post-cutover punch-list (OPEN):** 🔴 **Turnstile** — add `www`/apex to the widget's allowed hostnames
+> (signup is BLOCKED until then); **mobile responsive** (sections don't stack — CC prompt issued);
+> **PostHog browser smoke**; **migrate gallery images off `/hubfs`** (hero is self-hosted, but the
+> "See What Your Addendums Will Look Like" img_1–4 still hot-link the HubSpot CDN → they'll 404 when
+> HubSpot hosting is cancelled; see §3); decide whether to **retire `www1`**; **keep HubSpot hosting up**
+> as the rollback net until the above clear.
+
+### Plan as executed (topology verified 2026-06-13)
 > **Topology (from Route 53):** apex **`dealeraddendums.com` A → AWS ELB** (`newdaloadbalancer`,
 > us-east-1) — serves **`/app`** (legacy Platform 4.0, ~1,600 dealers) and redirects `/` → `www`.
 > **`www` CNAME → HubSpot** (`23896347.group47.sites.hubspot.net`) — the marketing homepage.
 > **`www1` A → `54.176.9.39`** — the new Marketing OS. Marketing and `/app` are on **separate records**,
 > so the cutover changes **`www` ONLY**; the apex (and `/app`) is never touched. TTL on `www` is already
 > **300** (5-min propagate + 5-min rollback).
-- [ ] [CC, Sat] Add **`www.dealeraddendums.com`** to the new box's Nginx `server_name` + **pre-provision
-  its TLS cert via DNS-01** (www still points at HubSpot pre-flip, so HTTP-01 won't work yet) so HTTPS is
-  valid the instant www flips. **Do NOT add the apex** — it stays on the ELB.
+- [x] [CC] **`www.dealeraddendums.com`** on the new box's Nginx `server_name` + **TLS cert issued.** Done
+  2026-06-12: www was flipped to A `54.176.9.39` first, so HTTP-01 validated directly (no DNS-01 needed).
+  Cert ECDSA, exp 2026-09-10; HTTP→HTTPS 301 + HSTS live; certbot auto-renew confirmed. Apex untouched (ELB).
 - [x] [CC] **Login chooser shipped** (`00d56e8`) — "Choose your platform": 4.0
   (`dealeraddendums.com/app/login`) + 5.0 (`app.dealeraddendums.com`), across all navs + LayoutA. Every
   "Log in" affordance opens the chooser — **incl. the hero "Log into your account" link** (was pointing

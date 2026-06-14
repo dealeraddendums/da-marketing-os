@@ -187,14 +187,15 @@ export default function CTASection({ tracking }: Props) {
               lineHeight: 1.7,
               margin: '0 0 28px',
             }}>
-              Start your free 30-day trial — print up to 30 vehicles. No credit card
-              required. No contract. Be up and running in under 30 minutes.
+              Start your free 30-day trial — print up to 30 vehicle addendums. No credit
+              card required. No contract. Be up and running in under 30 minutes.
             </p>
 
             <div style={{ display: 'grid', gap: 14 }}>
               {[
-                'Unlimited addendums during trial',
+                'Up to 30 vehicle addendums during your trial',
                 'All templates included — no upsells',
+                'One-time shipment of 25 addendum labels (on request)',
                 'US-based support team, real people',
                 'Import your inventory automatically',
               ].map(item => (

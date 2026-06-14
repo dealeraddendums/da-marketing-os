@@ -12,7 +12,9 @@
 // - Label pricing confirmed by Allan 2026-06-12: 22–30¢ each by quantity. The
 //   corpus carries ONLY the floor ("as low as $0.22 — volume pricing") so the
 //   generator can never quote the 30¢ high end; the static PricingSection may
-//   show the full range. "25 free labels" stays.
+//   show the full range. (2026-06-14: "25 free labels" reframed as a TRIAL
+//   one-time on-request shipment, not a plan feature; trial is capped at 30
+//   vehicle addendums — "unlimited" applies to PAID plans only.)
 // - Pricing $100/$150/$200 and the named dealer groups confirmed as-is.
 //
 // Product-messaging revision (Allan, 2026-06-12, v .3):
@@ -35,7 +37,7 @@
 // - No numbers that do not appear in this file
 // ============================================================================
 
-export const CORPUS_VERSION = '2026-06-12.3' // bump when facts change
+export const CORPUS_VERSION = '2026-06-14.1' // bump when facts change
 export const CORPUS_REVIEWED_BY: string | null = 'allan' // reviewed 2026-06-12
 
 // Free-form facts the generator may draw on for headlines/subheadlines.
@@ -69,9 +71,9 @@ export const FACTS: string[] = [
   // Pricing (confirmed by Allan — exact figures only)
   'Plans: Trial/Manual Load $100/month, Automatic — Web $150/month (most popular), Automatic — DMS $200/month.',
   'The only paid add-on is Color-Matched Vehicle Images at +$50/month; everything else, including the iOS app, is included.',
-  '25 free labels included on the entry plan.',
-  'Labels as low as $0.22 each — volume pricing.',
-  '30-day free trial (print up to 30 vehicles) — no credit card required.',
+  'Free trial includes a one-time shipment of 25 addendum labels (on request).',
+  'Labels as low as $0.22 each — volume pricing (for paid label orders).',
+  '30-day free trial — print up to 30 vehicle addendums, no credit card required.',
   'Month-to-month. No contracts. No setup fees. Cancel anytime.',
   'US-based support; 24/7 support.',
   'Up and running in minutes.',
@@ -100,10 +102,13 @@ export const BENEFIT_OPTIONS: string[] = [
   'No setup fees',
   'US-based 24/7 support',
   'Up and running in minutes',
-  '25 free labels included',
+  'Free trial: 25 addendum labels (one-time, on request)',
 ]
 // NOTE: 'Color-Matched Vehicle Images' is deliberately NOT a benefit option —
 // it is the paid add-on and must never render as an included checkmark.
+// NOTE: '25 free labels' is a TRIAL one-time perk, not a plan feature — the
+// benefit string above is scoped to the trial; never list it as a paid-plan
+// included feature.
 
 // ctaText must be one of these, verbatim. All hero CTAs link to #signup.
 export const CTA_OPTIONS: string[] = [
