@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { Roboto } from 'next/font/google'
 import './globals.css'
 import PostHogProvider from '@/components/PostHogProvider'
+import ChatWidgetMount from '@/components/marketing/ChatWidgetMount'
 
 // Google Tag Manager — env-gated, inert when NEXT_PUBLIC_GTM_ID is unset. The
 // container owns GA4 + the Google Ads conversion (nothing hardcoded here). The
@@ -58,6 +59,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </noscript>
         )}
         <PostHogProvider>{children}</PostHogProvider>
+        <ChatWidgetMount />
       </body>
     </html>
   )

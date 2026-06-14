@@ -158,3 +158,22 @@ a {
 @media (max-width: 768px) {
   .hero-nav-links { display: none !important; }
 }
+
+/* ── Chat widget panel: floating card on desktop, full-screen on phones ───── */
+.da-chat-panel {
+  bottom: 20px;
+  right: 20px;
+  width: 380px;
+  height: 560px;
+  max-height: calc(100vh - 40px);
+}
+@media (max-width: 480px) {
+  .da-chat-panel {
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    max-height: 100%;
+    border-radius: 0;
+    border: none;
+  }
+}
