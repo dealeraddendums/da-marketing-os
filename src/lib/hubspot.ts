@@ -61,7 +61,8 @@ export async function upsertChatContact(input: {
       if (!p.firstname && firstName) patch.firstname = firstName
       if (!p.company && input.company) patch.company = input.company
       if (!p.phone && input.phone) patch.phone = input.phone
-      if (!p.lead_source) patch.lead_source = 'Marketing Site — Chat'
+      // (lead source lives in the timeline note, not a contact property —
+      // `lead_source` is not a property in this portal.)
       if (Object.keys(patch).length) {
         await fetch(`${BASE_URL}/crm/v3/objects/contacts/${contactId}`, {
           method: 'PATCH', headers: H, body: JSON.stringify({ properties: patch }),
@@ -74,7 +75,6 @@ export async function upsertChatContact(input: {
         ...(firstName && { firstname: firstName }),
         ...(input.company && { company: input.company }),
         ...(input.phone && { phone: input.phone }),
-        lead_source: 'Marketing Site — Chat',
         lifecyclestage: 'lead',
       }
       const cres = await fetch(`${BASE_URL}/crm/v3/objects/contacts`, {
