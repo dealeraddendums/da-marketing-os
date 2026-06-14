@@ -47,13 +47,23 @@ export async function GET() {
       .gte('created_at', thirtyDaysAgo)
     if (tErr) throw tErr
 
+    // Converted = marketing-attributed trial→paid in the last 30 days. Rolling
+    // count (converted_at-based), not a same-cohort rate — trial→paid lags
+    // signup by up to the trial length. See converted-join.md.
+    const { count: converted, error: cErr } = await supabase
+      .from('marketing_leads')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'converted')
+      .gte('converted_at', thirtyDaysAgo)
+    if (cErr) throw cErr
+
     return NextResponse.json({
       visitors,
       engaged,
       pricingViewed,
       formStarted,
       trialSignups: trialSignups ?? 0,
-      converted: null, // not tracked in marketing Supabase (lives in da-billing)
+      converted: converted ?? 0,
     })
   } catch (e) {
     return NextResponse.json(

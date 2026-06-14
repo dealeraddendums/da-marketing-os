@@ -703,16 +703,17 @@ function FunnelPanel() {
   const pricing  = data?.pricingViewed ?? 0;
   const formed   = data?.formStarted ?? 0;
   const trials   = data?.trialSignups ?? 0;
+  const converted = data?.converted ?? 0;
   const pct = (n) => (visitors > 0 ? Math.round((n / visitors) * 1000) / 10 : 0);
 
   // tracked: live number + bar. untracked: greyed, no bar, no number.
   const steps = [
-    { label: "Visitors",               tracked: true,  value: visitors, pct: 100,           color: C.blue },
-    { label: "Engaged (30s+)",         tracked: true,  value: engaged,  pct: pct(engaged),  color: C.blueLight },
-    { label: "Pricing Viewed",         tracked: true,  value: pricing,  pct: pct(pricing),  color: C.blueLight },
-    { label: "Form Started",           tracked: true,  value: formed,   pct: pct(formed),   color: C.blueLight },
-    { label: "Trial Signup",           tracked: true,  value: trials,   pct: pct(trials),   color: C.success },
-    { label: "Converted (trial→paid)", tracked: false, note: "tracked in da-billing" },
+    { label: "Visitors",               tracked: true,  value: visitors,  pct: 100,            color: C.blue },
+    { label: "Engaged (30s+)",         tracked: true,  value: engaged,   pct: pct(engaged),   color: C.blueLight },
+    { label: "Pricing Viewed",         tracked: true,  value: pricing,   pct: pct(pricing),   color: C.blueLight },
+    { label: "Form Started",           tracked: true,  value: formed,    pct: pct(formed),    color: C.blueLight },
+    { label: "Trial Signup",           tracked: true,  value: trials,    pct: pct(trials),    color: C.success },
+    { label: "Converted (trial→paid)", tracked: true,  value: converted, pct: pct(converted), color: C.success },
   ];
 
   return (
@@ -747,8 +748,8 @@ function FunnelPanel() {
             ))}
           </div>
           <div style={{ fontSize: 12, color: C.textMuted, marginTop: 14, lineHeight: 1.5 }}>
-            Stage counts are per-visit events (raw, not de-duplicated by session). Converted (trial→paid)
-            lives in da-billing and isn’t joined here yet.
+            Stage counts are per-visit events (raw, not de-duplicated by session). Trial→paid lags signup
+            by up to the trial length, so Converted is a rolling count, not a same-cohort rate.
           </div>
         </>
       )}
