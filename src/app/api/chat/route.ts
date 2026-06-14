@@ -45,7 +45,6 @@ function captureChatLead(opts: {
   email: string
   messages: ChatMsg[]
   utmTerm?: string | null
-  sessionId?: string | null
   attribution?: Record<string, unknown> | null
 }): void {
   void (async () => {
@@ -86,8 +85,9 @@ function captureChatLead(opts: {
         source: 'chat',
         status: 'new',
         utm_term: opts.utmTerm || null,
-        session_id: opts.sessionId || null,
         ...(opts.attribution || {}),
+        // NOTE: marketing_leads has no session_id column (it lives on ab_events),
+        // so the chat session id isn't persisted here — REAL columns only.
         // da_dealer_id / da_group_id intentionally null — chat never provisions,
         // so chat leads are excluded from the funnel join + reconcile cron.
       })
@@ -122,7 +122,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { messages, utmTerm, sessionId, attribution } = await req.json()
+    const { messages, utmTerm, attribution } = await req.json()
 
     if (!Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json({ error: 'messages required' }, { status: 400 })
@@ -133,7 +133,7 @@ export async function POST(req: NextRequest) {
     const lastUserMsg = messages[messages.length - 1]?.content || ''
     const emailMatch = lastUserMsg.match(/[\w.+-]+@[\w-]+\.[a-z]{2,}/i)
     if (emailMatch) {
-      captureChatLead({ email: emailMatch[0], messages, utmTerm, sessionId, attribution })
+      captureChatLead({ email: emailMatch[0], messages, utmTerm, attribution })
     }
 
     // Streaming response
