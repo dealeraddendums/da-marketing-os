@@ -37,63 +37,6 @@ const BADGE = {
 };
 
 // ── Mock data ─────────────────────────────────────────────────────────────────
-const AB_EXPERIMENTS = [
-  {
-    id: "hero-headline",
-    name: "Hero Headline Test",
-    status: "running",
-    started: "Apr 14",
-    variants: [
-      { name: "Control",      visitors: 2841, conversions: 127, rate: 4.47 },
-      { name: "Urgency",      visitors: 2756, conversions: 154, rate: 5.59 },
-      { name: "Social Proof", visitors: 2803, conversions: 143, rate: 5.10 },
-    ],
-    significance: 94,
-    winner: "Urgency",
-  },
-  {
-    id: "cta-color",
-    name: "CTA Button Color",
-    status: "running",
-    started: "Apr 18",
-    variants: [
-      { name: "Blue",   visitors: 1204, conversions: 49, rate: 4.07 },
-      { name: "Green",  visitors: 1189, conversions: 61, rate: 5.13 },
-      { name: "Yellow", visitors: 1211, conversions: 67, rate: 5.53 },
-    ],
-    significance: 71,
-    winner: null,
-  },
-];
-
-const BLOG_QUEUE = [
-  { title: "FTC Compliance for Car Dealers in 2026",            status: "published",  date: "Apr 20", social: 3 },
-  { title: "Addendum vs. Buyers Guide: What's the Difference?", status: "scheduled",  date: "Apr 26", social: 0 },
-  { title: "How to Reduce Printing Time by 80%",                status: "draft",      date: "—",      social: 0 },
-  { title: "Top 5 Addendum Mistakes Dealers Make",              status: "draft",      date: "—",      social: 0 },
-];
-
-const SOCIAL_QUEUE = [
-  { platform: "LinkedIn", content: "FTC compliance doesn't have to be complicated. Here's how 1,600+ dealers stay protected...", scheduled: "Apr 24 9am",  status: "scheduled" },
-  { platform: "Twitter",  content: "526 addendums printed today by our dealers. That's 526 fewer headaches.", scheduled: "Apr 24 11am", status: "scheduled" },
-  { platform: "Facebook", content: "New blog: FTC Compliance for Car Dealers in 2026. Everything you need to know in one place.", scheduled: "Apr 25 9am",  status: "scheduled" },
-  { platform: "LinkedIn", content: "Did you know the average dealer spends 4+ hours/week on addendums manually? We solve that.", scheduled: "Apr 27 9am",  status: "draft"     },
-];
-
-const LEADS = [
-  { name: "Mike Torres",   dealership: "Torres Kia",         source: "Google Ads", time: "2h ago",  enrichment: "~5 rooftops, likely franchise group" },
-  { name: "Sarah Kim",     dealership: "Pacific Auto Group", source: "LinkedIn",   time: "5h ago",  enrichment: "Multi-location, high-value prospect" },
-  { name: "Dave Reinhart", dealership: "Reinhart Ford",      source: "Direct",     time: "1d ago",  enrichment: "Single point dealer, price sensitive" },
-  { name: "Alma Reyes",    dealership: "Southwest Motors",   source: "Blog",       time: "2d ago",  enrichment: "Used car focus, compliance concerned" },
-];
-
-const INSIGHTS = [
-  "📈 The 'Urgency' headline variant is approaching 95% significance — recommend declaring winner and updating control.",
-  "📉 Mobile scroll depth on Pricing section dropped 12% this week. Consider moving pricing higher or adding a mobile-specific CTA.",
-  "🎯 Visitors from LinkedIn have a 2.3× higher conversion rate than Google Ads. Recommend increasing LinkedIn ad spend.",
-  "✍️ Blog post about FTC compliance drove 340 organic visits in 48 hours. Publish 2–3 more compliance-focused posts.",
-];
-
 // ── UI Primitives ─────────────────────────────────────────────────────────────
 
 const Badge = ({ children, variant = "neutral" }) => {
@@ -619,7 +562,7 @@ function ABPanel() {
       .catch(() => setLiveLoading(false));
   }, []);
 
-  const experiments = liveExperiments || AB_EXPERIMENTS;
+  const experiments = liveExperiments || [];
   const isLive = !!liveExperiments;
 
   const handleNewExperiment = (name) => {
@@ -642,7 +585,7 @@ function ABPanel() {
                 ? <Badge variant="success">Live Data</Badge>
                 : liveLoading
                   ? <Badge variant="neutral">Loading…</Badge>
-                  : <Badge variant="warning">Demo Data</Badge>
+                  : <Badge variant="neutral">No data yet</Badge>
               }
               <SmallButton variant="primary" onClick={() => setShowModal(true)}>+ New Experiment</SmallButton>
             </div>
@@ -657,6 +600,12 @@ function ABPanel() {
           }}>{toastMsg}</div>
         )}
 
+        {experiments.length === 0 && !liveLoading && (
+          <div style={{ fontSize: 13, color: C.textMuted, padding: "16px 0", textAlign: "center" }}>
+            No A/B experiments yet. The hero copy test (generic / personalized / dealertype) runs via
+            cookie; results appear here once enough traffic is tracked.
+          </div>
+        )}
         <div style={{ display: "grid", gap: 16 }}>
           {experiments.map(exp => (
             <div key={exp.id} style={{
@@ -824,20 +773,25 @@ function InsightsPanel() {
     setLoading(false);
   };
 
-  const items = fresh || INSIGHTS;
+  const items = fresh || [];
 
   return (
     <Card>
       <SectionTitle
         action={
           <Button onClick={refresh} loading={loading} variant="secondary">
-            Refresh AI Insights
+            Generate AI Insights
           </Button>
         }
       >
-        {fresh ? "AI Insights (Live)" : "AI Weekly Insights"}
+        {fresh ? "AI Insights (Live)" : "AI Insights"}
       </SectionTitle>
       {error && <div style={{ fontSize: 12, color: C.error, marginBottom: 10 }}>{error}</div>}
+      {items.length === 0 && !error && (
+        <div style={{ fontSize: 13, color: C.textMuted, padding: "16px 0", textAlign: "center" }}>
+          No insights yet — click “Generate AI Insights” to analyze the latest data.
+        </div>
+      )}
       <div style={{ display: "grid", gap: 8 }}>
         {items.map((insight, i) => (
           <div key={i} style={{
@@ -855,17 +809,27 @@ function InsightsPanel() {
 
 // ── Blog Queue ────────────────────────────────────────────────────────────────
 function BlogQueue() {
+  // No live blog-list endpoint yet — posts authored via the Blog Generator
+  // are saved to the repo/Keystatic, not surfaced back here. Honest empty
+  // state until that source is wired.
+  const posts = [];
   return (
     <Card>
       <SectionTitle
-        action={<Badge variant="info">{BLOG_QUEUE.length} posts</Badge>}
+        action={<Badge variant="neutral">{posts.length} posts</Badge>}
       >Blog Queue</SectionTitle>
+      {posts.length === 0 && (
+        <div style={{ fontSize: 13, color: C.textMuted, padding: "16px 0", textAlign: "center" }}>
+          No posts to show here yet. Drafts created in the Blog Generator are saved to the site;
+          a live blog-list feed for this panel isn’t wired yet.
+        </div>
+      )}
       <div style={{ display: "grid", gap: 8 }}>
-        {BLOG_QUEUE.map((post, i) => (
+        {posts.map((post, i) => (
           <div key={i} style={{
             display: "flex", alignItems: "center", justifyContent: "space-between",
             padding: "10px 0",
-            borderBottom: i < BLOG_QUEUE.length - 1 ? `1px solid ${C.border}` : "none",
+            borderBottom: i < posts.length - 1 ? `1px solid ${C.border}` : "none",
           }}>
             <div style={{ flex: 1, minWidth: 0, paddingRight: 12 }}>
               <div style={{
@@ -909,15 +873,15 @@ function SocialQueue() {
         scheduled: p.scheduledFor ? new Date(p.scheduledFor).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—",
         status: p.publishedAt ? "published" : new Date(p.scheduledFor) > new Date() ? "scheduled" : "draft",
       }))
-    : SOCIAL_QUEUE;
+    : [];
 
   return (
     <Card>
       <SectionTitle
         action={
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <Badge variant={isLive ? "success" : liveLoading ? "neutral" : "warning"}>
-              {liveLoading ? "Loading…" : isLive ? "Live Queue" : "Demo Data"}
+            <Badge variant={isLive ? "success" : "neutral"}>
+              {liveLoading ? "Loading…" : isLive ? "Live Queue" : "No data yet"}
             </Badge>
             <Badge variant="info">{displayPosts.length} queued</Badge>
           </div>
@@ -995,15 +959,17 @@ function LeadsPanel() {
     setExporting(false);
   };
 
-  const displayLeads = LEADS; // shown from mock; real data reflected in count badge
+  // No per-row leads-list endpoint yet — the real total is in the count badge
+  // and the full rows are in the CSV export. No mock rows.
+  const displayLeads = [];
 
   return (
     <Card>
       <SectionTitle
         action={
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <Badge variant="success">
-              {loading ? "…" : leads !== null ? `${leads} total` : "4 new"}
+            <Badge variant={leads !== null ? "success" : "neutral"}>
+              {loading ? "…" : leads !== null ? `${leads} total` : "unavailable"}
             </Badge>
             <SmallButton variant="secondary" onClick={exportCSV} disabled={exporting}>
               {exporting ? "Exporting…" : "Export CSV"}
@@ -1025,6 +991,13 @@ function LeadsPanel() {
         ))}
       </div>
 
+      {displayLeads.length === 0 && (
+        <div style={{ fontSize: 13, color: C.textMuted, padding: "16px 8px", textAlign: "center" }}>
+          {leads !== null && leads > 0
+            ? `${leads} lead${leads === 1 ? "" : "s"} captured — use “Export CSV” for the full list (per-row view not wired yet).`
+            : "No leads captured yet."}
+        </div>
+      )}
       {displayLeads.map((lead, i) => (
         <div key={i} style={{
           display: "grid", gridTemplateColumns: "2fr 2fr 1fr 1fr 3fr",
