@@ -4,6 +4,8 @@ import { Resend } from 'resend'
 import { supabase } from '@/lib/supabase'
 import { parseJSON } from '@/lib/ai'
 import { rateLimit } from '@/lib/rate-limit'
+import { upsertChatContact } from '@/lib/hubspot'
+import { escalateLead, wantsHuman } from '@/lib/escalate'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,6 +33,8 @@ Key facts:
 Your role: answer questions honestly and helpfully so dealers understand the product. You do NOT sign anyone up and you do NOT create accounts. If someone is ready to start, point them to the "Start Free Trial" signup form on this page — they begin the trial there themselves.
 
 Lead follow-up: you MAY make ONE soft, low-pressure offer to take an email so the team can follow up (e.g. "Happy to have someone follow up with more detail — what's the best email?"). NEVER require an email, NEVER make answering conditional on it, and don't ask more than once — if they decline or ignore it, keep helping fully. If someone just wants information, let them know someone can follow up if they'd like.
+
+Talk to a human: if the visitor asks to speak to a real person / sales rep / wants a call, FIRST ask for the best email or phone so the team can reach them (optional — never required), THEN tell them: "I've notified our team — someone will reach out shortly. For immediate help, call (801) 415-9435." Never claim to be human, and never promise an exact callback time. (Our system also alerts the team automatically when someone asks for a person.)
 
 Keep responses concise (2-3 sentences max). Be friendly and knowledgeable. Never make up features or pricing not listed above.`
 
@@ -96,6 +100,22 @@ function captureChatLead(opts: {
         return
       }
 
+      // New chat lead → HubSpot Contact so sales can work it in the CRM
+      // (CONTACT only, never a Company/dealer — chat never provisions). Dedupe
+      // by email + no-backward lifecyclestage guard live in upsertChatContact.
+      // Fire-and-forget; the internal email above is the fallback if this fails.
+      const attr = opts.attribution || {}
+      void upsertChatContact({
+        email,
+        name,
+        company: dealership,
+        phone,
+        utmSource: (attr.utm_source as string) || null,
+        utmCampaign: (attr.utm_campaign as string) || null,
+        utmTerm: opts.utmTerm || (attr.utm_term as string) || null,
+        referrer: (attr.referrer as string) || null,
+      }).then(r => { if (!r.ok) console.error('[chat] HubSpot contact upsert failed for', email) }, () => {})
+
       // Internal new-lead notification so sales follows up (best-effort).
       if (process.env.RESEND_API_KEY) {
         new Resend(process.env.RESEND_API_KEY).emails.send({
@@ -122,7 +142,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { messages, utmTerm, attribution } = await req.json()
+    const { messages, utmTerm, sessionId, attribution } = await req.json()
 
     if (!Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json({ error: 'messages required' }, { status: 400 })
@@ -134,6 +154,20 @@ export async function POST(req: NextRequest) {
     const emailMatch = lastUserMsg.match(/[\w.+-]+@[\w-]+\.[a-z]{2,}/i)
     if (emailMatch) {
       captureChatLead({ email: emailMatch[0], messages, utmTerm, attribution })
+    }
+
+    // "Talk to a real person" — server-side intent detection. Fires an instant
+    // Slack alert (deduped to one per session in escalateLead). The widget's
+    // explicit button hits /api/chat/escalate; both routes share the dedupe.
+    if (wantsHuman(lastUserMsg)) {
+      void escalateLead({
+        sessionId,
+        messages,
+        email: emailMatch?.[0] || null,
+        page: req.headers.get('referer') || null,
+        utm: { utm_term: utmTerm || null },
+        trigger: 'intent',
+      })
     }
 
     // Streaming response
