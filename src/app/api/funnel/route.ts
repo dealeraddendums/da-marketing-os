@@ -1,32 +1,45 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { isAdminAuthed } from '@/lib/reputation'
 
 export const dynamic = 'force-dynamic'
 
 /**
- * GET /api/funnel — honest conversion funnel, last 30 days.
+ * GET /api/funnel — conversion funnel, last 30 days. Admin-only.
  *
- * Only the steps we actually have an event source for are returned with a
- * number:
- *   • visitors      = ab_events where event_type='hero_impression'
- *   • trialSignups  = marketing_leads rows
- *   • converted     = null — trial→paid lives in da-billing, not the
- *                     marketing Supabase, so it's "not tracked" here for now.
- *
- * Engaged(30s+) / Pricing Viewed / Form Started have NO event source yet
- * (need dedicated PostHog events) — the client renders them as "not tracked
- * yet" rather than inventing numbers, so nothing is returned for them.
+ * All stage counts come from ab_events (same pipe as hero_impression), keyed
+ * by event_type — raw per-visit-guarded counts, not distinct sessions:
+ *   • visitors     = hero_impression
+ *   • engaged      = engaged_30s     (30s on the hero)
+ *   • pricingViewed= pricing_view    (pricing section ≥50% in view)
+ *   • formStarted  = form_start      (signup form focused)
+ *   • trialSignups = marketing_leads rows
+ *   • converted    = null — trial→paid lives in da-billing, not here.
  */
 export async function GET() {
+  if (!isAdminAuthed()) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
 
-  try {
-    const { count: visitors, error: vErr } = await supabase
+  const countEvent = async (eventType: string) => {
+    const { count, error } = await supabase
       .from('ab_events')
       .select('id', { count: 'exact', head: true })
-      .eq('event_type', 'hero_impression')
+      .eq('event_type', eventType)
       .gte('created_at', thirtyDaysAgo)
-    if (vErr) throw vErr
+    if (error) throw error
+    return count ?? 0
+  }
+
+  try {
+    const [visitors, engaged, pricingViewed, formStarted] = await Promise.all([
+      countEvent('hero_impression'),
+      countEvent('engaged_30s'),
+      countEvent('pricing_view'),
+      countEvent('form_start'),
+    ])
 
     const { count: trialSignups, error: tErr } = await supabase
       .from('marketing_leads')
@@ -35,7 +48,10 @@ export async function GET() {
     if (tErr) throw tErr
 
     return NextResponse.json({
-      visitors: visitors ?? 0,
+      visitors,
+      engaged,
+      pricingViewed,
+      formStarted,
       trialSignups: trialSignups ?? 0,
       converted: null, // not tracked in marketing Supabase (lives in da-billing)
     })

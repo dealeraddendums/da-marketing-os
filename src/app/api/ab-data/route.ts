@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { isAdminAuthed } from '@/lib/reputation'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,6 +18,9 @@ function calcSignificance(n1: number, c1: number, n2: number, c2: number): numbe
 }
 
 export async function GET() {
+  if (!isAdminAuthed()) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
   try {
     const { data: rates, error } = await supabase
       .from('ab_conversion_rates')

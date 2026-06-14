@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { getAttribution, pushSignupEvent } from '@/lib/attribution'
 import Turnstile from './Turnstile'
-import { capture } from './HeroSection'
+import { capture, abTrackOnce } from './HeroSection'
 import type { HeroTracking } from '@/lib/hero-engine'
 
 interface FormState {
@@ -35,9 +35,10 @@ export default function CTASection({ tracking }: Props) {
   }, [])
 
   const handleFormStart = () => {
-    if (formStarted.current || !tracking) return
+    if (formStarted.current) return
     formStarted.current = true
-    capture('form_start', tracking)
+    abTrackOnce('da_ev_formstart', 'form_start', tracking) // funnel (ab_events)
+    if (tracking) capture('form_start', tracking)          // PostHog
   }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {

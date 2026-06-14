@@ -1,9 +1,14 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { isAdminAuthed } from '@/lib/reputation'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET(req: NextRequest) {
+export async function GET() {
+  // PII gate — this exposes name/email/phone. Admin cookie required.
+  if (!isAdminAuthed()) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
   const { data: leads, error } = await supabase
     .from('marketing_leads')
     .select('id, name, email, dealership, phone, source, status, created_at, ai_enrichment')

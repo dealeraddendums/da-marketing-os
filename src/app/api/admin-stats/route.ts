@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { isAdminAuthed } from '@/lib/reputation'
 
 export const dynamic = 'force-dynamic'
 
@@ -39,7 +40,10 @@ async function getActiveDealerCount(): Promise<string> {
   return '1,600+'
 }
 
-export async function GET(req: NextRequest) {
+export async function GET() {
+  if (!isAdminAuthed()) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
   const prevPeriodStart = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString()
 

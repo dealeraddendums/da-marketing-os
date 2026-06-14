@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { generateText, parseJSON } from '@/lib/ai'
 import { supabase } from '@/lib/supabase'
+import { isAdminAuthed } from '@/lib/reputation'
 
 export async function POST(req: NextRequest) {
-  // Require cron key for automated runs; allow no-key for live admin refresh
+  // Two callers: the cron (x-api-key = DA_CRON_KEY) and the admin dashboard
+  // (da_admin_auth cookie, no key). Accept either; reject anything else.
   const cronKey = req.headers.get('x-api-key')
-  const isCronRequest = !!cronKey
-  if (isCronRequest && cronKey !== process.env.DA_CRON_KEY) {
+  const authorized = cronKey
+    ? cronKey === process.env.DA_CRON_KEY
+    : isAdminAuthed()
+  if (!authorized) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

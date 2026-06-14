@@ -1,3 +1,8 @@
+'use client'
+import { useEffect, useRef } from 'react'
+import { abTrackOnce } from './HeroSection'
+import type { HeroTracking } from '@/lib/hero-engine'
+
 const PLANS = [
   {
     name: 'Trial / Manual Load',
@@ -61,9 +66,27 @@ const PLANS = [
   },
 ]
 
-export default function PricingSection() {
+export default function PricingSection({ tracking }: { tracking?: HeroTracking }) {
+  const ref = useRef<HTMLElement>(null)
+
+  // Funnel: pricing_view = the pricing section scrolled ≥50% into view. Once
+  // per visit, then stop observing.
+  useEffect(() => {
+    const el = ref.current
+    if (!el || typeof IntersectionObserver === 'undefined') return
+    const obs = new IntersectionObserver((entries) => {
+      if (entries.some(e => e.isIntersecting)) {
+        abTrackOnce('da_ev_pricing', 'pricing_view', tracking)
+        obs.disconnect()
+      }
+    }, { threshold: 0.5 })
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [tracking])
+
   return (
     <section
+      ref={ref}
       id="pricing"
       style={{
         background: '#f5f6f7',

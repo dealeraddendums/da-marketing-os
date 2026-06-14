@@ -42,6 +42,34 @@ export function capture(event: string, t: HeroTracking, extra: Record<string, un
   }
 }
 
+// Fire a funnel event into ab_events (via /api/ab-track) at most ONCE per
+// visit, guarded by sessionStorage. Mirrors HeroSection's hero_impression
+// body so the funnel + per-context joins line up. tracking is optional —
+// event_type is all the funnel counts on, so a missing tracking object is fine.
+export function abTrackOnce(guardKey: string, event: string, t?: Partial<HeroTracking>) {
+  if (typeof window === 'undefined') return
+  try {
+    if (window.sessionStorage.getItem(guardKey)) return
+    window.sessionStorage.setItem(guardKey, '1')
+  } catch {
+    // private mode / storage disabled — fall through and fire unguarded
+  }
+  fetch('/api/ab-track', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      event,
+      abVariant: t?.abVariant,
+      layoutVariant: t?.layoutVariant,
+      utmTerm: t?.keyword,
+      headline: t?.headline,
+      contextKey: t?.contextKey,
+      variationId: t?.variationId,
+    }),
+    keepalive: true,
+  }).catch(() => {})
+}
+
 export default function HeroSection({ hero, tracking, warm }: Props) {
   const fired = useRef(false)
 
@@ -77,6 +105,13 @@ export default function HeroSection({ hero, tracking, warm }: Props) {
         keepalive: true,
       }).catch(() => {})
     }
+
+    // Funnel: engaged = still here at 30s. Once per visit; cancelled if the
+    // visitor leaves before 30s.
+    const engagedTimer = setTimeout(() => {
+      abTrackOnce('da_ev_engaged', 'engaged_30s', tracking)
+    }, 30000)
+    return () => clearTimeout(engagedTimer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

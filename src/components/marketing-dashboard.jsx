@@ -699,16 +699,19 @@ function FunnelPanel() {
   }, []);
 
   const visitors = data?.visitors ?? 0;
+  const engaged  = data?.engaged ?? 0;
+  const pricing  = data?.pricingViewed ?? 0;
+  const formed   = data?.formStarted ?? 0;
   const trials   = data?.trialSignups ?? 0;
   const pct = (n) => (visitors > 0 ? Math.round((n / visitors) * 1000) / 10 : 0);
 
   // tracked: live number + bar. untracked: greyed, no bar, no number.
   const steps = [
-    { label: "Visitors",              tracked: true,  value: visitors, pct: 100,          color: C.blue },
-    { label: "Engaged (30s+)",        tracked: false },
-    { label: "Pricing Viewed",        tracked: false },
-    { label: "Form Started",          tracked: false },
-    { label: "Trial Signup",          tracked: true,  value: trials,   pct: pct(trials),  color: C.success },
+    { label: "Visitors",               tracked: true,  value: visitors, pct: 100,           color: C.blue },
+    { label: "Engaged (30s+)",         tracked: true,  value: engaged,  pct: pct(engaged),  color: C.blueLight },
+    { label: "Pricing Viewed",         tracked: true,  value: pricing,  pct: pct(pricing),  color: C.blueLight },
+    { label: "Form Started",           tracked: true,  value: formed,   pct: pct(formed),   color: C.blueLight },
+    { label: "Trial Signup",           tracked: true,  value: trials,   pct: pct(trials),   color: C.success },
     { label: "Converted (trial→paid)", tracked: false, note: "tracked in da-billing" },
   ];
 
@@ -744,8 +747,8 @@ function FunnelPanel() {
             ))}
           </div>
           <div style={{ fontSize: 12, color: C.textMuted, marginTop: 14, lineHeight: 1.5 }}>
-            Engaged / Pricing Viewed / Form Started need dedicated PostHog events before they can be
-            measured. Converted (trial→paid) lives in da-billing and isn’t joined here yet.
+            Stage counts are per-visit events (raw, not de-duplicated by session). Converted (trial→paid)
+            lives in da-billing and isn’t joined here yet.
           </div>
         </>
       )}
@@ -919,26 +922,37 @@ function SocialQueue() {
 }
 
 // ── Leads ─────────────────────────────────────────────────────────────────────
+function timeAgo(iso) {
+  if (!iso) return "—";
+  const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 60) return "just now";
+  const m = Math.floor(s / 60); if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60); if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24); if (d < 30) return `${d}d ago`;
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function enrichmentText(e) {
+  if (!e || typeof e !== "object") return "—";
+  const parts = [e.estimatedSize, e.likelyType, e.priority].filter(Boolean);
+  return parts.length ? parts.join(" · ") : "—";
+}
+
 function LeadsPanel() {
-  const [leads, setLeads] = useState(null);
+  const [rows, setRows] = useState(null);
+  const [total, setTotal] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
-    // Fetch live leads from Supabase via a future /api/leads-list endpoint
-    // For now, fall back to mock data if the endpoint doesn't exist
-    fetch("/api/leads-export", { method: "GET" })
-      .then(r => {
-        if (!r.ok) throw new Error("not available");
-        // Parse CSV to get count
-        return r.text();
+    fetch("/api/leads-list")
+      .then(async r => {
+        if (!r.ok) throw new Error(r.status === 401 ? "admin login required" : `HTTP ${r.status}`);
+        return r.json();
       })
-      .then(csv => {
-        const rows = csv.trim().split("\n").slice(1); // skip header
-        setLeads(rows.length);
-        setLoading(false);
-      })
-      .catch(() => { setLeads(null); setLoading(false); });
+      .then(d => { setRows(d.leads || []); setTotal(d.total ?? (d.leads || []).length); setLoading(false); })
+      .catch(e => { setError(e.message); setRows([]); setLoading(false); });
   }, []);
 
   const exportCSV = async () => {
@@ -959,17 +973,15 @@ function LeadsPanel() {
     setExporting(false);
   };
 
-  // No per-row leads-list endpoint yet — the real total is in the count badge
-  // and the full rows are in the CSV export. No mock rows.
-  const displayLeads = [];
+  const displayLeads = rows || [];
 
   return (
     <Card>
       <SectionTitle
         action={
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <Badge variant={leads !== null ? "success" : "neutral"}>
-              {loading ? "…" : leads !== null ? `${leads} total` : "unavailable"}
+            <Badge variant={total !== null ? "success" : "neutral"}>
+              {loading ? "…" : total !== null ? `${total} total` : "unavailable"}
             </Badge>
             <SmallButton variant="secondary" onClick={exportCSV} disabled={exporting}>
               {exporting ? "Exporting…" : "Export CSV"}
@@ -991,25 +1003,24 @@ function LeadsPanel() {
         ))}
       </div>
 
-      {displayLeads.length === 0 && (
-        <div style={{ fontSize: 13, color: C.textMuted, padding: "16px 8px", textAlign: "center" }}>
-          {leads !== null && leads > 0
-            ? `${leads} lead${leads === 1 ? "" : "s"} captured — use “Export CSV” for the full list (per-row view not wired yet).`
-            : "No leads captured yet."}
+      {(loading || error || displayLeads.length === 0) && (
+        <div style={{ fontSize: 13, color: error ? C.error : C.textMuted, padding: "16px 8px", textAlign: "center" }}>
+          {loading ? "Loading…" : error ? `Could not load leads — ${error}` : "No leads captured yet."}
         </div>
       )}
       {displayLeads.map((lead, i) => (
-        <div key={i} style={{
+        <div key={lead.id || i} style={{
           display: "grid", gridTemplateColumns: "2fr 2fr 1fr 1fr 3fr",
           padding: "10px 8px",
           borderBottom: `1px solid ${C.border}`,
           background: i % 2 === 1 ? C.bgSubtle : C.bgSurface,
+          alignItems: "center",
         }}>
-          <div style={{ fontSize: 14, fontWeight: 500, color: C.textPrimary }}>{lead.name}</div>
-          <div style={{ fontSize: 14, color: C.textSecondary }}>{lead.dealership}</div>
-          <div><Badge variant="info">{lead.source}</Badge></div>
-          <div style={{ fontSize: 12, color: C.textMuted }}>{lead.time}</div>
-          <div style={{ fontSize: 12, color: C.textMuted, fontStyle: "italic" }}>{lead.enrichment}</div>
+          <div style={{ fontSize: 14, fontWeight: 500, color: C.textPrimary }}>{lead.name || "—"}</div>
+          <div style={{ fontSize: 14, color: C.textSecondary }}>{lead.dealership || "—"}</div>
+          <div>{lead.source ? <Badge variant="info">{lead.source}</Badge> : <span style={{ fontSize: 12, color: C.textMuted }}>—</span>}</div>
+          <div style={{ fontSize: 12, color: C.textMuted }}>{timeAgo(lead.created_at)}</div>
+          <div style={{ fontSize: 12, color: C.textMuted, fontStyle: "italic" }}>{enrichmentText(lead.ai_enrichment)}</div>
         </div>
       ))}
     </Card>

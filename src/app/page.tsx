@@ -111,7 +111,7 @@ export default async function HomePage({ searchParams }: PageProps) {
         <HeroSection hero={resolved.hero} tracking={tracking} warm={warm} />
       </Suspense>
       <FeaturesSection />
-      <PricingSection />
+      <PricingSection tracking={tracking} />
       <TestimonialsSection dealerType={ctx.dealerType} />
       <CTASection tracking={tracking} />
     </main>
