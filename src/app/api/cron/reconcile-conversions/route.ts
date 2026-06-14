@@ -42,8 +42,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: true, checked: 0, converted: 0 })
   }
 
-  const dealerIds = [...new Set(candidates.map(l => l.da_dealer_id).filter(Boolean))]
-  const groupIds = [...new Set(candidates.map(l => l.da_group_id).filter(Boolean))]
+  const dealerIds = Array.from(new Set(candidates.map(l => l.da_dealer_id).filter(Boolean)))
+  const groupIds = Array.from(new Set(candidates.map(l => l.da_group_id).filter(Boolean)))
 
   let statuses: Record<string, { paid: boolean; convertedAt: string | null; plan?: string; mrr?: number }>
   try {
