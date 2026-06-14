@@ -66,15 +66,6 @@ const AB_EXPERIMENTS = [
   },
 ];
 
-const FUNNEL = [
-  { label: "Visitors",       value: 18420, pct: 100 },
-  { label: "Engaged (30s+)", value: 9814,  pct: 53  },
-  { label: "Pricing Viewed", value: 4203,  pct: 23  },
-  { label: "Form Started",   value: 1102,  pct: 6.0 },
-  { label: "Trial Signup",   value: 744,   pct: 4.0 },
-  { label: "Converted",      value: 89,    pct: 0.5 },
-];
-
 const BLOG_QUEUE = [
   { title: "FTC Compliance for Car Dealers in 2026",            status: "published",  date: "Apr 20", social: 3 },
   { title: "Addendum vs. Buyers Guide: What's the Difference?", status: "scheduled",  date: "Apr 26", social: 0 },
@@ -743,30 +734,72 @@ function ABPanel() {
 }
 
 // ── Conversion Funnel ─────────────────────────────────────────────────────────
+// Honest funnel: only Visitors + Trial Signup have an event source today.
+// Engaged / Pricing Viewed / Form Started need dedicated PostHog events (not
+// wired yet) and render as "not tracked yet" — never invented numbers.
+// Converted (trial→paid) lives in da-billing, not the marketing Supabase.
 function FunnelPanel() {
+  const [data, setData]   = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    fetch("/api/funnel")
+      .then(r => r.json())
+      .then(d => { if (d.error) setError(d.error); else setData(d); })
+      .catch(() => setError("Could not load funnel"));
+  }, []);
+
+  const visitors = data?.visitors ?? 0;
+  const trials   = data?.trialSignups ?? 0;
+  const pct = (n) => (visitors > 0 ? Math.round((n / visitors) * 1000) / 10 : 0);
+
+  // tracked: live number + bar. untracked: greyed, no bar, no number.
+  const steps = [
+    { label: "Visitors",              tracked: true,  value: visitors, pct: 100,          color: C.blue },
+    { label: "Engaged (30s+)",        tracked: false },
+    { label: "Pricing Viewed",        tracked: false },
+    { label: "Form Started",          tracked: false },
+    { label: "Trial Signup",          tracked: true,  value: trials,   pct: pct(trials),  color: C.success },
+    { label: "Converted (trial→paid)", tracked: false, note: "tracked in da-billing" },
+  ];
+
   return (
     <Card>
       <SectionTitle>Conversion Funnel — Last 30 Days</SectionTitle>
-      <div style={{ display: "grid", gap: 10 }}>
-        {FUNNEL.map((step, i) => (
-          <div key={i}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-              <span style={{ fontSize: 14, color: i === 0 ? C.textPrimary : C.textSecondary }}>
-                {step.label}
-              </span>
-              <span style={{ fontSize: 14, fontWeight: 500, color: i === FUNNEL.length - 1 ? C.success : C.textPrimary }}>
-                {step.value.toLocaleString()}
-                <span style={{ fontSize: 12, color: C.textMuted, marginLeft: 8 }}>{step.pct}%</span>
-              </span>
-            </div>
-            <MiniBar
-              pct={step.pct}
-              height={8}
-              color={i === FUNNEL.length - 1 ? C.success : i === 0 ? C.blue : C.blueLight}
-            />
+      {error ? (
+        <div style={{ fontSize: 13, color: C.error }}>Could not load funnel — {error}</div>
+      ) : !data ? (
+        <div style={{ fontSize: 13, color: C.textMuted }}>Loading…</div>
+      ) : (
+        <>
+          <div style={{ display: "grid", gap: 10 }}>
+            {steps.map((step, i) => (
+              <div key={i}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                  <span style={{ fontSize: 14, color: step.tracked ? C.textPrimary : C.textMuted }}>
+                    {step.label}
+                  </span>
+                  {step.tracked ? (
+                    <span style={{ fontSize: 14, fontWeight: 500, color: C.textPrimary }}>
+                      {step.value.toLocaleString()}
+                      <span style={{ fontSize: 12, color: C.textMuted, marginLeft: 8 }}>{step.pct}%</span>
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: 12, color: C.textMuted, fontStyle: "italic" }}>
+                      not tracked yet{step.note ? ` · ${step.note}` : ""}
+                    </span>
+                  )}
+                </div>
+                {step.tracked && <MiniBar pct={step.pct} height={8} color={step.color} />}
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+          <div style={{ fontSize: 12, color: C.textMuted, marginTop: 14, lineHeight: 1.5 }}>
+            Engaged / Pricing Viewed / Form Started need dedicated PostHog events before they can be
+            measured. Converted (trial→paid) lives in da-billing and isn’t joined here yet.
+          </div>
+        </>
+      )}
     </Card>
   );
 }
