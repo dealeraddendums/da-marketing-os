@@ -1,10 +1,19 @@
 import { Resend } from 'resend'
+import { postSlackMessage, slackConfigured } from '@/lib/slack'
+import {
+  findOrCreateConversation,
+  setConversationLive,
+  type ChatConversation,
+} from '@/lib/chat-store'
 
-// "Talk to a real person" escalation: instant Slack alert with full chat
-// context so the team can call/email/loop back fast. Reliability is the point —
-// if Slack fails, fall back to an urgent email; an escalation must NEVER be
-// silently lost. Deduped to ONE alert per session (button + intent both route
-// here). NOT live-chat takeover — that's a separate, larger build.
+// "Talk to a real person" escalation. TWO-WAY now: the bot-token alert becomes
+// the parent of a Slack thread; the team replies in-thread and the visitor sees
+// it live in the widget (Slack Events → /api/chat/slack-events) and replies back
+// (/api/chat/message). The conversation flips to `live` and the bot stops
+// auto-answering. If the bot token isn't configured, we degrade to the legacy
+// notify-only path (Workflow Builder webhook → email): an alert is sent but the
+// widget stays in bot mode (no conversationId returned). An escalation must
+// NEVER be silently lost.
 
 export interface EscalateInput {
   sessionId?: string | null
@@ -18,55 +27,75 @@ export interface EscalateInput {
   trigger?: 'button' | 'intent'
 }
 
-// In-process dedupe (da-marketing runs single-instance fork mode). Best-effort:
-// a rare duplicate after a restart is acceptable; a missed alert is not.
-const seen = new Map<string, number>()
-const DEDUP_TTL_MS = 60 * 60 * 1000
-function alreadyEscalated(sessionId: string): boolean {
-  const now = Date.now()
-  seen.forEach((t, k) => { if (now - t > DEDUP_TTL_MS) seen.delete(k) })
-  if (seen.has(sessionId)) return true
-  seen.set(sessionId, now)
-  return false
+export interface EscalateResult {
+  ok: boolean
+  channel: 'slack' | 'email' | 'none'
+  deduped?: boolean
+  // Present only when two-way live mode engaged (bot-token post succeeded):
+  live?: boolean
+  conversationId?: string
+  threadTs?: string
+  at?: string // ISO cursor — widget polls /api/chat/poll for messages after this
 }
 
-function transcriptTail(messages: EscalateInput['messages'], n = 6): string {
+function contactLine(input: EscalateInput): string {
+  return [
+    input.name && `*${input.name}*`,
+    input.dealership,
+    input.email,
+    input.phone,
+  ].filter(Boolean).join(' · ') || 'not given'
+}
+
+function contextLine(input: EscalateInput): string {
+  return [
+    input.page && `Page: ${input.page}`,
+    input.utm?.utm_source && `Source: ${input.utm.utm_source}`,
+    input.utm?.utm_campaign && `Campaign: ${input.utm.utm_campaign}`,
+    input.utm?.utm_term && `Term: ${input.utm.utm_term}`,
+  ].filter(Boolean).join(' · ') || 'no page/UTM context'
+}
+
+function transcriptTail(messages: EscalateInput['messages'], n = 8): string {
   if (!messages?.length) return '(no transcript)'
   return messages.slice(-n)
     .map(m => `${m.role === 'assistant' ? 'Bot' : 'Visitor'}: ${(m.content || '').slice(0, 300)}`)
     .join('\n')
 }
 
-async function postSlack(url: string, input: EscalateInput): Promise<boolean> {
-  const contact = [
-    input.name && `*${input.name}*`,
-    input.dealership,
-    input.email,
-    input.phone,
-  ].filter(Boolean).join(' · ') || 'not given'
-  const ctx = [
-    input.page && `Page: ${input.page}`,
-    input.utm?.utm_source && `Source: ${input.utm.utm_source}`,
-    input.utm?.utm_campaign && `Campaign: ${input.utm.utm_campaign}`,
-    input.utm?.utm_term && `Term: ${input.utm.utm_term}`,
-  ].filter(Boolean).join(' · ') || 'no page/UTM context'
+// ── Two-way: post the threaded parent with the bot token ────────────────────
+async function postThreadParent(input: EscalateInput): Promise<{ ts: string; channel: string } | null> {
+  const channel = process.env.SLACK_ALERTS_CHANNEL!
+  const text = [
+    '🔴 *Live chat — human requested*',
+    `Contact: ${contactLine(input)}`,
+    contextLine(input),
+    '',
+    '*Transcript*',
+    '```',
+    transcriptTail(input.messages),
+    '```',
+    '_Reply in this thread to talk to the visitor live._',
+  ].join('\n')
+  const res = await postSlackMessage({ channel, text })
+  if (!res.ok || !res.ts) {
+    console.error('[escalate] bot-token postMessage failed:', res.error)
+    return null
+  }
+  return { ts: res.ts, channel: res.channel || channel }
+}
 
-  // Flat top-level keys for a Slack Workflow Builder webhook trigger. Each key
-  // maps 1:1 to a Data Variable declared in the workflow; the workflow's
-  // "send message" step formats them. (Plain text — Workflow Builder doesn't
-  // render Block Kit.) `text` is a harmless fallback if pointed at a classic
-  // Incoming Webhook instead. All keys ALWAYS present so no declared variable
-  // comes through empty/undefined.
+// ── Legacy fallback: Workflow Builder / Incoming Webhook (notify-only) ──────
+async function postWebhook(url: string, input: EscalateInput): Promise<boolean> {
   const payload = {
     headline: '🔴 Live chat — human requested',
-    contact,
-    context: ctx,
-    transcript: transcriptTail(input.messages),
+    contact: contactLine(input).replace(/\*/g, ''),
+    context: contextLine(input),
+    transcript: transcriptTail(input.messages, 6),
     requested_at: `${new Date().toISOString().replace('T', ' ').slice(0, 19)} UTC`,
     trigger: input.trigger || 'intent',
-    text: `🔴 Live chat — human requested — ${contact}`,
+    text: `🔴 Live chat — human requested — ${contactLine(input).replace(/\*/g, '')}`,
   }
-
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 5000)
   try {
@@ -105,20 +134,54 @@ async function emailFallback(input: EscalateInput): Promise<boolean> {
   }
 }
 
-export async function escalateLead(input: EscalateInput): Promise<{ ok: boolean; channel: 'slack' | 'email' | 'none'; deduped?: boolean }> {
+export async function escalateLead(input: EscalateInput): Promise<EscalateResult> {
   const sid = input.sessionId || `anon-${Date.now()}`
-  if (alreadyEscalated(sid)) return { ok: true, channel: 'none', deduped: true }
 
+  // ── Two-way path: needs the bot token + alerts channel ───────────────────
+  if (slackConfigured()) {
+    let convo: ChatConversation | null = null
+    try {
+      convo = await findOrCreateConversation(sid, {
+        page: input.page, email: input.email, phone: input.phone,
+      })
+    } catch (e) {
+      console.error('[escalate] conversation lookup failed:', e instanceof Error ? e.message : e)
+    }
+
+    if (convo) {
+      // Already escalated (button after intent, or a repeat tap) — return the
+      // existing thread without re-alerting. Dedupe lives in the row's status.
+      if (convo.status === 'live' && convo.slack_thread_ts) {
+        return {
+          ok: true, channel: 'slack', deduped: true, live: true,
+          conversationId: convo.id, threadTs: convo.slack_thread_ts,
+          at: new Date().toISOString(),
+        }
+      }
+      const parent = await postThreadParent(input)
+      if (parent) {
+        await setConversationLive(convo.id, parent.ts, parent.channel)
+        return {
+          ok: true, channel: 'slack', live: true,
+          conversationId: convo.id, threadTs: parent.ts,
+          at: new Date().toISOString(),
+        }
+      }
+      // Bot-token post failed — fall through to the legacy alert below so the
+      // team is still notified, but the widget stays in bot mode.
+    }
+  }
+
+  // ── Legacy notify-only fallback (webhook → email) ────────────────────────
   const url = process.env.SLACK_LEADS_WEBHOOK_URL
-  if (url && (await postSlack(url, input))) return { ok: true, channel: 'slack' }
+  if (url && (await postWebhook(url, input))) return { ok: true, channel: 'slack' }
 
   if (await emailFallback(input)) {
     console.error('[escalate] Slack unavailable — delivered via email fallback for session', sid)
     return { ok: true, channel: 'email' }
   }
 
-  // Both channels down/unconfigured — must be loud, never silent.
-  console.error('[escalate] ‼️ ESCALATION NOT DELIVERED (no Slack webhook + no email) for session', sid, '— contact:', input.email || input.phone || 'unknown')
+  console.error('[escalate] ‼️ ESCALATION NOT DELIVERED (no Slack + no email) for session', sid, '— contact:', input.email || input.phone || 'unknown')
   return { ok: false, channel: 'none' }
 }
 

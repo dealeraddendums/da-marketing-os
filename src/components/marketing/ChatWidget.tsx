@@ -2,7 +2,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { getAttribution } from '@/lib/attribution'
 
-interface Msg { role: 'user' | 'assistant'; content: string }
+// `kind` distinguishes incoming left-aligned bubbles: bot (AI), agent (a real
+// teammate replying from the Slack thread), or system (status notes).
+interface Msg { role: 'user' | 'assistant'; content: string; kind?: 'bot' | 'agent' | 'system' }
 
 const NAVY = '#2a2b3c'
 const ORANGE = '#ffa500'
@@ -32,19 +34,34 @@ export default function ChatWidget() {
   const [sending, setSending] = useState(false)
   const [escalated, setEscalated] = useState(false)
   const [escalating, setEscalating] = useState(false)
+  const [live, setLive] = useState(false)
+  const [conversationId, setConversationId] = useState<string | null>(null)
   const sessionId = useRef<string>('')
+  const afterRef = useRef<string>('1970-01-01T00:00:00.000Z') // poll cursor
+  const seenRef = useRef<Set<string>>(new Set())               // dedupe polled ids
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     sessionId.current = getSessionId()
-    try { if (sessionStorage.getItem('da_chat_escalated') === '1') setEscalated(true) } catch { /* */ }
+    try {
+      if (sessionStorage.getItem('da_chat_escalated') === '1') setEscalated(true)
+      // Restore a live session across reloads so polling resumes.
+      if (sessionStorage.getItem('da_chat_live') === '1') {
+        const cid = sessionStorage.getItem('da_chat_convo')
+        if (cid) {
+          setConversationId(cid)
+          afterRef.current = sessionStorage.getItem('da_chat_after') || new Date().toISOString()
+          setLive(true)
+        }
+      }
+    } catch { /* */ }
   }, [])
 
   // Seed the greeting the first time the panel opens.
   useEffect(() => {
     if (open && messages.length === 0) {
-      setMessages([{ role: 'assistant', content: GREETING }])
+      setMessages([{ role: 'assistant', content: GREETING, kind: 'bot' }])
     }
     if (open) setTimeout(() => inputRef.current?.focus(), 50)
   }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -61,12 +78,82 @@ export default function ChatWidget() {
     return () => document.removeEventListener('keydown', onKey)
   }, [open])
 
+  // ── Live polling: pull new agent/system messages every ~3s while live ─────
+  useEffect(() => {
+    if (!live || !conversationId) return
+    let cancelled = false
+    const tick = async () => {
+      try {
+        const res = await fetch(
+          `/api/chat/poll?conversation=${encodeURIComponent(conversationId)}&after=${encodeURIComponent(afterRef.current)}`,
+        )
+        const data = await res.json().catch(() => null)
+        if (cancelled || !data) return
+        if (data.at) {
+          afterRef.current = data.at
+          try { sessionStorage.setItem('da_chat_after', data.at) } catch { /* */ }
+        }
+        const incoming: { id: string; role: string; body: string }[] = data.messages || []
+        if (!incoming.length) return
+        const fresh = incoming.filter(m => !seenRef.current.has(m.id))
+        fresh.forEach(m => seenRef.current.add(m.id))
+        if (!fresh.length) return
+        setMessages(cur => [
+          ...cur,
+          ...fresh.map(m => ({
+            role: 'assistant' as const,
+            content: m.body,
+            kind: (m.role === 'system' ? 'system' : 'agent') as Msg['kind'],
+          })),
+        ])
+      } catch { /* keep polling */ }
+    }
+    void tick()
+    const iv = setInterval(tick, 3000)
+    return () => { cancelled = true; clearInterval(iv) }
+  }, [live, conversationId])
+
+  const goLive = (cid: string, at?: string) => {
+    setConversationId(cid)
+    afterRef.current = at || new Date().toISOString()
+    setLive(true)
+    try {
+      sessionStorage.setItem('da_chat_live', '1')
+      sessionStorage.setItem('da_chat_convo', cid)
+      sessionStorage.setItem('da_chat_after', afterRef.current)
+    } catch { /* */ }
+    setMessages(cur => [...cur, {
+      role: 'assistant', kind: 'system',
+      content: "You're connected to our team — someone will reply right here. Keep typing below.",
+    }])
+  }
+
   const send = async () => {
     const text = input.trim()
     if (!text || sending) return
+
+    // ── Live mode: route to the agent (Slack thread), not the bot ───────────
+    if (live && conversationId) {
+      setMessages(cur => [...cur, { role: 'user', content: text }])
+      setInput('')
+      setSending(true)
+      try {
+        await fetch('/api/chat/message', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ conversationId, body: text }),
+        })
+      } catch { /* message is shown locally; relay is best-effort */ } finally {
+        setSending(false)
+        setTimeout(() => inputRef.current?.focus(), 50)
+      }
+      return
+    }
+
+    // ── Bot mode: stream from /api/chat ──────────────────────────────────────
     const attribution = getAttribution()
     const next: Msg[] = [...messages, { role: 'user', content: text }]
-    setMessages([...next, { role: 'assistant', content: '' }]) // placeholder for the stream
+    setMessages([...next, { role: 'assistant', content: '', kind: 'bot' }]) // placeholder for the stream
     setInput('')
     setSending(true)
     try {
@@ -74,7 +161,7 @@ export default function ChatWidget() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: next,
+          messages: next.map(m => ({ role: m.role, content: m.content })),
           sessionId: sessionId.current,
           utmTerm: attribution.utm_term || null,
           attribution,
@@ -83,7 +170,6 @@ export default function ChatWidget() {
       if (!res.body) throw new Error('no stream')
       const reader = res.body.getReader()
       const dec = new TextDecoder()
-      // append decoded chunks to the trailing assistant message
       // eslint-disable-next-line no-constant-condition
       while (true) {
         const { done, value } = await reader.read()
@@ -91,7 +177,7 @@ export default function ChatWidget() {
         const chunk = dec.decode(value, { stream: true })
         setMessages(cur => {
           const copy = cur.slice()
-          copy[copy.length - 1] = { role: 'assistant', content: copy[copy.length - 1].content + chunk }
+          copy[copy.length - 1] = { role: 'assistant', kind: 'bot', content: copy[copy.length - 1].content + chunk }
           return copy
         })
       }
@@ -100,7 +186,7 @@ export default function ChatWidget() {
         const copy = cur.slice()
         const last = copy[copy.length - 1]
         if (last?.role === 'assistant' && !last.content) {
-          copy[copy.length - 1] = { role: 'assistant', content: `Sorry, I hit a snag. Please try again, or call us at ${PHONE}.` }
+          copy[copy.length - 1] = { role: 'assistant', kind: 'bot', content: `Sorry, I hit a snag. Please try again, or call us at ${PHONE}.` }
         }
         return copy
       })
@@ -111,30 +197,43 @@ export default function ChatWidget() {
   }
 
   const escalate = async () => {
-    if (escalated || escalating) return
+    if (escalated || escalating || live) return
     setEscalating(true)
     const attribution = getAttribution()
     const email = messages.map(m => m.content).join(' ').match(/[\w.+-]+@[\w-]+\.[a-z]{2,}/i)?.[0] || null
     try {
-      await fetch('/api/chat/escalate', {
+      const res = await fetch('/api/chat/escalate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           sessionId: sessionId.current,
-          messages,
+          messages: messages.map(m => ({ role: m.role, content: m.content })),
           email,
           page: typeof location !== 'undefined' ? location.pathname : null,
           utm: { utm_source: attribution.utm_source, utm_campaign: attribution.utm_campaign, utm_term: attribution.utm_term },
         }),
-      }).catch(() => {})
-    } finally {
+      })
+      const data = await res.json().catch(() => null)
       setEscalated(true)
       try { sessionStorage.setItem('da_chat_escalated', '1') } catch { /* */ }
-      setEscalating(false)
+      if (data?.conversationId && data?.live) {
+        // Two-way live mode engaged — the team replies in Slack, visitor here.
+        goLive(data.conversationId, data.at)
+      } else {
+        // Notify-only fallback (no bot token / Slack down) — legacy message.
+        setMessages(cur => [...cur, {
+          role: 'assistant', kind: 'system',
+          content: `Our team's been notified — someone will reach out shortly. For immediate help, call ${PHONE}.`,
+        }])
+      }
+    } catch {
+      setEscalated(true)
       setMessages(cur => [...cur, {
-        role: 'assistant',
+        role: 'assistant', kind: 'system',
         content: `Our team's been notified — someone will reach out shortly. For immediate help, call ${PHONE}.`,
       }])
+    } finally {
+      setEscalating(false)
     }
   }
 
@@ -180,6 +279,12 @@ export default function ChatWidget() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ background: ORANGE, color: NAVY, fontWeight: 700, fontSize: 11, padding: '3px 7px', borderRadius: 4, letterSpacing: '0.06em' }}>DA</span>
               <span style={{ color: '#fff', fontSize: 14, fontWeight: 600 }}>DealerAddendums</span>
+              {live && (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 4, color: '#aee9b8', fontSize: 12, fontWeight: 600 }}>
+                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#4caf50', display: 'inline-block' }} />
+                  Live
+                </span>
+              )}
             </div>
             <button aria-label="Close chat" onClick={() => setOpen(false)}
               style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.85)', fontSize: 22, lineHeight: 1, cursor: 'pointer', padding: 4 }}>×</button>
@@ -187,35 +292,59 @@ export default function ChatWidget() {
 
           {/* Messages */}
           <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: 14, background: '#f5f6f7', display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {messages.map((m, i) => (
-              <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
-                <div style={{
-                  maxWidth: '82%', padding: '9px 12px', borderRadius: 10, fontSize: 14, lineHeight: 1.5, whiteSpace: 'pre-wrap',
-                  background: m.role === 'user' ? BLUE : '#fff',
-                  color: m.role === 'user' ? '#fff' : '#333',
-                  border: m.role === 'user' ? 'none' : '1px solid #e0e0e0',
-                }}>
-                  {m.content || (sending && i === messages.length - 1 ? '…' : '')}
+            {messages.map((m, i) => {
+              if (m.kind === 'system') {
+                return (
+                  <div key={i} style={{ textAlign: 'center', color: '#78828c', fontSize: 12, lineHeight: 1.4, padding: '2px 8px' }}>
+                    {m.content}
+                  </div>
+                )
+              }
+              const isUser = m.role === 'user'
+              const isAgent = m.kind === 'agent'
+              return (
+                <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: isUser ? 'flex-end' : 'flex-start' }}>
+                  {isAgent && (
+                    <span style={{ fontSize: 11, fontWeight: 600, color: NAVY, margin: '0 0 2px 4px' }}>DA Team</span>
+                  )}
+                  <div style={{
+                    maxWidth: '82%', padding: '9px 12px', borderRadius: 10, fontSize: 14, lineHeight: 1.5, whiteSpace: 'pre-wrap',
+                    background: isUser ? BLUE : '#fff',
+                    color: isUser ? '#fff' : '#333',
+                    border: isUser ? 'none' : `1px solid ${isAgent ? NAVY : '#e0e0e0'}`,
+                  }}>
+                    {m.content || (sending && i === messages.length - 1 ? '…' : '')}
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
 
-          {/* Talk to a human */}
+          {/* Talk to a human / live banner */}
           <div style={{ padding: '8px 14px 0', background: '#fff' }}>
-            <button
-              onClick={escalate}
-              disabled={escalated || escalating}
-              style={{
-                width: '100%', height: 34, borderRadius: 6, cursor: escalated ? 'default' : 'pointer',
-                border: `1px solid ${escalated ? '#cfd8dc' : ORANGE}`,
-                background: escalated ? '#f5f6f7' : '#fff7ec',
-                color: escalated ? '#78828c' : '#b06a00', fontSize: 13, fontWeight: 600,
-                fontFamily: "'Roboto', sans-serif",
-              }}
-            >
-              {escalated ? '✓ Team notified — we’ll reach out' : escalating ? 'Notifying our team…' : '🙋 Talk to a human'}
-            </button>
+            {live ? (
+              <div style={{
+                width: '100%', minHeight: 34, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+                border: '1px solid #cfe8d2', background: '#f1faf2', color: '#2e7d32', fontSize: 13, fontWeight: 600, padding: '6px 10px',
+              }}>
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#4caf50', display: 'inline-block' }} />
+                You're connected to our team
+              </div>
+            ) : (
+              <button
+                onClick={escalate}
+                disabled={escalated || escalating}
+                style={{
+                  width: '100%', height: 34, borderRadius: 6, cursor: escalated ? 'default' : 'pointer',
+                  border: `1px solid ${escalated ? '#cfd8dc' : ORANGE}`,
+                  background: escalated ? '#f5f6f7' : '#fff7ec',
+                  color: escalated ? '#78828c' : '#b06a00', fontSize: 13, fontWeight: 600,
+                  fontFamily: "'Roboto', sans-serif",
+                }}
+              >
+                {escalated ? '✓ Team notified — we’ll reach out' : escalating ? 'Notifying our team…' : '🙋 Talk to a human'}
+              </button>
+            )}
           </div>
 
           {/* Composer */}
@@ -226,7 +355,7 @@ export default function ChatWidget() {
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send() } }}
-              placeholder="Ask about addendums, pricing…"
+              placeholder={live ? 'Message our team…' : 'Ask about addendums, pricing…'}
               rows={1}
               style={{
                 flex: 1, resize: 'none', maxHeight: 96, padding: '9px 11px', fontSize: 14,
