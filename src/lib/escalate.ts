@@ -31,9 +31,9 @@ function alreadyEscalated(sessionId: string): boolean {
 }
 
 function transcriptTail(messages: EscalateInput['messages'], n = 6): string {
-  if (!messages?.length) return '_(no transcript)_'
+  if (!messages?.length) return '(no transcript)'
   return messages.slice(-n)
-    .map(m => `*${m.role === 'assistant' ? 'Bot' : 'Visitor'}:* ${(m.content || '').slice(0, 300)}`)
+    .map(m => `${m.role === 'assistant' ? 'Bot' : 'Visitor'}: ${(m.content || '').slice(0, 300)}`)
     .join('\n')
 }
 
@@ -43,26 +43,28 @@ async function postSlack(url: string, input: EscalateInput): Promise<boolean> {
     input.dealership,
     input.email,
     input.phone,
-  ].filter(Boolean).join(' · ') || '_not given_'
+  ].filter(Boolean).join(' · ') || 'not given'
   const ctx = [
     input.page && `Page: ${input.page}`,
     input.utm?.utm_source && `Source: ${input.utm.utm_source}`,
     input.utm?.utm_campaign && `Campaign: ${input.utm.utm_campaign}`,
     input.utm?.utm_term && `Term: ${input.utm.utm_term}`,
-  ].filter(Boolean).join(' · ') || '_no page/UTM context_'
+  ].filter(Boolean).join(' · ') || 'no page/UTM context'
 
+  // Flat top-level keys for a Slack Workflow Builder webhook trigger. Each key
+  // maps 1:1 to a Data Variable declared in the workflow; the workflow's
+  // "send message" step formats them. (Plain text — Workflow Builder doesn't
+  // render Block Kit.) `text` is a harmless fallback if pointed at a classic
+  // Incoming Webhook instead. All keys ALWAYS present so no declared variable
+  // comes through empty/undefined.
   const payload = {
-    text: '🔴 Live chat — human requested',
-    blocks: [
-      { type: 'header', text: { type: 'plain_text', text: '🔴 Live chat — human requested', emoji: true } },
-      { type: 'section', fields: [
-        { type: 'mrkdwn', text: `*Contact:*\n${contact}` },
-        { type: 'mrkdwn', text: `*When:*\n${new Date().toISOString().replace('T', ' ').slice(0, 19)} UTC` },
-      ] },
-      { type: 'section', text: { type: 'mrkdwn', text: `*Context:* ${ctx}\n*Trigger:* ${input.trigger || 'intent'}` } },
-      { type: 'section', text: { type: 'mrkdwn', text: `*Last messages:*\n${transcriptTail(input.messages)}` } },
-      { type: 'context', elements: [{ type: 'mrkdwn', text: 'Notification only — reply by calling/emailing the visitor. (801) 415-9435' }] },
-    ],
+    headline: '🔴 Live chat — human requested',
+    contact,
+    context: ctx,
+    transcript: transcriptTail(input.messages),
+    requested_at: `${new Date().toISOString().replace('T', ' ').slice(0, 19)} UTC`,
+    trigger: input.trigger || 'intent',
+    text: `🔴 Live chat — human requested — ${contact}`,
   }
 
   const controller = new AbortController()
