@@ -1,4 +1,4 @@
-import { Resend } from 'resend'
+import { sendMandrillEmail } from '@/lib/mandrill'
 import { postSlackMessage, slackConfigured } from '@/lib/slack'
 import {
   findOrCreateConversation,
@@ -112,12 +112,13 @@ async function postWebhook(url: string, input: EscalateInput): Promise<boolean> 
 }
 
 async function emailFallback(input: EscalateInput): Promise<boolean> {
-  if (!process.env.RESEND_API_KEY) return false
+  if (!process.env.MANDRILL_API_KEY) return false
   try {
     const to = process.env.LEAD_NOTIFY_EMAIL || 'allan@dealeraddendums.com'
-    await new Resend(process.env.RESEND_API_KEY).emails.send({
-      from: 'DealerAddendums <noreply@dealeraddendums.com>',
-      to,
+    await sendMandrillEmail({
+      from_email: 'noreply@dealeraddendums.com',
+      from_name: 'DealerAddendums',
+      to: [{ email: to }],
       subject: `🔴 URGENT — live chat human requested${input.name ? ` (${input.name})` : ''}`,
       html: `<div style="font-family:Roboto,sans-serif;font-size:14px;color:#333">
         <p><strong>A website chat visitor asked to talk to a person.</strong> (Slack alert failed — email fallback.)</p>

@@ -1,19 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { Resend } from 'resend'
+import { sendMandrillEmail } from '@/lib/mandrill'
 import { supabase } from '@/lib/supabase'
 import { rateLimit } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 
-function getResend() {
-  return new Resend(process.env.RESEND_API_KEY || 'placeholder')
-}
-
 const ALERT_RECIPIENTS = ['allan@dealeraddendums.com', 'alex@dealeraddendums.com']
 
 // POST /api/reputation/feedback  { requestId, feedback }
 // PUBLIC (no auth) — private negative feedback from the review-request flow.
-// Inserts to private_feedback and alerts the internal team via Resend.
+// Inserts to private_feedback and alerts the internal team via Mandrill.
 export async function POST(req: NextRequest) {
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
   if (!rateLimit(ip, 5, 60_000)) {
@@ -54,9 +50,10 @@ export async function POST(req: NextRequest) {
   }
 
   // Internal alert (non-blocking).
-  getResend().emails.send({
-    from: 'DealerAddendums <noreply@dealeraddendums.com>',
-    to: ALERT_RECIPIENTS,
+  sendMandrillEmail({
+    from_email: 'noreply@dealeraddendums.com',
+    from_name: 'DealerAddendums',
+    to: ALERT_RECIPIENTS.map(email => ({ email })),
     subject: `⚠️ Private feedback from ${dealerName || 'a dealer'}`,
     html: `
       <div style="font-family: Roboto, sans-serif; font-size: 14px; color: #333; max-width: 600px;">

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
-import { Resend } from 'resend'
+import { sendMandrillEmail } from '@/lib/mandrill'
 import { supabase } from '@/lib/supabase'
 import { parseJSON } from '@/lib/ai'
 import { rateLimit } from '@/lib/rate-limit'
@@ -117,18 +117,17 @@ function captureChatLead(opts: {
       }).then(r => { if (!r.ok) console.error('[chat] HubSpot contact upsert failed for', email) }, () => {})
 
       // Internal new-lead notification so sales follows up (best-effort).
-      if (process.env.RESEND_API_KEY) {
-        new Resend(process.env.RESEND_API_KEY).emails.send({
-          from: 'DealerAddendums <noreply@dealeraddendums.com>',
-          to: process.env.LEAD_NOTIFY_EMAIL || 'allan@dealeraddendums.com',
-          subject: `New chat lead: ${name || '(no name)'} — ${dealership || '(no dealership)'}`,
-          html: `<div style="font-family:Roboto,sans-serif;font-size:14px;color:#333">
-            <p><strong>New lead from the website chat</strong></p>
-            <p>Name: ${name || '—'}<br>Dealership: ${dealership || '—'}<br>Email: ${email}<br>Phone: ${phone || '—'}</p>
-            <p style="color:#78828c;font-size:12px">Source: chat · not yet a trial — follow up.</p>
-          </div>`,
-        }).catch(() => {})
-      }
+      sendMandrillEmail({
+        from_email: 'noreply@dealeraddendums.com',
+        from_name: 'DealerAddendums',
+        to: [{ email: process.env.LEAD_NOTIFY_EMAIL || 'allan@dealeraddendums.com' }],
+        subject: `New chat lead: ${name || '(no name)'} — ${dealership || '(no dealership)'}`,
+        html: `<div style="font-family:Roboto,sans-serif;font-size:14px;color:#333">
+          <p><strong>New lead from the website chat</strong></p>
+          <p>Name: ${name || '—'}<br>Dealership: ${dealership || '—'}<br>Email: ${email}<br>Phone: ${phone || '—'}</p>
+          <p style="color:#78828c;font-size:12px">Source: chat · not yet a trial — follow up.</p>
+        </div>`,
+      }).catch(() => {})
     } catch (e) {
       console.error('[chat] lead capture error:', e instanceof Error ? e.message : e)
     }

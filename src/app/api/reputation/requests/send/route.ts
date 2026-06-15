@@ -1,13 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { Resend } from 'resend'
+import { sendMandrillEmail } from '@/lib/mandrill'
 import { supabase } from '@/lib/supabase'
 import { getSegmentDealers, getReputationSettings, DealerContact, Segment } from '@/lib/reputation'
 
 export const dynamic = 'force-dynamic'
-
-function getResend() {
-  return new Resend(process.env.RESEND_API_KEY || 'placeholder')
-}
 
 const FALLBACK_REVIEW_URL = 'https://www.google.com/search?q=DealerAddendums+reviews'
 
@@ -126,16 +122,22 @@ export async function POST(req: NextRequest) {
   }
 
   // 3. Send emails + mark sent.
-  const resend = getResend()
+  // Mandrill's sender no-ops (doesn't throw) when MANDRILL_API_KEY is unset —
+  // guard so we don't mark requests "sent" when nothing actually went out.
+  if (!process.env.MANDRILL_API_KEY) {
+    console.warn('[reputation/send] MANDRILL_API_KEY not set — review requests left pending, nothing sent')
+    return NextResponse.json({ ok: true, campaignId: campaign.id, sent: 0, recipients: recipients.length, note: 'MANDRILL_API_KEY not set' })
+  }
   let sent = 0
   for (const reqRow of inserted) {
     const positiveUrl = `${siteUrl}/api/reputation/track/click/${reqRow.id}?to=positive`
     const negativeUrl = `${siteUrl}/api/reputation/track/click/${reqRow.id}?to=negative`
     const openPixelUrl = `${siteUrl}/api/reputation/track/open/${reqRow.id}`
     try {
-      await resend.emails.send({
-        from: 'DealerAddendums <hello@dealeraddendums.com>',
-        to: reqRow.contact_email,
+      await sendMandrillEmail({
+        from_email: 'hello@dealeraddendums.com',
+        from_name: 'DealerAddendums',
+        to: [{ email: reqRow.contact_email }],
         subject: "How's your experience with DealerAddendums?",
         html: campaignEmailHtml({
           contactName: reqRow.contact_name || '',

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { Resend } from 'resend'
+import { sendMandrillEmail } from '@/lib/mandrill'
 import { supabase } from '@/lib/supabase'
 import { generateText, parseJSON } from '@/lib/ai'
 import { rateLimit } from '@/lib/rate-limit'
@@ -78,10 +78,6 @@ async function provisionInDaPlatform(payload: {
   } finally {
     clearTimeout(timer)
   }
-}
-
-function getResend() {
-  return new Resend(process.env.RESEND_API_KEY || 'placeholder')
 }
 
 export async function POST(req: NextRequest) {
@@ -207,9 +203,10 @@ Based on the dealership name and email domain, provide a brief intelligence summ
 
   // Internal notification to the team. (The lead-facing welcome is now DA
   // Platform's passkey invite — marketing no longer sends its own welcome.)
-  getResend().emails.send({
-    from: 'DealerAddendums <noreply@dealeraddendums.com>',
-    to: process.env.LEAD_NOTIFY_EMAIL || 'allan@dealeraddendums.com',
+  sendMandrillEmail({
+    from_email: 'noreply@dealeraddendums.com',
+    from_name: 'DealerAddendums',
+    to: [{ email: process.env.LEAD_NOTIFY_EMAIL || 'allan@dealeraddendums.com' }],
     subject: `New trial signup: ${name} — ${dealership}`,
     html: `
       <div style="font-family: Roboto, sans-serif; font-size: 14px; color: #333; max-width: 600px;">
