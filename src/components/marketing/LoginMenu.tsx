@@ -1,19 +1,19 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
 
-// Two-platform login chooser for the migration period: existing dealers are
-// on Platform 4.0, all new + migrated dealers on 5.0. Wording lives here so
-// Allan can refine the labels in one place.
+// Header login chooser: existing customers log in to Platform 4.0; new
+// visitors jump to the free-trial signup form (#signup / CTASection). Wording
+// lives here so Allan can refine the labels in one place.
 const LOGIN_OPTIONS = [
   {
-    label: 'Platform 4.0 (current)',
-    sub: 'Existing dealers',
+    label: 'Existing customers',
+    sub: 'Log in to Platform 4.0',
     href: 'https://dealeraddendums.com/app/login',
   },
   {
-    label: 'Platform 5.0 (new)',
-    sub: 'New & migrated dealers',
-    href: 'https://app.dealeraddendums.com',
+    label: 'New to DealerAddendums?',
+    sub: 'Start your free trial',
+    href: '#signup',
   },
 ]
 
@@ -108,7 +108,7 @@ export default function LoginMenu({
             borderBottom: '1px solid #e0e0e0',
             background: '#f5f6f7',
           }}>
-            Choose your platform
+            Log in or sign up
           </div>
           {LOGIN_OPTIONS.map(opt => (
             <a
