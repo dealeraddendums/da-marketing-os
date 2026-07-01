@@ -1,12 +1,15 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
 
-// Header login chooser: existing customers log in to Platform 4.0; new
-// visitors jump to the free-trial signup form (#signup / CTASection). Wording
-// lives here so Allan can refine the labels in one place.
+// Header login chooser. Wording lives here so Allan can refine labels in one place.
 const LOGIN_OPTIONS = [
   {
-    label: 'Existing customers',
+    label: 'New platform customers',
+    sub: 'Log in to Platform 5.0',
+    href: 'https://app.dealeraddendums.com/login',
+  },
+  {
+    label: 'Classic platform customers',
     sub: 'Log in to Platform 4.0',
     href: 'https://dealeraddendums.com/app/login',
   },
