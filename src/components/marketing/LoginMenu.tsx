@@ -16,7 +16,9 @@ const LOGIN_OPTIONS = [
   {
     label: 'New to DealerAddendums?',
     sub: 'Start your free trial',
-    href: '#signup',
+    // Absolute so it works from blog/LP pages (no same-page #signup there) —
+    // always lands on the homepage free-trial form (CTASection id="signup").
+    href: '/#signup',
   },
 ]
 
