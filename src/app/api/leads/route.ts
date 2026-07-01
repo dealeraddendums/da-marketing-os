@@ -48,6 +48,7 @@ async function provisionInDaPlatform(payload: {
   email: string
   dealership: string
   phone: string | null
+  zip: string | null
   accountKind: 'single' | 'group'
   groupName?: string
   attribution: Record<string, string | null>
@@ -88,6 +89,7 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json()
   const { name, email, dealership, phone } = body
+  const zip = (body.zip as string)?.trim() || null
   const attribution = resolveAttribution(body, req)
 
   // Cloudflare Turnstile — verify BEFORE any insert or provisioning. Skipped
@@ -151,25 +153,40 @@ Based on the dealership name and email domain, provide a brief intelligence summ
   const contextKey  = (body.contextKey as string) || null
   const variationId = (body.variationId as string) || null
 
-  const { data: lead, error: dbError } = await supabase
+  const leadPayload: Record<string, unknown> = {
+    name,
+    email,
+    dealership,
+    phone: phone || null,
+    zip: zip || null,
+    source: 'website',
+    account_kind: accountKind,
+    ...attribution,
+    ai_enrichment: aiEnrichment,
+    status: 'new',
+    context_key: contextKey,
+    variation_id: variationId,
+    ab_variant: (body.abVariant as string) || null,
+    headline_seen: (body.headlineSeen as string) || null,
+  }
+
+  let { data: lead, error: dbError } = await supabase
     .from('marketing_leads')
-    .insert({
-      name,
-      email,
-      dealership,
-      phone: phone || null,
-      source: 'website',
-      account_kind: accountKind,
-      ...attribution,
-      ai_enrichment: aiEnrichment,
-      status: 'new',
-      context_key: contextKey,
-      variation_id: variationId,
-      ab_variant: (body.abVariant as string) || null,
-      headline_seen: (body.headlineSeen as string) || null,
-    })
+    .insert(leadPayload)
     .select()
     .single()
+
+  // marketing_leads.zip may not exist yet (pending the ALTER TABLE) — if the
+  // insert fails on the unknown column, drop zip and retry so the signup still
+  // saves rather than failing the whole submission.
+  if (dbError && /zip/i.test(dbError.message)) {
+    delete leadPayload.zip
+    ;({ data: lead, error: dbError } = await supabase
+      .from('marketing_leads')
+      .insert(leadPayload)
+      .select()
+      .single())
+  }
 
   if (dbError) {
     console.error('Supabase insert error:', dbError)
@@ -178,7 +195,7 @@ Based on the dealership name and email domain, provide a brief intelligence summ
 
   // Provision the Trial dealer/group in DA Platform (owns HubSpot + invite).
   const provision = await provisionInDaPlatform({
-    name, email, dealership, phone: phone || null, accountKind, groupName, attribution,
+    name, email, dealership, phone: phone || null, zip, accountKind, groupName, attribution,
   })
 
   // Record the provisioning outcome + ids on the lead row.
@@ -220,6 +237,7 @@ Based on the dealership name and email domain, provide a brief intelligence summ
             <tr><td style="padding:6px 0;font-weight:500;color:#55595c;">Email</td><td style="padding:6px 0;"><a href="mailto:${email}">${email}</a></td></tr>
             <tr><td style="padding:6px 0;font-weight:500;color:#55595c;">${accountKind === 'group' ? 'Group' : 'Dealership'}</td><td style="padding:6px 0;">${dealership}</td></tr>
             ${phone ? `<tr><td style="padding:6px 0;font-weight:500;color:#55595c;">Phone</td><td style="padding:6px 0;">${phone}</td></tr>` : ''}
+            ${zip ? `<tr><td style="padding:6px 0;font-weight:500;color:#55595c;">Zip</td><td style="padding:6px 0;">${zip}</td></tr>` : ''}
             <tr><td style="padding:6px 0;font-weight:500;color:#55595c;">Account</td><td style="padding:6px 0;">${accountKind} · provisioning: ${provision.status}</td></tr>
           </table>
           ${aiEnrichment ? `

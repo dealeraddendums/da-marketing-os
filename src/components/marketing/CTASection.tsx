@@ -10,6 +10,7 @@ interface FormState {
   email: string
   dealership: string
   phone: string
+  zip: string
 }
 
 interface Props {
@@ -18,7 +19,7 @@ interface Props {
 }
 
 export default function CTASection({ tracking }: Props) {
-  const [form, setForm] = useState<FormState>({ name: '', email: '', dealership: '', phone: '' })
+  const [form, setForm] = useState<FormState>({ name: '', email: '', dealership: '', phone: '', zip: '' })
   const [accountKind, setAccountKind] = useState<'single' | 'group'>('single')
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [errorMsg, setErrorMsg] = useState('')
@@ -47,7 +48,7 @@ export default function CTASection({ tracking }: Props) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!form.name || !form.email || !form.dealership) {
+    if (!form.name || !form.email || !form.dealership || !form.zip) {
       setErrorMsg('Please fill in all required fields.')
       return
     }
@@ -180,7 +181,7 @@ export default function CTASection({ tracking }: Props) {
               margin: '0 0 16px',
               lineHeight: 1.3,
             }}>
-              Ready to Stop Printing Addendums by Hand?
+              Ready to Present Your Addendums the Professional Way?
             </h2>
             <p style={{
               fontSize: 15,
@@ -188,8 +189,8 @@ export default function CTASection({ tracking }: Props) {
               lineHeight: 1.7,
               margin: '0 0 28px',
             }}>
-              Start your free 30-day trial — print up to 30 vehicle addendums. No credit
-              card required. No contract. Be up and running in under 30 minutes.
+              Start your free 30-day trial — print up to 30 clear, branded, transparent vehicle
+              addendums. No credit card required. No contract. Be up and running in under 30 minutes.
             </p>
 
             <div style={{ display: 'grid', gap: 14 }}>
@@ -339,6 +340,24 @@ export default function CTASection({ tracking }: Props) {
                       value={form.dealership}
                       onChange={handleChange}
                       placeholder={accountKind === 'group' ? 'Acme Auto Group' : 'Smith Ford Lincoln'}
+                      style={inputStyle}
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="zip" style={{ ...labelStyle, color: '#55595c' }}>
+                      Zip Code <span style={{ color: '#ff5252' }}>*</span>
+                    </label>
+                    <input
+                      id="zip"
+                      name="zip"
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={10}
+                      value={form.zip}
+                      onChange={handleChange}
+                      placeholder="12345"
                       style={inputStyle}
                       required
                     />
