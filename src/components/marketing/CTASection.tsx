@@ -25,6 +25,7 @@ export default function CTASection({ tracking }: Props) {
   const [errorMsg, setErrorMsg] = useState('')
   const [turnstileToken, setTurnstileToken] = useState('')
   const [existing, setExisting] = useState(false)
+  const [emailStatus, setEmailStatus] = useState<'idle' | 'checking' | 'available' | 'taken'>('idle')
   const formStarted = useRef(false)
 
   // Deep-linkable tab: /?signup=group#signup preselects the Dealer group tab
@@ -45,6 +46,29 @@ export default function CTASection({ tracking }: Props) {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm(f => ({ ...f, [e.target.name]: e.target.value }))
   }
+
+  // Debounced availability check (same-origin proxy → DA Platform; the API
+  // key stays server-side). Fail-open: errors return to idle and never block
+  // — the signup endpoint's duplicate guard is the real gate.
+  useEffect(() => {
+    const email = form.email.trim()
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setEmailStatus('idle')
+      return
+    }
+    setEmailStatus('checking')
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => {
+      fetch(`/api/check-email?email=${encodeURIComponent(email)}`, { signal: ctrl.signal })
+        .then(r => (r.ok ? r.json() : null))
+        .then((d: { available?: boolean } | null) => {
+          if (d == null) setEmailStatus('idle')
+          else setEmailStatus(d.available === false ? 'taken' : 'available')
+        })
+        .catch(() => { if (!ctrl.signal.aborted) setEmailStatus('idle') })
+    }, 500)
+    return () => { clearTimeout(timer); ctrl.abort() }
+  }, [form.email])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -327,6 +351,17 @@ export default function CTASection({ tracking }: Props) {
                       style={inputStyle}
                       required
                     />
+                    {emailStatus === 'checking' && (
+                      <p style={{ margin: '4px 0 0', fontSize: 12, color: '#78828c' }}>Checking…</p>
+                    )}
+                    {emailStatus === 'available' && (
+                      <p style={{ margin: '4px 0 0', fontSize: 12, color: '#4caf50' }}>✓ Email is available</p>
+                    )}
+                    {emailStatus === 'taken' && (
+                      <p style={{ margin: '4px 0 0', fontSize: 12, color: '#ff5252' }}>
+                        ✗ This email is already registered — <a href="https://app.dealeraddendums.com" style={{ color: '#1976d2' }}>log in instead</a>
+                      </p>
+                    )}
                   </div>
 
                   <div>
@@ -386,11 +421,11 @@ export default function CTASection({ tracking }: Props) {
 
                   <button
                     type="submit"
-                    disabled={status === 'loading'}
+                    disabled={status === 'loading' || emailStatus === 'checking' || emailStatus === 'taken'}
                     style={{
                       height: 44,
-                      background: status === 'loading' ? '#f5f6f7' : '#4caf50',
-                      color: status === 'loading' ? '#78828c' : '#ffffff',
+                      background: status === 'loading' || emailStatus === 'checking' || emailStatus === 'taken' ? '#f5f6f7' : '#4caf50',
+                      color: status === 'loading' || emailStatus === 'checking' || emailStatus === 'taken' ? '#78828c' : '#ffffff',
                       border: 'none',
                       borderRadius: 4,
                       fontSize: 15,
