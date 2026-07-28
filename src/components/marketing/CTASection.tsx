@@ -486,6 +486,10 @@ export default function CTASection({ tracking }: Props) {
             dealeraddendums.com
           </span>
         </div>
+        <a href="https://apps.apple.com/us/app/dealeraddendums-5-0/id6788451484" target="_blank" rel="noopener noreferrer" aria-label="Download on the App Store">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/images/app-store-badge.svg" alt="Download on the App Store" style={{ height: 36, display: 'block' }} />
+        </a>
         <div style={{ display: 'flex', gap: 20 }}>
           {[
             { label: 'Privacy Policy', href: '/privacy' },

@@ -8,6 +8,7 @@ import FeaturesSection from '@/components/marketing/FeaturesSection'
 import PricingSection from '@/components/marketing/PricingSection'
 import TestimonialsSection from '@/components/marketing/TestimonialsSection'
 import CTASection from '@/components/marketing/CTASection'
+import AppSection from '@/components/marketing/AppSection'
 import LayoutA from '@/components/marketing/LayoutA'
 
 function HeroSkeleton() {
@@ -111,6 +112,7 @@ export default async function HomePage({ searchParams }: PageProps) {
         <HeroSection hero={resolved.hero} tracking={tracking} warm={warm} />
       </Suspense>
       <FeaturesSection />
+      <AppSection />
       <PricingSection tracking={tracking} />
       <TestimonialsSection dealerType={ctx.dealerType} />
       <CTASection tracking={tracking} />

@@ -38,8 +38,8 @@ const FEATURES = [
   },
   {
     icon: '📱',
-    title: 'iOS Mobile App — Included',
-    desc: 'The DA Installer app lets your team scan VINs, QR codes, or barcodes remotely, then create, manage, and print addendums right from the lot. Included with every plan.',
+    title: 'iPhone App — Included',
+    desc: 'DealerAddendums 5.0 for iPhone is on the App Store: scan VINs, QR codes, or barcodes on the lot, build the addendum on the spot, and AirPrint it or queue it for your desk printer. Included with every plan.',
   },
   {
     icon: '🤖',
