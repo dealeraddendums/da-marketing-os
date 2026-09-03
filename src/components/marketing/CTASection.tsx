@@ -31,6 +31,8 @@ export default function CTASection({ tracking }: Props) {
   // with the IANA zone so it follows DST, and re-checked every minute in case
   // the page sits open across the boundary.
   const [afterHours, setAfterHours] = useState(false)
+  const [resendState, setResendState] = useState<'idle' | 'sending' | 'sent'>('idle')
+  const [resendMsg, setResendMsg] = useState('')
   useEffect(() => {
     const check = () => {
       const hh = new Intl.DateTimeFormat('en-US', {
@@ -148,6 +150,33 @@ export default function CTASection({ tracking }: Props) {
     fontWeight: 500,
     color: 'rgba(255,255,255,0.85)',
     marginBottom: 6,
+  }
+
+  // Resend the Layer 0 confirmation email. The endpoint answers identically for
+  // every outcome (unknown address, cooldown, sent), so there is nothing to
+  // branch on here — we just report that it went out.
+  async function handleResend() {
+    if (resendState === 'sending') return
+    setResendState('sending')
+    setResendMsg('')
+    try {
+      const res = await fetch('/api/leads/resend-confirmation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: form.email.trim() }),
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) {
+        setResendState('idle')
+        setResendMsg(data?.error || 'Could not resend just now — please try again shortly.')
+        return
+      }
+      setResendState('sent')
+      setResendMsg(data?.message || 'Confirmation email resent.')
+    } catch {
+      setResendState('idle')
+      setResendMsg('Could not resend just now — please try again shortly.')
+    }
   }
 
   return (
@@ -293,6 +322,40 @@ export default function CTASection({ tracking }: Props) {
                     <>We just emailed you a link to confirm your address. Click it and we&apos;ll activate your free trial — your account is created once you confirm.</>
                   )}
                 </p>
+                {!existing && (
+                  <div style={{ marginTop: 18 }}>
+                    {resendState === 'sent' ? (
+                      <p style={{ fontSize: 13, color: '#55595c', lineHeight: 1.6, margin: 0 }}>{resendMsg}</p>
+                    ) : (
+                      <>
+                        <p style={{ fontSize: 13, color: '#55595c', margin: '0 0 8px' }}>
+                          Didn&apos;t get it? Check your spam folder first.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => void handleResend()}
+                          disabled={resendState === 'sending'}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            padding: 0,
+                            font: 'inherit',
+                            fontSize: 13,
+                            fontWeight: 600,
+                            color: resendState === 'sending' ? '#999999' : '#1976d2',
+                            cursor: resendState === 'sending' ? 'default' : 'pointer',
+                            textDecoration: 'underline',
+                          }}
+                        >
+                          {resendState === 'sending' ? 'Sending…' : 'Resend the confirmation email'}
+                        </button>
+                        {resendMsg && (
+                          <p style={{ fontSize: 12, color: '#c62828', margin: '8px 0 0' }}>{resendMsg}</p>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             ) : (
               <form onSubmit={handleSubmit} onFocus={handleFormStart} noValidate>

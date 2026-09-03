@@ -193,3 +193,99 @@ export async function confirmAndProvision(token: string): Promise<
 
   return { ok: true, outcome, lead }
 }
+
+// ── Resend ────────────────────────────────────────────────────────────────────
+// Re-sends the confirmation email for a signup still sitting at
+// `awaiting_confirmation`. Added 2026-09-03: NEXT_PUBLIC_SITE_URL had been set to
+// the apex (legacy Apache, no /confirm route), so every confirmation email linked
+// to a 404 and three signups stranded — one a real prospect. The link target was
+// fixed, but there was no way to get a working link to people whose email had
+// already gone out, and confirming on their behalf would defeat the whole point
+// of Layer 0 (proving they own the address).
+//
+// Deliberately NON-ENUMERABLE: every outcome — unknown email, already confirmed,
+// throttled, sent — returns the identical message, so this cannot be used to test
+// which addresses have a pending signup.
+//
+// Throttled on `confirm_sent_at` in the DB, not in memory: the in-process limiter
+// in lib/rate-limit.ts resets on restart (and is per-worker if this ever moves off
+// fork mode), which is exactly how DA Platform's invite-resend doubles slipped
+// through before it was moved onto a DB ledger.
+
+export const RESEND_COOLDOWN_MS = 10 * 60_000
+
+/** Generic reply used for EVERY outcome so nothing is revealed. */
+export const RESEND_GENERIC_MESSAGE =
+  "If that email has a signup waiting to be confirmed, we've just sent a fresh confirmation link. It can take a minute to arrive — check spam too."
+
+export type ResendOutcome = 'sent' | 'throttled' | 'not_pending' | 'unknown' | 'error'
+
+/**
+ * Attempt a resend. The caller ALWAYS returns the same message regardless of the
+ * outcome; the outcome is for server-side logging only.
+ */
+export async function resendConfirmation(rawEmail: string): Promise<ResendOutcome> {
+  const email = rawEmail.trim().toLowerCase()
+  if (!email) return 'unknown'
+
+  const { data, error } = await supabase
+    .from('marketing_leads')
+    .select('id, email, name, dealership, confirm_token, confirm_sent_at, provision_status')
+    .ilike('email', email)
+    .order('created_at', { ascending: false })
+    .limit(1)
+
+  if (error) {
+    console.error('[resend-confirmation] lookup failed:', error.message)
+    return 'error'
+  }
+  const lead = data?.[0]
+  if (!lead) return 'unknown'
+
+  // Only signups actually waiting on confirmation. Anything already confirmed,
+  // provisioned, queued for review or rejected must not trigger a new email.
+  if (lead.provision_status !== 'awaiting_confirmation') return 'not_pending'
+
+  // DB-backed cooldown.
+  if (lead.confirm_sent_at) {
+    const age = Date.now() - new Date(lead.confirm_sent_at).getTime()
+    if (Number.isFinite(age) && age >= 0 && age < RESEND_COOLDOWN_MS) return 'throttled'
+  }
+
+  // Reuse the existing token so any earlier (working) link stays valid; mint one
+  // only if the row somehow has none.
+  let token = lead.confirm_token
+  if (!token) {
+    token = newConfirmToken()
+    const { error: tokErr } = await supabase
+      .from('marketing_leads')
+      .update({ confirm_token: token })
+      .eq('id', lead.id)
+    if (tokErr) {
+      console.error('[resend-confirmation] could not store a new token:', tokErr.message)
+      return 'error'
+    }
+  }
+
+  try {
+    await sendConfirmationEmail({
+      email: lead.email,
+      name: lead.name || '',
+      dealership: lead.dealership || 'your dealership',
+      token,
+    })
+  } catch (err) {
+    console.error('[resend-confirmation] send failed:', err instanceof Error ? err.message : err)
+    return 'error'
+  }
+
+  // Stamp only after a successful send, so a Mandrill failure doesn't start the
+  // cooldown and lock the applicant out of retrying.
+  const { error: stampErr } = await supabase
+    .from('marketing_leads')
+    .update({ confirm_sent_at: new Date().toISOString() })
+    .eq('id', lead.id)
+  if (stampErr) console.error('[resend-confirmation] stamp failed:', stampErr.message)
+
+  return 'sent'
+}
