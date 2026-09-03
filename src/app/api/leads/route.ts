@@ -5,6 +5,7 @@ import { generateText, parseJSON } from '@/lib/ai'
 import { rateLimit } from '@/lib/rate-limit'
 import { trackServerEvent } from '@/lib/analytics'
 import { verifyTurnstile } from '@/lib/turnstile'
+import { newConfirmToken, sendConfirmationEmail } from '@/lib/lead-confirm'
 
 const ATTR_FIELDS = [
   'utm_source', 'utm_medium', 'utm_campaign', 'utm_term',
@@ -37,48 +38,6 @@ type ProvisionResult = {
   dealer_id?: string | null
   group_id?: string | null
   existing?: boolean
-}
-
-// Server-to-server call into DA Platform to provision the Trial dealer/group.
-// DA Platform owns HubSpot + the onboarding invite. Best-effort: the lead is
-// already saved, so a provisioning failure doesn't lose the signup — it's
-// recorded as provision_status='failed' for follow-up.
-async function provisionInDaPlatform(payload: {
-  name: string
-  email: string
-  dealership: string
-  phone: string | null
-  zip: string | null
-  accountKind: 'single' | 'group'
-  groupName?: string
-  attribution: Record<string, string | null>
-}): Promise<ProvisionResult> {
-  const base = process.env.DA_PLATFORM_URL
-  const key = process.env.SELF_SERVE_API_KEY
-  if (!base || !key) return { status: 'skipped' }
-
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 12_000)
-  try {
-    const res = await fetch(`${base.replace(/\/$/, '')}/api/self-serve/signup`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-API-Key': key },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    })
-    if (!res.ok) {
-      console.error('[leads] provisioning HTTP', res.status)
-      return { status: 'failed' }
-    }
-    const data = (await res.json()) as { existing?: boolean; dealer_id?: string; group_id?: string }
-    if (data.existing) return { status: 'existing', existing: true }
-    return { status: 'provisioned', dealer_id: data.dealer_id ?? null, group_id: data.group_id ?? null }
-  } catch (err) {
-    console.error('[leads] provisioning call failed:', err instanceof Error ? err.message : err)
-    return { status: 'failed' }
-  } finally {
-    clearTimeout(timer)
-  }
 }
 
 export async function POST(req: NextRequest) {
@@ -153,6 +112,8 @@ Based on the dealership name and email domain, provide a brief intelligence summ
   const contextKey  = (body.contextKey as string) || null
   const variationId = (body.variationId as string) || null
 
+  const confirmToken = newConfirmToken()
+
   const leadPayload: Record<string, unknown> = {
     name,
     email,
@@ -168,7 +129,16 @@ Based on the dealership name and email domain, provide a brief intelligence summ
     variation_id: variationId,
     ab_variant: (body.abVariant as string) || null,
     headline_seen: (body.headlineSeen as string) || null,
+    // Layer 0: nothing is provisioned until this token comes back.
+    confirm_token: confirmToken,
+    confirm_sent_at: new Date().toISOString(),
+    provision_status: 'awaiting_confirmation',
+    // The real browser IP — forwarded to the platform's rate-limit ledger at
+    // confirmation time, since this box is the only hop that sees it.
+    source_ip: ip === 'unknown' ? null : ip,
   }
+  const _leadPayloadReady = true
+  void _leadPayloadReady
 
   let { data: lead, error: dbError } = await supabase
     .from('marketing_leads')
@@ -193,20 +163,16 @@ Based on the dealership name and email domain, provide a brief intelligence summ
     return NextResponse.json({ error: 'Failed to save lead — please try again.' }, { status: 500 })
   }
 
-  // Provision the Trial dealer/group in DA Platform (owns HubSpot + invite).
-  const provision = await provisionInDaPlatform({
-    name, email, dealership, phone: phone || null, zip, accountKind, groupName, attribution,
-  })
-
-  // Record the provisioning outcome + ids on the lead row.
-  void supabase
-    .from('marketing_leads')
-    .update({
-      da_dealer_id: provision.dealer_id ?? null,
-      da_group_id: provision.group_id ?? null,
-      provision_status: provision.status,
-    })
-    .eq('id', lead!.id)
+  // Layer 0 — send the confirmation email. DA Platform is NOT called yet: the
+  // account is provisioned only once the applicant clicks the link, which is
+  // what a fake or unmonitored address can never do. See lib/lead-confirm.ts.
+  try {
+    await sendConfirmationEmail({ email, name, dealership, token: confirmToken })
+  } catch (err) {
+    console.error('[leads] confirmation email failed:', err instanceof Error ? err.message : err)
+    // The lead is saved; support can re-send. Don't fail the submission.
+  }
+  const provision = { status: 'awaiting_confirmation' as const }
 
   // Server-side analytics with attribution (non-blocking)
   trackServerEvent('signup', {
@@ -252,10 +218,13 @@ Based on the dealership name and email domain, provide a brief intelligence summ
     `,
   }).catch(() => {})
 
+  // needsConfirm tells the form to say "check your email" instead of
+  // "you're all set" — nothing exists yet at this point.
   return NextResponse.json({
     ok: true,
     id: lead?.id,
     kind: accountKind,
-    existing: provision.existing ?? false,
+    needsConfirm: true,
+    existing: false,
   })
 }

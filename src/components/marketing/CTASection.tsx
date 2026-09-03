@@ -26,6 +26,23 @@ export default function CTASection({ tracking }: Props) {
   const [turnstileToken, setTurnstileToken] = useState('')
   const [existing, setExisting] = useState(false)
   const [emailStatus, setEmailStatus] = useState<'idle' | 'checking' | 'available' | 'taken'>('idle')
+  // Sign-ups are accepted 5 AM–9 PM Pacific (the server enforces it; this is
+  // just so nobody fills in the form at 3 AM and gets a surprise). Computed
+  // with the IANA zone so it follows DST, and re-checked every minute in case
+  // the page sits open across the boundary.
+  const [afterHours, setAfterHours] = useState(false)
+  useEffect(() => {
+    const check = () => {
+      const hh = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/Los_Angeles', hour: '2-digit', hourCycle: 'h23',
+      }).format(new Date())
+      const h = Number.parseInt(hh, 10)
+      setAfterHours(!(h >= 5 && h < 21))
+    }
+    check()
+    const t = setInterval(check, 60_000)
+    return () => clearInterval(t)
+  }, [])
   const formStarted = useRef(false)
 
   // Deep-linkable tab: /?signup=group#signup preselects the Dealer group tab
@@ -273,7 +290,7 @@ export default function CTASection({ tracking }: Props) {
                   {existing ? (
                     <>It looks like an account already exists for this email. <a href="https://app.dealeraddendums.com" style={{ color: '#1976d2' }}>Log in here</a>.</>
                   ) : (
-                    <>We just emailed you a secure link to finish setting up your account. Click it to activate your free trial.</>
+                    <>We just emailed you a link to confirm your address. Click it and we&apos;ll activate your free trial — your account is created once you confirm.</>
                   )}
                 </p>
               </div>
@@ -417,15 +434,27 @@ export default function CTASection({ tracking }: Props) {
                     <p style={{ margin: 0, fontSize: 12, color: '#ff5252' }}>{errorMsg}</p>
                   )}
 
+                  {afterHours && (
+                    <p style={{
+                      margin: 0, fontSize: 12, lineHeight: 1.5,
+                      background: '#fff8e1', border: '1px solid #ffe082', color: '#7a5c00',
+                      padding: '8px 10px', borderRadius: 4,
+                    }}>
+                      Sign-ups are open 5&nbsp;AM–9&nbsp;PM Pacific — please try again during
+                      business hours, or email{' '}
+                      <a href="mailto:support@dealeraddendums.com" style={{ color: '#7a5c00' }}>support@dealeraddendums.com</a>.
+                    </p>
+                  )}
+
                   <Turnstile onVerify={setTurnstileToken} />
 
                   <button
                     type="submit"
-                    disabled={status === 'loading' || emailStatus === 'checking' || emailStatus === 'taken'}
+                    disabled={afterHours || status === 'loading' || emailStatus === 'checking' || emailStatus === 'taken'}
                     style={{
                       height: 44,
-                      background: status === 'loading' || emailStatus === 'checking' || emailStatus === 'taken' ? '#f5f6f7' : '#4caf50',
-                      color: status === 'loading' || emailStatus === 'checking' || emailStatus === 'taken' ? '#78828c' : '#ffffff',
+                      background: afterHours || status === 'loading' || emailStatus === 'checking' || emailStatus === 'taken' ? '#f5f6f7' : '#4caf50',
+                      color: afterHours || status === 'loading' || emailStatus === 'checking' || emailStatus === 'taken' ? '#78828c' : '#ffffff',
                       border: 'none',
                       borderRadius: 4,
                       fontSize: 15,
@@ -436,7 +465,7 @@ export default function CTASection({ tracking }: Props) {
                       opacity: status === 'loading' ? 0.7 : 1,
                     }}
                   >
-                    {status === 'loading' ? 'Submitting…' : 'Start Free Trial — No Credit Card'}
+                    {status === 'loading' ? 'Submitting…' : afterHours ? 'Sign-ups reopen at 5 AM Pacific' : 'Start Free Trial — No Credit Card'}
                   </button>
 
                   <p style={{
