@@ -44,16 +44,21 @@ Handles UTM personalization, A/B testing, AI blog generation, social automation,
 | 2 | A/B Testing | ✅ Done | A/B testing engine |
 | 3 | AI Blog + Chat | ✅ Done | AI-generated blog, streaming chat |
 | 4 | Social Automation | ✅ Done | Social automation, EC2 deploy |
-| 5 | Trial Provisioning | 🚫 Deferred | Blocker cleared (platform live; da-platform Phase 14 in build) — **build only on Allan's instruction**; see note below |
+| 5 | Trial Provisioning | 🔵 In progress | Provisioning pipeline fully built (2026-06-28); HubSpot onboarding workflow still needed — see note below |
 | 6 | Reputation Manager | ✅ Done | GBP review inbox + AI replies + request campaigns + private feedback. GBP API **stubbed** (mock data) pending Google approval. See `docs/reputation.md` |
 
-## ⚠️ Phase 5 Deferred — Important
+## Phase 5 — Trial Provisioning (2026-06-28 update)
 
-Phase 5 (HubSpot Company record creation + trial account provisioning) is intentionally deferred.
-Building it now would create a double integration with the legacy Aurora platform.
-**Do not build Phase 5 without explicit instruction from Allan.**
+**Provisioning pipeline: COMPLETE.** The full end-to-end trial creation flow is live:
+- `POST /api/leads` (marketing OS) — Cloudflare Turnstile bot protection, saves to `marketing_leads`, calls da-platform server-to-server, AI enrichment, internal Mandrill notification
+- `POST /api/self-serve/signup` (da-platform) — creates Trial dealer/group in Supabase (`account_type='Trial'`, `dealer_id='ss_{timestamp}'`), fires HubSpot reliable-create (`lifecyclestage=Dealer Trial`), seeds sample data, sends passkey invite email. Guarded by shared `SELF_SERVE_API_KEY`.
+- `selfServeDuplicateExists()` — checks `profiles` by email before creating; existing legacy dealers get `existing: true` and are directed to `app.dealeraddendums.com`
+- **LoginMenu.tsx** (`9cac369`): "Start your free trial" → `/#signup` (always routes to homepage form, works from blog/LP pages); "Existing customers" → `dealeraddendums.com/app/login`
+- **V5.0 dashboard migration gate** (`eac7ed8`): unmigrated legacy dealers who reach V5.0 login are blocked at the dashboard layout and redirected to `/not-migrated` (standalone page with legacy login link + migration request email). Passes: `migration_status='migrated'` OR `dealer_id` starts with `ss_`. `super_admin`/`group_admin`/`group_user` bypass.
 
-**Update (2026-05-30):** The original blocker — new DA Platform not live — is resolved (platform is live; da-platform **Phase 14 HubSpot sync** is in build). Phase 5's scope narrows accordingly: **da-platform now creates the HubSpot Company/Contact on Trial signup**, immediately and with `lifecyclestage=Trial` (by design — see `da-platform/docs/hubspot-sync-plan.md` → "Trial creation = immediate + reliable"). So Phase 5 becomes the **onboarding workflow that enrolls off that Trial event — NOT the record creation** (which removes the old double-integration-with-Aurora risk). The trial-create sync is built to fire immediately so this wiring is drop-in. Still build only on Allan's explicit go-ahead.
+**Still needed to complete Phase 5 — HubSpot onboarding workflow:** when HubSpot receives a new `lifecyclestage=Dealer Trial` Company (fired on every signup by the reliable-create), trigger an automated email onboarding sequence in HubSpot. This is the one remaining Phase 5 deliverable. Build on Allan's go-ahead.
+
+**Remaining blockers before full marketing relaunch:** `DA_PLATFORM_URL` + `SELF_SERVE_API_KEY` env vars set in marketing OS `.env.production`; `TURNSTILE_SECRET_KEY` configured; TLS cert + DNS cutover for `dealeraddendums.com` → marketing OS server (54.176.9.39).
 
 ## HubSpot Integration
 

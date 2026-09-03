@@ -59,11 +59,16 @@ export const FACTS: string[] = [
   'Multi-rooftop group accounts: manage all locations from one account with group discounts and consistent branding.',
   'Custom branding: dealership logo, pricing, and watermarks on every document; hard-add and soft-add templates available.',
   'Brand-specific addendum templates (e.g. Kia, Ford, Toyota, Honda, Chevrolet, Nissan) with the dealer\'s own logo, products, and pricing.',
+  // Trust / transparency positioning (the message backbone, 2026-06-22 reshape)
+  'A clear, itemized, branded addendum shows customers exactly what they are getting — transparency that builds trust at the point of sale.',
+  'Every dealer-installed item is disclosed clearly, so the price the customer sees is the price the dealer stands behind.',
+  'A transparent, itemized addendum is a dealer\'s clear disclosure record — professional and defensible.',
+  'Consistent, professionally branded disclosure across the whole lot, in seconds.',
+  'Present dealer-added value the right way: clear, itemized, and transparent.',
   // Stats / trust (rounded with "+" per Allan 2026-06-12 so copy never goes stale)
   'Trusted by 1,600+ active dealerships.',
   'In business since 2014.',
   '3.6 million+ addendums printed.',
-  '$800 million+ in addendum value printed.',
   '32,000+ updates driven by dealer feedback.',
   'Addendums print in under 30 seconds.',
   'Used by franchise and independent dealers nationwide.',
@@ -82,7 +87,14 @@ export const FACTS: string[] = [
 // featuredBenefits[] must be selected VERBATIM from this list (validator
 // enforces exact membership) — short strings that render as checkmarks.
 export const BENEFIT_OPTIONS: string[] = [
-  'Unlimited addendums',
+  // Trust-led benefits (lead with these — the 2026-06-22 reshape)
+  'Show buyers the true, itemized price',
+  'Clear, transparent disclosure on every vehicle',
+  'Professional, branded addendums',
+  'Required vs Suggested items, clearly separated',
+  'Same disclosures online and on the lot',
+  'A clear, defensible disclosure record',
+  // Platform / feature benefits (professional & effortless)
   'Automatic inventory import',
   'Auto inventory from any provider, syndication, or DMS',
   'Rules-based product assignment',
@@ -125,7 +137,7 @@ export const CTA_OPTIONS: string[] = [
 export const PROOF_OPTIONS: string[] = [
   'Trusted by 1,600+ dealerships since 2014',
   '3.6M+ addendums printed',
-  '$800M+ in addendum value printed',
+  'Transparent disclosure since 2014',
   '30-day free trial — no credit card required',
   'Month-to-month. Cancel anytime.',
   'No credit card required',
@@ -145,6 +157,18 @@ export const BANNED_PATTERNS: { pattern: RegExp; reason: string }[] = [
   { pattern: /reynolds|frazer|dealertrack|cdk|vauto|carfax/i, reason: 'no competitor names' },
   { pattern: /avoid\s+(fines|lawsuits|penalties)/i, reason: 'no legal-outcome claims' },
   { pattern: /[<>{}[\]]|https?:/i, reason: 'no markup or links in hero copy' },
+  // Trust-led reshape (2026-06-22): the profit/markup framing now reads as a
+  // deceptive-pricing red flag — hard-ban it. NOTE: "dealer-added value" and
+  // "no hidden fees" are the APPROVED transparency framing, so we ban the
+  // specific profit terms, not the bare words "value" or "hidden".
+  { pattern: /maximize/i, reason: 'profit framing retired — lead with transparency' },
+  { pattern: /\bgross\b/i, reason: 'gross-profit framing retired' },
+  { pattern: /\bmark[\s-]?ups?\b/i, reason: 'markup framing retired — reads as hidden pricing' },
+  { pattern: /\bprofit/i, reason: 'profit framing retired — lead with trust' },
+  { pattern: /more\s+money/i, reason: '"more money per car" framing retired' },
+  { pattern: /\bsqueeze\b/i, reason: 'squeeze framing retired' },
+  { pattern: /bottom\s+line/i, reason: '"boost your bottom line" framing retired' },
+  { pattern: /hidden\s+(markup|markups|fees|price|pricing|cost|costs)/i, reason: 'hidden-pricing framing retired' },
 ]
 
 // Every numeric token in generated copy must appear in this set (built from

@@ -75,8 +75,8 @@ export const STATIC_TERM_MAP: Record<string, PersonalizationVariant> = {
     testimonialFilter: 'franchise',
   },
   'used car dealer software': {
-    headline: "The Used Car Dealer's Secret Weapon",
-    subheadline: 'Addendums, buyers guides, and CPO info sheets — all from one platform.',
+    headline: 'The Transparent Used Car Platform',
+    subheadline: 'Addendums, FTC Buyers Guides, and CPO info sheets — clear, compliant, all from one platform.',
     cta: 'Start Free Trial',
     socialProof: 'Built for independent and franchise used car lots',
     testimonialFilter: 'used-car',
@@ -121,8 +121,8 @@ export const STATIC_TERM_MAP: Record<string, PersonalizationVariant> = {
     socialProof: 'Used by Honda dealers nationwide',
   },
   'chevy dealer addendum': {
-    headline: 'Chevrolet Dealer Addendums — Fast & Professional',
-    subheadline: 'GM-compatible addendum templates with logo, pricing, and dealer mark-ups.',
+    headline: 'Chevrolet Dealer Addendums — Professional & Compliant',
+    subheadline: 'GM-compatible templates with your logo, clear itemized pricing, and transparent disclosures.',
     cta: 'Try Free Today',
     socialProof: 'Trusted since 2014',
   },
@@ -227,7 +227,7 @@ export const DEALERTYPE_COPY: Record<string, PersonalizationVariant> = {
   },
   chevrolet: {
     headline: 'Chevy Dealers: Professional Addendums in Minutes',
-    subheadline: 'GM-compatible templates with your logo, dealer mark-ups, and compliance disclosures built in.',
+    subheadline: 'GM-compatible templates with your logo, clear itemized pricing, and transparent disclosures built in.',
     cta: 'Try Free Today',
     socialProof: 'Trusted by Chevrolet franchise dealers',
   },
@@ -281,8 +281,8 @@ export const DEALERTYPE_COPY: Record<string, PersonalizationVariant> = {
 // ── Generic (control) copy ──────────────────────────────────
 // Used when abVariant === 'generic'. No UTM influence at all.
 export const GENERIC_COPY: PersonalizationVariant = {
-  headline: 'The #1 Addendum Platform for Car Dealers',
-  subheadline: 'Easily print customized vehicle addendums, buyers guides, and info sheets from any device. 1,600+ dealerships trust DealerAddendums.',
+  headline: 'Present Dealer-Added Value, the Transparent Way',
+  subheadline: 'Clear, itemized, branded addendums that show buyers exactly what they\'re getting — and keep your pricing transparent and defensible. Trusted by 1,600+ dealerships.',
   cta: 'Start Free Trial',
   socialProof: 'Trusted by 1,600+ dealerships since 2014',
 }

@@ -349,7 +349,7 @@ export default function LayoutA({ personalization }: Props) {
             color: '#ffffff',
             margin: '0 0 32px',
           }}>
-            Our Dealers Are Killing It!!
+            Trusted by Dealers Nationwide
           </h2>
           <div style={{
             display: 'grid',
@@ -357,9 +357,9 @@ export default function LayoutA({ personalization }: Props) {
             gap: 20,
           }}>
             {[
-              { value: '1,600+', label: 'Number of Dealers' },
+              { value: '1,600+', label: 'Dealers Served' },
               { value: '3.6M+', label: 'Addendums Printed' },
-              { value: '$800M+', label: 'Total Addendum Value' },
+              { value: '32,000+', label: 'Dealer-Driven Updates' },
               { value: '2014', label: 'Serving Dealers Since' },
             ].map(s => (
               <div key={s.label}>

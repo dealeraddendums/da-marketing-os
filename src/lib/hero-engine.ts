@@ -69,10 +69,12 @@ export function killSwitchOn(): boolean {
   return v === '1' || v === 'true' || v === 'on'
 }
 
+// Trust-led default trio (2026-06-22 reshape) — each is a verbatim member of
+// BENEFIT_OPTIONS so generated and static heroes stay consistent.
 const DEFAULT_BENEFITS = [
-  'Automatic inventory import',
+  'Show buyers the true, itemized price',
   'FTC Buyers Guides in English & Spanish',
-  'Month-to-month — no contracts',
+  'Professional, branded addendums',
 ]
 
 export function getStaticHero(): HeroContent {
@@ -325,7 +327,14 @@ async function generateAndPublish(signals: VisitorSignals & { contextKey: string
         '(5) use no numbers that do not appear verbatim in the corpus; ' +
         '(6) ctaText must be EXACTLY one string from the approved CTA list; ' +
         '(7) proofLine must be EXACTLY one string from the approved proof list; ' +
-        '(8) featuredBenefits must be EXACTLY 3 distinct strings copied verbatim from the approved benefit list. ' +
+        '(8) featuredBenefits must be EXACTLY 3 distinct strings copied verbatim from the approved benefit list; ' +
+        '(9) MESSAGE = TRUST-LED. Lead with trust, transparency, and professionalism: present dealer-added ' +
+        'value the right way, show the customer the true/itemized price, clear disclosure, professional and ' +
+        'defensible. Compliance/transparency is the reassuring backbone, never a fear headline. ' +
+        '(10) FORBIDDEN framing (hard fail): "maximize gross", "markup"/"mark-up", "profit" or "more profit", ' +
+        '"more money per car", "squeeze", "boost your bottom line", "hidden" pricing/markup/fees, and "add value" ' +
+        'used as a dollars-you-tack-on euphemism. ("Dealer-added value, transparently disclosed" is GOOD; ' +
+        '"the value/$ you add per car" is FORBIDDEN.) ' +
         'Respond ONLY with JSON, no markdown.',
       messages: [{
         role: 'user',
@@ -343,7 +352,8 @@ async function generateAndPublish(signals: VisitorSignals & { contextKey: string
           `IMPORTANT: if the search uses a product term the corpus does not (e.g. "window stickers", ` +
           `"hang tags"), do NOT adopt that term as a product claim — bridge to the corpus product ` +
           `names (addendums, FTC Buyers Guides, info sheets) while speaking to the same need. ` +
-          `Headline: max 8 words, punchy, dealer-industry authentic. ` +
+          `Headline: max 8 words, dealer-industry authentic, TRUST-LED (transparency / true price / ` +
+          `professional / defensible) — never profit/markup framing. ` +
           `Subheadline: one sentence expanding the headline using only corpus facts.\n\n` +
           `JSON shape:\n` +
           `{"headline": "...", "subheadline": "...", "ctaText": "...", "proofLine": "...", "featuredBenefits": ["...", "...", "..."]}`,
