@@ -14,7 +14,55 @@ import { googleEnv, normalizeCustomerId } from './config'
 const API_VERSION = 'v18'
 const BASE = `https://googleads.googleapis.com/${API_VERSION}`
 
-interface GaqlResponse { results?: Record<string, any>[]; nextPageToken?: string; error?: { message: string } }
+interface GaqlResponse {
+  results?: Record<string, any>[]
+  nextPageToken?: string
+  error?: { message: string; status?: string; details?: any[] }
+}
+
+/**
+ * A developer token starts at **Test** access, which can only reach test
+ * accounts — a Test token pointed at the production advertiser account is
+ * refused by Google, not answered with empty data. Google upgrades the token
+ * to Basic on its own schedule.
+ *
+ * That refusal is an expected state, not a fault, so it is classified here and
+ * surfaced as "awaiting Basic Access" instead of a red error. Nothing needs to
+ * change in this file when the upgrade lands: the same call simply starts
+ * succeeding.
+ */
+export class AdsAccessPendingError extends Error {
+  readonly code: string
+  constructor(code: string, message: string) {
+    super(message)
+    this.name = 'AdsAccessPendingError'
+    this.code = code
+  }
+}
+
+/** Error codes that mean "the token is not approved for this account yet". */
+const ACCESS_PENDING_CODES = [
+  'DEVELOPER_TOKEN_NOT_APPROVED',
+  'DEVELOPER_TOKEN_PROHIBITED',
+  'DEVELOPER_TOKEN_NOT_WHITELISTED_FOR_MANAGER_ACCOUNT',
+  'CUSTOMER_NOT_ENABLED',
+]
+
+/** Walk the Ads error envelope for an errorCode value we recognise. Google
+ *  nests these several levels deep and the exact key varies by error family
+ *  (authorizationError / authenticationError / quotaError), so match on the
+ *  serialized body rather than guessing the path. */
+function classifyAdsError(body: GaqlResponse, status: number): string | null {
+  const blob = JSON.stringify(body?.error ?? {})
+  for (const code of ACCESS_PENDING_CODES) {
+    if (blob.includes(code)) return code
+  }
+  // A Test token hitting a production account can also come back as a bare 403
+  // with no machine-readable code; treat that as pending rather than a fault,
+  // since a genuinely broken query would fail with 400 and a query error.
+  if (status === 403) return 'DEVELOPER_TOKEN_NOT_APPROVED'
+  return null
+}
 
 /** Run a GAQL query. `search` (not `searchStream`) so pagination is ordinary
  *  JSON rather than a chunked stream we would have to reassemble by hand. */
@@ -41,7 +89,16 @@ async function gaql(q: string): Promise<Record<string, any>[]> {
       cache: 'no-store',
     })
     const json = (await res.json()) as GaqlResponse
-    if (!res.ok) throw new Error(json.error?.message || `Google Ads ${res.status}`)
+    if (!res.ok) {
+      const pending = classifyAdsError(json, res.status)
+      if (pending) {
+        throw new AdsAccessPendingError(
+          pending,
+          json.error?.message || `Google Ads access not yet approved (${pending})`,
+        )
+      }
+      throw new Error(json.error?.message || `Google Ads ${res.status}`)
+    }
     out.push(...(json.results ?? []))
     pageToken = json.nextPageToken
   } while (pageToken)

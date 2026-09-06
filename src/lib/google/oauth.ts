@@ -18,6 +18,8 @@ const USERINFO   = 'https://www.googleapis.com/oauth2/v2/userinfo'
 
 export interface ConnectionStatus {
   connected: boolean
+  /** A stored grant exists but Google rejected it — reconnect, don't reconfigure. */
+  needsReconnect?: boolean
   configured: boolean
   accountEmail?: string | null
   scopes?: string[]
@@ -168,14 +170,34 @@ export async function getAccessToken(): Promise<string> {
     return cachedAccess.token
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    // A refresh failure usually means the grant was revoked on Google's side.
-    // Record it so the status panel can tell Allan to reconnect instead of
-    // every panel independently showing an opaque error.
+
+    // Distinguish "the grant is gone" from "Google had a bad minute".
+    //
+    // invalid_grant means the refresh token is dead and no amount of retrying
+    // will help — the only fix is to authorize again. That is not an exotic
+    // case here: while the OAuth consent screen is in **Testing** publishing
+    // status, Google expires refresh tokens after 7 days, so this will happen
+    // roughly weekly until the app is published to Production. Marking it
+    // 'revoked' (not 'error') is what lets the UI show a Reconnect button
+    // instead of an opaque failure the operator cannot act on.
+    const revoked = /invalid_grant|token has been expired or revoked/i.test(message)
     await supabase.from('google_connection')
-      .update({ status: 'error', last_error: message })
+      .update({
+        status: revoked ? 'revoked' : 'error',
+        last_error: revoked
+          ? 'Google refresh token is no longer valid — reconnect required. ' +
+            '(Expected about weekly while the OAuth app is in Testing status: ' +
+            'Google expires refresh tokens after 7 days. Publishing the app to ' +
+            'Production stops this.)'
+          : message,
+      })
       .eq('singleton', true)
     cachedAccess = null
-    throw new Error(`Google token refresh failed: ${message}`)
+    throw new Error(
+      revoked
+        ? 'Google connection expired — click Reconnect Google.'
+        : `Google token refresh failed: ${message}`,
+    )
   }
 }
 
@@ -189,6 +211,10 @@ export async function getConnectionStatus(): Promise<ConnectionStatus> {
   if (error || !data) return { connected: false, configured: true }
   return {
     connected: data.status === 'connected',
+    // A row exists but the grant is dead: the UI shows "Reconnect Google"
+    // rather than the first-time "Connect Google" copy, so it is obvious this
+    // is a renewal and not a fresh setup.
+    needsReconnect: data.status === 'revoked',
     configured: true,
     accountEmail: data.account_email,
     scopes: data.scopes ?? [],

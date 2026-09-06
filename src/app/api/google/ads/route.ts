@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { isAdminAuthed } from '@/lib/reputation'
 import { getConnectionStatus } from '@/lib/google/oauth'
-import { fetchAdsSummary } from '@/lib/google/ads'
+import { fetchAdsSummary, AdsAccessPendingError } from '@/lib/google/ads'
 import { adsConfigured, missingEnvFor, googleEnv } from '@/lib/google/config'
 import { cached } from '@/lib/google/cache'
 import { resolveRange } from '@/lib/google/range'
@@ -40,6 +40,19 @@ export async function GET(req: NextRequest) {
       range: { startDate, endDate, days }, cachedAt, fromCache, data: value,
     })
   } catch (err) {
+    // Test-level developer token refused for the production account: an
+    // expected waiting state, so answer 200 with a clean "awaiting approval"
+    // shape rather than a 502 the panel would render as a fault.
+    if (err instanceof AdsAccessPendingError) {
+      return NextResponse.json({
+        connected: false,
+        reason: 'awaiting-basic-access',
+        awaitingBasicAccess: true,
+        code: err.code,
+        detail: err.message,
+        range: { startDate, endDate, days },
+      })
+    }
     return NextResponse.json(
       { connected: true, error: err instanceof Error ? err.message : 'Google Ads request failed',
         range: { startDate, endDate, days } },

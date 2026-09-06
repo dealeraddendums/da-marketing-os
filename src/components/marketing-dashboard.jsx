@@ -1190,18 +1190,35 @@ function GoogleConnectPanel({ onStatus }) {
 
       {status && configured && !connected && (
         <div>
-          <p style={{ fontSize: 13, color: C.textSecondary, margin: "0 0 14px" }}>
-            One-time authorization. Grants read access to Google Ads, Analytics (GA4) and
-            Search Console for this account. The refresh token is stored encrypted on the
-            server and never reaches the browser.
-          </p>
+          {conn?.needsReconnect ? (
+            <div style={{
+              border: `1px solid ${C.warning}`, background: "#fff8ec",
+              borderRadius: 4, padding: "10px 12px", marginBottom: 14,
+            }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: C.textPrimary, marginBottom: 4 }}>
+                Google connection expired — reconnect
+              </div>
+              <div style={{ fontSize: 12, color: C.textSecondary }}>
+                Google rejected the stored refresh token. While the OAuth app is in
+                <strong> Testing</strong> publishing status Google expires refresh tokens after
+                7 days, so expect this about weekly until the app is published to Production.
+                Reconnecting takes one click and no data is lost.
+              </div>
+            </div>
+          ) : (
+            <p style={{ fontSize: 13, color: C.textSecondary, margin: "0 0 14px" }}>
+              One-time authorization. Grants read access to Google Ads, Analytics (GA4) and
+              Search Console for this account. The refresh token is stored encrypted on the
+              server and never reaches the browser.
+            </p>
+          )}
           <a href="/api/google/oauth/start" style={{
             display: "inline-block", height: 36, lineHeight: "36px", padding: "0 16px",
             background: C.blue, color: "#fff", border: `1px solid ${C.blue}`,
             borderRadius: 4, fontSize: 14, fontWeight: 500, textDecoration: "none",
             fontFamily: "Roboto, sans-serif",
-          }}>Connect Google</a>
-          {conn?.lastError && (
+          }}>{conn?.needsReconnect ? "Reconnect Google" : "Connect Google"}</a>
+          {conn?.lastError && !conn?.needsReconnect && (
             <div style={{ fontSize: 12, color: C.error, marginTop: 10 }}>
               Last error: {conn.lastError}
             </div>
@@ -1345,7 +1362,20 @@ function AdsPanel() {
 
         {loading && <div style={{ fontSize: 13, color: C.textMuted }}>Loading…</div>}
 
-        {!loading && data && !data.connected && (
+        {!loading && data && !data.connected && data.awaitingBasicAccess && (
+          <NotConnected
+            title="Awaiting Basic Access approval from Google"
+            reason={
+              "The developer token is installed but still at TEST access level, which can only " +
+              "read Google's test accounts — not the live Dealer Addendums account. Google upgrades " +
+              "the token to Basic on its own schedule; this section starts working automatically the " +
+              "day it does, with no code or config change. Analytics and Search Console are unaffected."
+            }
+            note={data.code ? `Google reported: ${data.code}` : undefined}
+          />
+        )}
+
+        {!loading && data && !data.connected && !data.awaitingBasicAccess && (
           <NotConnected
             title={data.awaitingDeveloperToken ? "Awaiting Google Ads API token" : "Google Ads not connected"}
             reason={data.awaitingDeveloperToken
