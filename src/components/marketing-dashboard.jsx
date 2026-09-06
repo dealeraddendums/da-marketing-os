@@ -687,9 +687,14 @@ function ABPanel() {
 // Engaged / Pricing Viewed / Form Started need dedicated PostHog events (not
 // wired yet) and render as "not tracked yet" — never invented numbers.
 // Converted (trial→paid) lives in da-billing, not the marketing Supabase.
-function FunnelPanel() {
+function FunnelPanel({ ga4 = null }) {
   const [data, setData]   = useState(null);
   const [error, setError] = useState(null);
+  // Two sources measure this funnel and they will NOT agree: first-party
+  // ab_events fire only on the homepage and /lp pages, while GA4 counts
+  // sessions across the whole site. Rather than silently pick one, show which
+  // is on screen and let it be switched.
+  const [source, setSource] = useState(ga4 ? "ga4" : "first-party");
 
   useEffect(() => {
     fetch("/api/funnel")
@@ -698,30 +703,51 @@ function FunnelPanel() {
       .catch(() => setError("Could not load funnel"));
   }, []);
 
-  const visitors = data?.visitors ?? 0;
-  const engaged  = data?.engaged ?? 0;
-  const pricing  = data?.pricingViewed ?? 0;
-  const formed   = data?.formStarted ?? 0;
-  const trials   = data?.trialSignups ?? 0;
+  const useGa4 = source === "ga4" && !!ga4;
+
+  const visitors = useGa4 ? (ga4.sessions ?? 0)      : (data?.visitors ?? 0);
+  const engaged  = useGa4 ? (ga4.engaged ?? 0)       : (data?.engaged ?? 0);
+  const pricing  = useGa4 ? (ga4.pricingViews ?? 0)  : (data?.pricingViewed ?? 0);
+  const formed   = useGa4 ? null                     : (data?.formStarted ?? 0);
+  const trials   = useGa4 ? (ga4.signups ?? 0)       : (data?.trialSignups ?? 0);
   const converted = data?.converted ?? 0;
   const pct = (n) => (visitors > 0 ? Math.round((n / visitors) * 1000) / 10 : 0);
 
   // tracked: live number + bar. untracked: greyed, no bar, no number.
   const steps = [
-    { label: "Visitors",               tracked: true,  value: visitors,  pct: 100,            color: C.blue },
-    { label: "Engaged (30s+)",         tracked: true,  value: engaged,   pct: pct(engaged),   color: C.blueLight },
-    { label: "Pricing Viewed",         tracked: true,  value: pricing,   pct: pct(pricing),   color: C.blueLight },
-    { label: "Form Started",           tracked: true,  value: formed,    pct: pct(formed),    color: C.blueLight },
+    { label: useGa4 ? "Sessions" : "Visitors",
+                                       tracked: true,  value: visitors,  pct: 100,            color: C.blue },
+    { label: useGa4 ? "Engaged sessions" : "Engaged (30s+)",
+                                       tracked: true,  value: engaged,   pct: pct(engaged),   color: C.blueLight },
+    { label: useGa4 ? "Pricing pageviews" : "Pricing Viewed",
+                                       tracked: true,  value: pricing,   pct: pct(pricing),   color: C.blueLight },
+    // GA4 has no first-party "form_start" event configured, so this step is
+    // greyed rather than shown as a real zero when GA4 is the source.
+    { label: "Form Started",           tracked: !useGa4, value: formed,   pct: pct(formed ?? 0), color: C.blueLight },
     { label: "Trial Signup",           tracked: true,  value: trials,    pct: pct(trials),    color: C.success },
     { label: "Converted (trial→paid)", tracked: true,  value: converted, pct: pct(converted), color: C.success },
   ];
 
   return (
     <Card>
-      <SectionTitle>Conversion Funnel — Last 30 Days</SectionTitle>
-      {error ? (
+      <SectionTitle action={ga4 ? (
+        <div style={{ display: "flex", gap: 6 }}>
+          {[["ga4", "GA4"], ["first-party", "First-party"]].map(([id, label]) => (
+            <button key={id} onClick={() => setSource(id)} style={{
+              height: 28, padding: "0 10px", fontSize: 12,
+              background: source === id ? C.blue : C.bgSurface,
+              color: source === id ? "#fff" : C.textPrimary,
+              border: `1px solid ${source === id ? C.blue : C.border}`,
+              borderRadius: 4, cursor: "pointer", fontFamily: "Roboto, sans-serif",
+            }}>{label}</button>
+          ))}
+        </div>
+      ) : null}>
+        Conversion Funnel — Last 30 Days
+      </SectionTitle>
+      {error && !useGa4 ? (
         <div style={{ fontSize: 13, color: C.error }}>Could not load funnel — {error}</div>
-      ) : !data ? (
+      ) : (!data && !useGa4) ? (
         <div style={{ fontSize: 13, color: C.textMuted }}>Loading…</div>
       ) : (
         <>
@@ -1028,13 +1054,590 @@ function LeadsPanel() {
   );
 }
 
+// ── Google integration (Phase 1 — read-only) ─────────────────────────────────
+// Connect / Analytics / Ads / SEO / Approvals. Every panel degrades to a clean
+// "not connected" state: the credentials arrive on Google's schedule (the Ads
+// developer token especially), so a missing one must never look like a bug.
+
+const RANGES = [
+  { days: 7,  label: "7 days"  },
+  { days: 30, label: "30 days" },
+  { days: 90, label: "90 days" },
+];
+
+const DateRange = ({ days, onChange, onRefresh, refreshing }) => (
+  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+    {RANGES.map(r => (
+      <button key={r.days} onClick={() => onChange(r.days)} style={{
+        height: 28, padding: "0 10px", fontSize: 12,
+        background: days === r.days ? C.blue : C.bgSurface,
+        color: days === r.days ? "#fff" : C.textPrimary,
+        border: `1px solid ${days === r.days ? C.blue : C.border}`,
+        borderRadius: 4, cursor: "pointer", fontFamily: "Roboto, sans-serif",
+      }}>{r.label}</button>
+    ))}
+    {onRefresh && (
+      <SmallButton onClick={onRefresh} disabled={refreshing}>
+        {refreshing ? "Refreshing…" : "Refresh"}
+      </SmallButton>
+    )}
+  </div>
+);
+
+// Shared empty state. `missing` lists the env vars that would light this up —
+// far more actionable than a generic "not connected".
+const NotConnected = ({ title, reason, missing, note }) => (
+  <div style={{
+    border: `1px dashed ${C.borderStrong}`, borderRadius: 6,
+    padding: 20, background: C.bgSubtle,
+  }}>
+    <div style={{ fontSize: 14, fontWeight: 600, color: C.textPrimary, marginBottom: 6 }}>
+      {title}
+    </div>
+    <div style={{ fontSize: 13, color: C.textSecondary, marginBottom: missing?.length ? 10 : 0 }}>
+      {reason}
+    </div>
+    {missing?.length > 0 && (
+      <div style={{ fontSize: 12, color: C.textMuted, fontFamily: "monospace" }}>
+        Missing: {missing.join(", ")}
+      </div>
+    )}
+    {note && (
+      <div style={{ fontSize: 12, color: C.textMuted, marginTop: 10 }}>{note}</div>
+    )}
+  </div>
+);
+
+const fmtInt   = (n) => (n ?? 0).toLocaleString();
+const fmtMoney = (n) => `$${(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const fmtPct   = (n) => `${((n ?? 0) * 100).toFixed(2)}%`;
+const fmtPos   = (n) => (n ?? 0).toFixed(1);
+
+// Small stat used across the three Google panels.
+const Stat = ({ label, value, sub, color }) => (
+  <Card style={{ padding: 16 }}>
+    <div style={{ fontSize: 12, fontWeight: 500, color: C.textMuted, textTransform: "uppercase", marginBottom: 8 }}>
+      {label}
+    </div>
+    <div style={{ fontSize: 28, fontWeight: 600, color: C.textPrimary, lineHeight: 1 }}>{value}</div>
+    {sub && <div style={{ fontSize: 12, color: color || C.textMuted, marginTop: 6 }}>{sub}</div>}
+  </Card>
+);
+
+// Shared fetch hook for the three report panels — same loading/error/range
+// behaviour in one place so the panels differ only in how they render.
+function useGoogleReport(path, days) {
+  const [state, setState] = useState({ loading: true, data: null, error: null });
+  const [refreshing, setRefreshing] = useState(false);
+
+  const load = (force = false) => {
+    if (force) setRefreshing(true); else setState(s => ({ ...s, loading: true }));
+    fetch(`${path}?days=${days}${force ? "&refresh=1" : ""}`)
+      .then(r => r.json())
+      .then(d => setState({ loading: false, data: d, error: d.error || null }))
+      .catch(() => setState({ loading: false, data: null, error: "Request failed" }))
+      .finally(() => setRefreshing(false));
+  };
+
+  useEffect(() => { load(false); /* eslint-disable-next-line */ }, [path, days]);
+  return { ...state, refreshing, refresh: () => load(true) };
+}
+
+// ── Connect Google ────────────────────────────────────────────────────────────
+function GoogleConnectPanel({ onStatus }) {
+  const [status, setStatus] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = () => fetch("/api/google/status")
+    .then(r => r.json())
+    .then(d => { setStatus(d); onStatus?.(d); })
+    .catch(() => setStatus({ error: "Could not read connection status" }));
+
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+
+  const disconnect = async () => {
+    if (!confirm("Disconnect Google? Reporting stops until you reconnect.")) return;
+    setBusy(true);
+    await fetch("/api/google/disconnect", { method: "POST" }).catch(() => {});
+    setBusy(false);
+    load();
+  };
+
+  const conn = status?.connection;
+  const configured = conn?.configured;
+  const connected = conn?.connected;
+
+  return (
+    <Card>
+      <SectionTitle action={
+        connected
+          ? <SmallButton onClick={disconnect} variant="danger" disabled={busy}>Disconnect</SmallButton>
+          : null
+      }>
+        Google Connection
+      </SectionTitle>
+
+      {!status && <div style={{ fontSize: 13, color: C.textMuted }}>Checking…</div>}
+
+      {status && !configured && (
+        <NotConnected
+          title="Google OAuth is not configured yet"
+          reason="Add the OAuth client credentials to the environment on the box, then restart the app to enable the Connect button."
+          missing={status.surfaces ? undefined : undefined}
+          note="Client ID and secret come from Google Cloud → APIs & Services → Credentials."
+        />
+      )}
+
+      {status && configured && !connected && (
+        <div>
+          <p style={{ fontSize: 13, color: C.textSecondary, margin: "0 0 14px" }}>
+            One-time authorization. Grants read access to Google Ads, Analytics (GA4) and
+            Search Console for this account. The refresh token is stored encrypted on the
+            server and never reaches the browser.
+          </p>
+          <a href="/api/google/oauth/start" style={{
+            display: "inline-block", height: 36, lineHeight: "36px", padding: "0 16px",
+            background: C.blue, color: "#fff", border: `1px solid ${C.blue}`,
+            borderRadius: 4, fontSize: 14, fontWeight: 500, textDecoration: "none",
+            fontFamily: "Roboto, sans-serif",
+          }}>Connect Google</a>
+          {conn?.lastError && (
+            <div style={{ fontSize: 12, color: C.error, marginTop: 10 }}>
+              Last error: {conn.lastError}
+            </div>
+          )}
+        </div>
+      )}
+
+      {status && connected && (
+        <div style={{ display: "grid", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <Badge variant="success">Connected</Badge>
+            <span style={{ fontSize: 14, color: C.textPrimary }}>
+              {conn.accountEmail || "Google account"}
+            </span>
+          </div>
+          <div style={{ fontSize: 12, color: C.textMuted }}>
+            Connected {conn.connectedAt ? new Date(conn.connectedAt).toLocaleString() : "—"}
+            {" · "}last token refresh {conn.lastRefreshAt ? new Date(conn.lastRefreshAt).toLocaleString() : "not yet"}
+          </div>
+          <div style={{ fontSize: 12, color: C.textMuted, fontFamily: "monospace", wordBreak: "break-all" }}>
+            {(conn.scopes || []).map(s => s.replace("https://www.googleapis.com/auth/", "")).join(" · ")}
+          </div>
+          <div style={{ display: "flex", gap: 8, marginTop: 4, flexWrap: "wrap" }}>
+            {[
+              ["Analytics (GA4)", status.surfaces?.ga4?.configured],
+              ["Search Console",  status.surfaces?.gsc?.configured],
+              ["Google Ads",      status.surfaces?.ads?.configured],
+            ].map(([label, ok]) => (
+              <Badge key={label} variant={ok ? "success" : "warning"}>
+                {label}: {ok ? "ready" : "needs config"}
+              </Badge>
+            ))}
+          </div>
+          {status.surfaces?.ads?.awaitingDeveloperToken && (
+            <div style={{ fontSize: 12, color: C.textMuted }}>
+              Google Ads reporting turns on when the developer token is approved and added
+              to the environment. Analytics and Search Console do not need it.
+            </div>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// ── Analytics (GA4) ───────────────────────────────────────────────────────────
+function AnalyticsPanel() {
+  const [days, setDays] = useState(30);
+  const { loading, data, refreshing, refresh } = useGoogleReport("/api/google/analytics", days);
+  const d = data?.data;
+
+  return (
+    <div style={{ display: "grid", gap: 20 }}>
+      <Card>
+        <SectionTitle action={<DateRange days={days} onChange={setDays} onRefresh={refresh} refreshing={refreshing} />}>
+          Google Analytics 4
+        </SectionTitle>
+
+        {loading && <div style={{ fontSize: 13, color: C.textMuted }}>Loading…</div>}
+
+        {!loading && data && !data.connected && (
+          <NotConnected
+            title="Analytics not connected"
+            reason={data.reason === "not-connected"
+              ? "Connect Google on the Overview tab to enable GA4 reporting."
+              : "GA4 is connected but no property is configured."}
+            missing={data.missing}
+          />
+        )}
+
+        {!loading && data?.error && data.connected && (
+          <div style={{ fontSize: 13, color: C.error }}>GA4 error — {data.error}</div>
+        )}
+
+        {!loading && d && (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 20 }}>
+              <Stat label="Sessions" value={fmtInt(d.sessions)} />
+              <Stat label="Users" value={fmtInt(d.totalUsers)}
+                    sub={`${fmtInt(d.newUsers)} new · ${fmtInt(d.returningUsers)} returning`} />
+              <Stat label="Engagement Rate" value={fmtPct(d.engagementRate)}
+                    sub={`${fmtInt(d.engagedSessions)} engaged sessions`} />
+              <Stat label="Conversions" value={fmtInt(d.conversions)}
+                    sub="GA4 conversion events" color={C.success} />
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: C.textPrimary, marginBottom: 10 }}>
+                  Top channels
+                </div>
+                {(d.channels || []).length === 0 && (
+                  <div style={{ fontSize: 13, color: C.textMuted }}>No channel data in range.</div>
+                )}
+                {(d.channels || []).map((c, i) => (
+                  <div key={i} style={{ marginBottom: 10 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                      <span style={{ fontSize: 13, color: C.textPrimary }}>{c.channel}</span>
+                      <span style={{ fontSize: 13, color: C.textSecondary }}>{fmtInt(c.sessions)}</span>
+                    </div>
+                    <MiniBar pct={d.sessions > 0 ? (c.sessions / d.sessions) * 100 : 0} />
+                  </div>
+                ))}
+              </div>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: C.textPrimary, marginBottom: 10 }}>
+                  Top sources
+                </div>
+                {(d.sources || []).map((s, i) => (
+                  <div key={i} style={{
+                    display: "flex", justifyContent: "space-between",
+                    padding: "6px 0", borderBottom: `1px solid ${C.border}`, fontSize: 13,
+                  }}>
+                    <span style={{ color: C.textPrimary }}>{s.source}</span>
+                    <span style={{ color: C.textSecondary }}>{fmtInt(s.sessions)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+      </Card>
+
+      {d && <FunnelPanel ga4={d} />}
+    </div>
+  );
+}
+
+// ── Ads (read-only) ───────────────────────────────────────────────────────────
+function AdsPanel() {
+  const [days, setDays] = useState(30);
+  const { loading, data, refreshing, refresh } = useGoogleReport("/api/google/ads", days);
+  const d = data?.data;
+
+  return (
+    <div style={{ display: "grid", gap: 20 }}>
+      <Card>
+        <SectionTitle action={<DateRange days={days} onChange={setDays} onRefresh={refresh} refreshing={refreshing} />}>
+          Google Ads <span style={{ fontSize: 12, fontWeight: 400, color: C.textMuted }}>· read-only</span>
+        </SectionTitle>
+
+        {loading && <div style={{ fontSize: 13, color: C.textMuted }}>Loading…</div>}
+
+        {!loading && data && !data.connected && (
+          <NotConnected
+            title={data.awaitingDeveloperToken ? "Awaiting Google Ads API token" : "Google Ads not connected"}
+            reason={data.awaitingDeveloperToken
+              ? "Google reviews developer-token applications separately from OAuth — this section turns on the day it is approved and added to the environment. Analytics and Search Console are unaffected."
+              : "Connect Google on the Overview tab, then add the Ads customer ID."}
+            missing={data.missing}
+          />
+        )}
+
+        {!loading && data?.error && data.connected && (
+          <div style={{ fontSize: 13, color: C.error }}>Google Ads error — {data.error}</div>
+        )}
+
+        {!loading && d && (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 16 }}>
+              <Stat label="Spend" value={fmtMoney(d.account.cost)} />
+              <Stat label="Impressions" value={fmtInt(d.account.impressions)} />
+              <Stat label="Clicks" value={fmtInt(d.account.clicks)} sub={`CTR ${fmtPct(d.account.ctr)}`} />
+              <Stat label="Conversions" value={fmtInt(d.account.conversions)} color={C.success} />
+              <Stat label="CPA" value={d.account.conversions > 0 ? fmtMoney(d.account.cpa) : "—"} />
+            </div>
+          </>
+        )}
+      </Card>
+
+      {d && (
+        <Card>
+          <SectionTitle>Campaigns</SectionTitle>
+          {d.campaigns.length === 0 && (
+            <div style={{ fontSize: 13, color: C.textMuted }}>No campaign activity in this range.</div>
+          )}
+          {d.campaigns.length > 0 && (
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead>
+                  <tr style={{ textAlign: "left", color: C.textMuted }}>
+                    {["Campaign", "Status", "Spend", "Impr.", "Clicks", "CTR", "Conv.", "CPA"].map(h => (
+                      <th key={h} style={{ padding: "0 8px 8px 0", fontWeight: 500, whiteSpace: "nowrap" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {d.campaigns.map(c => (
+                    <tr key={c.id} style={{ borderTop: `1px solid ${C.border}` }}>
+                      <td style={{ padding: "8px 8px 8px 0", color: C.textPrimary }}>{c.name}</td>
+                      <td style={{ padding: "8px 8px 8px 0" }}>
+                        <Badge variant={c.status === "ENABLED" ? "success" : "neutral"}>{c.status}</Badge>
+                      </td>
+                      <td style={{ padding: "8px 8px 8px 0", whiteSpace: "nowrap" }}>{fmtMoney(c.cost)}</td>
+                      <td style={{ padding: "8px 8px 8px 0" }}>{fmtInt(c.impressions)}</td>
+                      <td style={{ padding: "8px 8px 8px 0" }}>{fmtInt(c.clicks)}</td>
+                      <td style={{ padding: "8px 8px 8px 0" }}>{fmtPct(c.ctr)}</td>
+                      <td style={{ padding: "8px 8px 8px 0" }}>{fmtInt(c.conversions)}</td>
+                      <td style={{ padding: "8px 8px 8px 0", whiteSpace: "nowrap" }}>
+                        {c.conversions > 0 ? fmtMoney(c.cpa) : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+      )}
+
+      {d && d.keywords.length > 0 && (
+        <Card>
+          <SectionTitle>Top keywords by spend</SectionTitle>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead>
+                <tr style={{ textAlign: "left", color: C.textMuted }}>
+                  {["Keyword", "Match", "Campaign", "Spend", "Clicks", "CTR", "Conv."].map(h => (
+                    <th key={h} style={{ padding: "0 8px 8px 0", fontWeight: 500, whiteSpace: "nowrap" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {d.keywords.map((k, i) => (
+                  <tr key={i} style={{ borderTop: `1px solid ${C.border}` }}>
+                    <td style={{ padding: "8px 8px 8px 0", color: C.textPrimary }}>{k.keyword}</td>
+                    <td style={{ padding: "8px 8px 8px 0", color: C.textMuted }}>{k.matchType}</td>
+                    <td style={{ padding: "8px 8px 8px 0", color: C.textMuted }}>{k.campaign}</td>
+                    <td style={{ padding: "8px 8px 8px 0", whiteSpace: "nowrap" }}>{fmtMoney(k.cost)}</td>
+                    <td style={{ padding: "8px 8px 8px 0" }}>{fmtInt(k.clicks)}</td>
+                    <td style={{ padding: "8px 8px 8px 0" }}>{fmtPct(k.ctr)}</td>
+                    <td style={{ padding: "8px 8px 8px 0" }}>{fmtInt(k.conversions)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ── SEO (Search Console) ──────────────────────────────────────────────────────
+function SeoPanel() {
+  const [days, setDays] = useState(30);
+  const { loading, data, refreshing, refresh } = useGoogleReport("/api/google/seo", days);
+  const d = data?.data;
+
+  // Position trend: Search Console reports average position where LOWER is
+  // better, so the arrow is inverted relative to every other metric here.
+  const trend = d?.trend || [];
+  const firstHalf = trend.slice(0, Math.floor(trend.length / 2));
+  const lastHalf  = trend.slice(Math.floor(trend.length / 2));
+  const avg = (rows) => rows.length ? rows.reduce((s, r) => s + r.position, 0) / rows.length : 0;
+  const posDelta = trend.length >= 4 ? avg(firstHalf) - avg(lastHalf) : null;
+
+  return (
+    <div style={{ display: "grid", gap: 20 }}>
+      <Card>
+        <SectionTitle action={<DateRange days={days} onChange={setDays} onRefresh={refresh} refreshing={refreshing} />}>
+          Search Console {data?.site && (
+            <span style={{ fontSize: 12, fontWeight: 400, color: C.textMuted }}>· {data.site}</span>
+          )}
+        </SectionTitle>
+
+        {loading && <div style={{ fontSize: 13, color: C.textMuted }}>Loading…</div>}
+
+        {!loading && data && !data.connected && (
+          <NotConnected
+            title="Search Console not connected"
+            reason={data.reason === "not-connected"
+              ? "Connect Google on the Overview tab to enable Search Console reporting."
+              : "Google is connected but no Search Console site is configured."}
+            missing={data.missing}
+            note="GSC_SITE_URL is either a URL prefix (https://www.dealeraddendums.com/) or a domain property (sc-domain:dealeraddendums.com)."
+          />
+        )}
+
+        {!loading && data?.error && data.connected && (
+          <div style={{ fontSize: 13, color: C.error }}>Search Console error — {data.error}</div>
+        )}
+
+        {!loading && d && (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
+            <Stat label="Clicks" value={fmtInt(d.totals.clicks)} />
+            <Stat label="Impressions" value={fmtInt(d.totals.impressions)} />
+            <Stat label="CTR" value={fmtPct(d.totals.ctr)} />
+            <Stat
+              label="Avg Position"
+              value={fmtPos(d.totals.position)}
+              sub={posDelta === null ? "lower is better"
+                : posDelta > 0 ? `improved ${posDelta.toFixed(1)} vs first half`
+                : `down ${Math.abs(posDelta).toFixed(1)} vs first half`}
+              color={posDelta === null ? undefined : posDelta > 0 ? C.success : C.warning}
+            />
+          </div>
+        )}
+      </Card>
+
+      {d && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+          <Card>
+            <SectionTitle>Top queries</SectionTitle>
+            {d.queries.length === 0 && <div style={{ fontSize: 13, color: C.textMuted }}>No query data in range.</div>}
+            {d.queries.map((q, i) => (
+              <div key={i} style={{
+                display: "grid", gridTemplateColumns: "1fr auto auto auto",
+                gap: 10, padding: "7px 0", borderBottom: `1px solid ${C.border}`, fontSize: 13,
+              }}>
+                <span style={{ color: C.textPrimary, overflow: "hidden", textOverflow: "ellipsis" }}>{q.query}</span>
+                <span style={{ color: C.textSecondary }}>{fmtInt(q.clicks)} clk</span>
+                <span style={{ color: C.textMuted }}>{fmtPct(q.ctr)}</span>
+                <span style={{ color: C.textMuted }}>#{fmtPos(q.position)}</span>
+              </div>
+            ))}
+          </Card>
+          <Card>
+            <SectionTitle>Top pages</SectionTitle>
+            {d.pages.map((p, i) => (
+              <div key={i} style={{
+                display: "grid", gridTemplateColumns: "1fr auto auto",
+                gap: 10, padding: "7px 0", borderBottom: `1px solid ${C.border}`, fontSize: 13,
+              }}>
+                <span style={{ color: C.textPrimary, overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {p.page.replace(/^https?:\/\/[^/]+/, "") || "/"}
+                </span>
+                <span style={{ color: C.textSecondary }}>{fmtInt(p.clicks)} clk</span>
+                <span style={{ color: C.textMuted }}>#{fmtPos(p.position)}</span>
+              </div>
+            ))}
+          </Card>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Recommendations / Approvals ───────────────────────────────────────────────
+// Phase 1 ships this empty on purpose: nothing produces proposed changes yet.
+// The UI and endpoints exist now so Phase 2/3 producers drop in without rework.
+function ApprovalsPanel() {
+  const [rows, setRows] = useState(null);
+  const [busyId, setBusyId] = useState(null);
+  const [note, setNote] = useState(null);
+
+  const load = () => fetch("/api/proposed-changes?status=pending")
+    .then(r => r.json())
+    .then(d => setRows(d.changes || []))
+    .catch(() => setRows([]));
+
+  useEffect(() => { load(); }, []);
+
+  const decide = async (id, action) => {
+    setBusyId(id);
+    const res = await fetch(`/api/proposed-changes/${id}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action }),
+    }).then(r => r.json()).catch(() => ({ error: "Request failed" }));
+    setBusyId(null);
+    setNote(res.note || res.error || null);
+    load();
+  };
+
+  return (
+    <Card>
+      <SectionTitle action={<SmallButton onClick={load}>Refresh</SmallButton>}>
+        Recommendations &amp; Approvals
+      </SectionTitle>
+
+      <p style={{ fontSize: 13, color: C.textSecondary, margin: "0 0 16px" }}>
+        Anything that would spend money lands here first. Nothing is pushed to Google
+        until you approve it.
+      </p>
+
+      {note && (
+        <div style={{
+          fontSize: 12, color: C.textSecondary, background: C.bgSubtle,
+          border: `1px solid ${C.border}`, borderRadius: 4, padding: "8px 10px", marginBottom: 12,
+        }}>{note}</div>
+      )}
+
+      {rows === null && <div style={{ fontSize: 13, color: C.textMuted }}>Loading…</div>}
+
+      {rows?.length === 0 && (
+        <NotConnected
+          title="No pending changes"
+          reason="Nothing is waiting for approval. Phase 1 is read-only reporting — no automation proposes changes yet."
+          note="Phase 2 (Ads management) and Phase 3 (AI recommendations) will populate this queue."
+        />
+      )}
+
+      {rows?.map(r => (
+        <div key={r.id} style={{
+          border: `1px solid ${C.border}`, borderRadius: 4,
+          padding: 14, marginBottom: 10,
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+            <div>
+              <Badge variant="info">{r.type}</Badge>
+              <span style={{ fontSize: 14, color: C.textPrimary, marginLeft: 8 }}>
+                {r.summary || r.target_label || "Proposed change"}
+              </span>
+              <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>
+                {new Date(r.created_at).toLocaleString()}
+                {r.source ? ` · ${r.source}` : ""}
+              </div>
+              {r.rationale && (
+                <div style={{ fontSize: 12, color: C.textSecondary, marginTop: 6 }}>{r.rationale}</div>
+              )}
+            </div>
+            <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+              <SmallButton variant="success" disabled={busyId === r.id}
+                           onClick={() => decide(r.id, "approve")}>Approve</SmallButton>
+              <SmallButton variant="danger" disabled={busyId === r.id}
+                           onClick={() => decide(r.id, "reject")}>Reject</SmallButton>
+            </div>
+          </div>
+        </div>
+      ))}
+    </Card>
+  );
+}
+
 // ── Nav tabs ──────────────────────────────────────────────────────────────────
 const TABS = [
-  { id: "overview", label: "Overview"    },
-  { id: "ab",       label: "A/B Tests"   },
-  { id: "copy",     label: "AI Copy"     },
-  { id: "blog",     label: "Blog & Social"},
-  { id: "leads",    label: "Leads"       },
+  { id: "overview",  label: "Overview"     },
+  { id: "analytics", label: "Analytics"    },
+  { id: "ads",       label: "Ads"          },
+  { id: "seo",       label: "SEO"          },
+  { id: "ab",        label: "A/B Tests"    },
+  { id: "copy",      label: "AI Copy"      },
+  { id: "blog",      label: "Blog & Social"},
+  { id: "leads",     label: "Leads"        },
+  { id: "approvals", label: "Approvals"    },
 ];
 
 // ── Main App ──────────────────────────────────────────────────────────────────
@@ -1050,17 +1653,38 @@ export default function App() {
   });
   const [statsLoaded, setStatsLoaded] = useState(false);
 
+  // GA4 (when Google is connected) is the better answer for site-wide traffic:
+  // the first-party hero_impression event fires only on the homepage and /lp
+  // pages, so it undercounts everything else (blog, pricing, legal). Trial
+  // Signups stay first-party either way — marketing_leads is the authoritative
+  // record of a signup, not a GA4 conversion event.
+  const [ga4, setGa4] = useState(null);
   useEffect(() => {
     fetch("/api/admin-stats")
       .then(r => r.json())
       .then(data => { setStats(data); setStatsLoaded(true); })
       .catch(() => setStatsLoaded(true));
+    fetch("/api/google/analytics?days=30")
+      .then(r => r.json())
+      .then(d => { if (d?.connected && d.data) setGa4(d.data); })
+      .catch(() => {});
   }, []);
 
+  const ga4Live = !!ga4;
+  const ga4ConvRate = ga4Live && ga4.sessions > 0
+    ? ((ga4.funnel?.signups ?? 0) / ga4.sessions) * 100
+    : null;
+
   const statCards = [
-    { label: "Monthly Visitors",  ...stats.visitors,       color: C.success },
+    ga4Live
+      ? { label: "Monthly Visitors", value: (ga4.sessions ?? 0).toLocaleString(),
+          delta: `${(ga4.totalUsers ?? 0).toLocaleString()} users · GA4`, color: C.success }
+      : { label: "Monthly Visitors",  ...stats.visitors,       color: C.success },
     { label: "Trial Signups",     ...stats.trials,          color: C.success },
-    { label: "Conversion Rate",   ...stats.conversionRate,  color: C.success },
+    ga4ConvRate !== null
+      ? { label: "Conversion Rate", value: `${ga4ConvRate.toFixed(1)}%`,
+          delta: "signups ÷ GA4 sessions", color: C.success }
+      : { label: "Conversion Rate",   ...stats.conversionRate,  color: C.success },
     { label: "Active Dealers",    ...stats.activeDealers,   color: C.blue    },
   ];
 
@@ -1146,13 +1770,24 @@ export default function App() {
                 </Card>
               ))}
             </div>
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.75)", marginTop: -8 }}>
+              {ga4Live
+                ? "Traffic and conversion rate from Google Analytics 4. Trial signups and active dealers are first-party."
+                : "Traffic from first-party events (homepage + landing pages only). Connect Google below for site-wide GA4 numbers."}
+            </div>
+            <GoogleConnectPanel />
             <InsightsPanel />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-              <FunnelPanel />
+              <FunnelPanel ga4={ga4} />
               <LeadsPanel />
             </div>
           </div>
         )}
+
+        {tab === "analytics" && <AnalyticsPanel />}
+        {tab === "ads"       && <AdsPanel />}
+        {tab === "seo"       && <SeoPanel />}
+        {tab === "approvals" && <ApprovalsPanel />}
 
         {tab === "ab" && (
           <div style={{ display: "grid", gap: 20 }}>
