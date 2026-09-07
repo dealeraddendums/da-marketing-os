@@ -37,6 +37,10 @@ export async function GET(req: NextRequest) {
   if (!oauthConfigured) return back({ google: 'error', reason: 'not-configured' })
 
   const url = new URL(req.url)
+  // Host is logged on every callback: if Google ever redirects somewhere other
+  // than the host that minted the state cookie, the resulting "state mismatch"
+  // is otherwise indistinguishable from a genuine CSRF rejection.
+  console.log(`[google-oauth] callback on host ${req.headers.get('host') || '(unknown)'}`)
   const error = url.searchParams.get('error')
   if (error) return back({ google: 'error', reason: error })
 
