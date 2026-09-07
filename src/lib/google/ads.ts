@@ -40,6 +40,22 @@ export class AdsAccessPendingError extends Error {
   }
 }
 
+/**
+ * The Ads API is unreachable for a reason that is not the caller's fault and
+ * not a bug — the API is switched off in the Cloud project, or Google answered
+ * with an HTML error page instead of JSON. Distinct from AdsAccessPendingError
+ * because the fix is different, and telling Allan "awaiting Basic Access" while
+ * the real problem is a disabled API would send him to the wrong console page.
+ */
+export class AdsUnavailableError extends Error {
+  readonly kind: 'api-not-enabled' | 'upstream'
+  constructor(kind: 'api-not-enabled' | 'upstream', message: string) {
+    super(message)
+    this.name = 'AdsUnavailableError'
+    this.kind = kind
+  }
+}
+
 /** Error codes that mean "the token is not approved for this account yet". */
 const ACCESS_PENDING_CODES = [
   'DEVELOPER_TOKEN_NOT_APPROVED',
@@ -60,8 +76,16 @@ function classifyAdsError(body: GaqlResponse, status: number): string | null {
   // A Test token hitting a production account can also come back as a bare 403
   // with no machine-readable code; treat that as pending rather than a fault,
   // since a genuinely broken query would fail with 400 and a query error.
+  // NOTE: checked last on purpose — "API not enabled" is ALSO a 403, and is
+  // detected before this in gaql() so it is not mislabelled as access-pending.
   if (status === 403) return 'DEVELOPER_TOKEN_NOT_APPROVED'
   return null
+}
+
+/** Google's "you have not switched this API on" response, which arrives as a
+ *  403 with SERVICE_DISABLED — the same status a Test-level token produces. */
+function isApiDisabled(blob: string): boolean {
+  return /SERVICE_DISABLED|has not been used in project|is disabled/i.test(blob)
 }
 
 /** Run a GAQL query. `search` (not `searchStream`) so pagination is ordinary
@@ -88,8 +112,38 @@ async function gaql(q: string): Promise<Record<string, any>[]> {
       body: JSON.stringify({ query: q, pageSize: 1000, ...(pageToken ? { pageToken } : {}) }),
       cache: 'no-store',
     })
-    const json = (await res.json()) as GaqlResponse
+    // Read as TEXT first. Google can answer with an HTML error page (notably
+    // when the Ads API is not enabled on the Cloud project), and calling
+    // res.json() on that throws `Unexpected token '<'` — which surfaced to the
+    // operator as a raw parser error instead of a readable state.
+    const raw = await res.text()
+    let json: GaqlResponse | null = null
+    try {
+      json = JSON.parse(raw) as GaqlResponse
+    } catch {
+      json = null
+    }
+
+    if (!json) {
+      const looksHtml = /^\s*<(!doctype|html)/i.test(raw)
+      throw new AdsUnavailableError(
+        looksHtml ? 'api-not-enabled' : 'upstream',
+        looksHtml
+          ? 'Google Ads API returned an HTML error page instead of data — the Google Ads API is usually not enabled for this Cloud project.'
+          : `Google Ads returned an unreadable response (HTTP ${res.status}).`,
+      )
+    }
+
     if (!res.ok) {
+      const blob = JSON.stringify(json.error ?? {})
+      // Order matters: an API that is switched off answers 403, exactly like a
+      // Test-level token does. Check the disabled case first.
+      if (isApiDisabled(blob)) {
+        throw new AdsUnavailableError(
+          'api-not-enabled',
+          json.error?.message || 'The Google Ads API is not enabled for this Cloud project.',
+        )
+      }
       const pending = classifyAdsError(json, res.status)
       if (pending) {
         throw new AdsAccessPendingError(

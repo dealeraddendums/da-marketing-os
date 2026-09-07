@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { exchangeCodeAndStore } from '@/lib/google/oauth'
-import { oauthConfigured } from '@/lib/google/config'
+import { oauthConfigured, googleEnv } from '@/lib/google/config'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,8 +31,17 @@ export const dynamic = 'force-dynamic'
  * the two internet scanners that already hit this path were.
  */
 export async function GET(req: NextRequest) {
+  // Build the return URL from the CONFIGURED public site URL, never from
+  // req.url. Behind nginx the app is reached on 127.0.0.1:3020, so
+  // `new URL('/admin', req.url)` resolves to http://localhost:3020/admin — which
+  // is what the browser was actually sent after a successful connect
+  // (ERR_CONNECTION_REFUSED). The token had already been stored by then; only
+  // the final hop was wrong. Applies to the error redirects too, or a failed
+  // connect would strand the browser the same way.
   const back = (params: Record<string, string>) =>
-    NextResponse.redirect(new URL(`/admin?${new URLSearchParams(params)}`, req.url))
+    NextResponse.redirect(
+      `${googleEnv.siteUrl.replace(/\/$/, '')}/admin?${new URLSearchParams(params)}`,
+    )
 
   if (!oauthConfigured) return back({ google: 'error', reason: 'not-configured' })
 

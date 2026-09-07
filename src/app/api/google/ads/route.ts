@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { isAdminAuthed } from '@/lib/reputation'
 import { getConnectionStatus } from '@/lib/google/oauth'
-import { fetchAdsSummary, AdsAccessPendingError } from '@/lib/google/ads'
+import { fetchAdsSummary, AdsAccessPendingError, AdsUnavailableError } from '@/lib/google/ads'
 import { adsConfigured, missingEnvFor, googleEnv } from '@/lib/google/config'
 import { cached } from '@/lib/google/cache'
 import { resolveRange } from '@/lib/google/range'
@@ -43,6 +43,18 @@ export async function GET(req: NextRequest) {
     // Test-level developer token refused for the production account: an
     // expected waiting state, so answer 200 with a clean "awaiting approval"
     // shape rather than a 502 the panel would render as a fault.
+    // API switched off / unreadable upstream response: a configuration state,
+    // not a fault in this app. 200 with a readable shape so the panel renders a
+    // calm message rather than a raw JSON-parser error.
+    if (err instanceof AdsUnavailableError) {
+      return NextResponse.json({
+        connected: false,
+        reason: err.kind,
+        apiNotEnabled: err.kind === 'api-not-enabled',
+        detail: err.message,
+        range: { startDate, endDate, days },
+      })
+    }
     if (err instanceof AdsAccessPendingError) {
       return NextResponse.json({
         connected: false,

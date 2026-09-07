@@ -1,7 +1,11 @@
 import Link from 'next/link'
 import { getReviews, getStats, syncReviewsToSupabase, ReviewRow } from '@/lib/reputation'
 import { GBP_CONNECTED } from '@/lib/gbp'
-import { Stars, StatusBadge, StatCard, Card, C, timeAgo } from '@/components/reputation/ui'
+import { Stars, StatusBadge, StatCard, Card, timeAgo } from '@/components/reputation/ui'
+// C comes from the non-client tokens module: importing it through ui.tsx
+// ('use client') hands this Server Component a module reference it cannot
+// serialize. See tokens.ts.
+import { C } from '@/components/reputation/tokens'
 import { QuickActions } from '@/components/reputation/DashboardClient'
 
 export const dynamic = 'force-dynamic'

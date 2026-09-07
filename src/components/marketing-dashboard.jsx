@@ -1362,6 +1362,18 @@ function AdsPanel() {
 
         {loading && <div style={{ fontSize: 13, color: C.textMuted }}>Loading…</div>}
 
+        {!loading && data && !data.connected && data.apiNotEnabled && (
+          <NotConnected
+            title="Google Ads API is not enabled yet"
+            reason={
+              "The Cloud project has not switched the Google Ads API on, so Google answers with an " +
+              "error page rather than data. Enable it in Google Cloud → APIs & Services → Enable APIs, " +
+              "then hit Refresh. Analytics and Search Console are unaffected."
+            }
+            note={data.detail}
+          />
+        )}
+
         {!loading && data && !data.connected && data.awaitingBasicAccess && (
           <NotConnected
             title="Awaiting Basic Access approval from Google"
@@ -1375,7 +1387,7 @@ function AdsPanel() {
           />
         )}
 
-        {!loading && data && !data.connected && !data.awaitingBasicAccess && (
+        {!loading && data && !data.connected && !data.awaitingBasicAccess && !data.apiNotEnabled && (
           <NotConnected
             title={data.awaitingDeveloperToken ? "Awaiting Google Ads API token" : "Google Ads not connected"}
             reason={data.awaitingDeveloperToken

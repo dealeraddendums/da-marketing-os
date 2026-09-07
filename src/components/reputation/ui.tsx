@@ -3,23 +3,10 @@ import React from 'react'
 
 // DA design tokens (mirrors DADesignGuidelines.md). Kept here so client components
 // don't import the server-only lib/reputation module.
-export const C = {
-  navy: '#2a2b3c',
-  orange: '#ffa500',
-  blue: '#1976d2',
-  blueLight: '#2196f3',
-  success: '#4caf50',
-  error: '#ff5252',
-  warning: '#ff9800',
-  bgApp: '#3a6897',
-  bgSurface: '#ffffff',
-  bgSubtle: '#f5f6f7',
-  textPrimary: '#333333',
-  textSecondary: '#55595c',
-  textMuted: '#78828c',
-  border: '#e0e0e0',
-  borderStrong: '#c0c0c0',
-} as const
+// Imported (not bare re-exported) because the components below reference C
+// directly: `export ... from` creates no local binding.
+import { C } from './tokens'
+export { C }
 
 export const STAR_NUM: Record<string, number> = { ONE: 1, TWO: 2, THREE: 3, FOUR: 4, FIVE: 5 }
 
