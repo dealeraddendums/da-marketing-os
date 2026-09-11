@@ -70,13 +70,30 @@ function cookie(name: string): string | null {
   return entry ? entry.slice(name.length + 1) : null
 }
 
+/** Parse a session id out of a `_ga_<ID>` cookie value. GA4 writes it in one
+ *  of two shapes depending on version: `GS1.1.<session_id>.<n>...` or the newer
+ *  `GS2.1.s<session_id>$o1$g0...`. Both are handled. */
+function sessionIdFrom(raw: string): string | null {
+  const seg = raw.split('.')[2] || ''
+  const m = seg.match(/^s?(\d+)/)
+  return m ? m[1] : null
+}
+
 /**
  * `_ga` holds `GA1.1.<a>.<b>` and the client id is `<a>.<b>` — the version and
- * depth prefix are not part of it. Per-stream `_ga_<ID>` (the measurement id
- * minus its `G-`) holds the session id, in one of two shapes depending on GA4
- * version: `GS1.1.<session_id>.<n>...` or the newer `GS2.1.s<session_id>$o...`.
- * Both are handled; a parse miss returns null and the event still sends, just
- * without session attribution.
+ * depth prefix are not part of it. It is per-DOMAIN, so it is shared by every
+ * data stream on the site. The session id lives in a per-STREAM
+ * `_ga_<measurement id minus G->` cookie.
+ *
+ * ⚠️ This property has MORE THAN ONE web data stream. GTM's GA4 config tag uses
+ * G-NB7NWLQG5D, so the cookie on this domain is `_ga_NB7NWLQG5D`, while the
+ * Measurement Protocol api_secret is bound to G-22M57J2LLS — both feed the same
+ * property (413858087), which is why reporting is unified. Looking only for the
+ * configured stream's cookie would therefore find nothing and silently lose
+ * session attribution, so any `_ga_*` cookie is accepted as a fallback.
+ *
+ * A parse miss returns null and the event still sends, just without session
+ * attribution.
  */
 export function getGaIds(measurementId?: string): GaIds {
   const out: GaIds = {}
@@ -87,15 +104,21 @@ export function getGaIds(measurementId?: string): GaIds {
     if (parts.length >= 4) out.ga_client_id = `${parts[2]}.${parts[3]}`
   }
 
+  // Preferred: the configured stream's own cookie.
   const mid = (measurementId || process.env.NEXT_PUBLIC_GA4_MEASUREMENT_ID || '').replace(/^G-/, '')
   if (mid) {
     const raw = cookie(`_ga_${mid}`)
-    if (raw) {
-      const seg = raw.split('.')[2] || ''
-      // Newer containers prefix the session id with `s` and append $-delimited
-      // fields; older ones store the bare number.
-      const m = seg.match(/^s?(\d+)/)
-      if (m) out.ga_session_id = m[1]
+    if (raw) out.ga_session_id = sessionIdFrom(raw) ?? undefined
+  }
+
+  // Fallback: whichever stream actually wrote a cookie on this domain. A
+  // session id from a sibling stream in the same property is far better than
+  // none — without it every server-sent conversion starts its own session.
+  if (!out.ga_session_id && typeof document !== 'undefined') {
+    for (const entry of document.cookie.split('; ')) {
+      if (!/^_ga_[A-Za-z0-9]+=/.test(entry)) continue
+      const sid = sessionIdFrom(entry.slice(entry.indexOf('=') + 1))
+      if (sid) { out.ga_session_id = sid; break }
     }
   }
   return out

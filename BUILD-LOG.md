@@ -234,3 +234,79 @@ approval queue is real. Also open: GBP is the next snapshot source but needs
 both Google's API approval and a reconnect for the `business.manage` scope, and
 `lib/gbp.ts` is still stubbed — when it lands it needs a `gbpIsStubbed` flag so
 a brief can never mistake mock reviews for real ones.
+
+---
+
+## Tracking-integrity sprint — the Analyst's top 3
+**Sep 11, 2026** · 14:30 – 16:10 PDT (~100m wall clock) · ~95m CC active ·
+~3m operator (the MP api_secret, and the measurement ID that unblocked it)
+
+Shipped: `72691bf` + `15cd0f6` — `trial_signup` and `trial_form_start` flowing
+to GA4 over the Measurement Protocol, the admin funnel reading real event
+counts instead of hardcoded zeros, and a read-only audit that explains the
+15.5-vs-0 contradiction the Analyst found. Migration 013 carries GA4 identity
+from form submit to confirmation.
+
+The audit turned out to be the valuable half, and the answer was in the code
+rather than in Google. `lib/attribution.ts` pushes a `signup_completed`
+dataLayer event on a successful `POST /api/leads` — at form submit, before
+email confirmation — and GTM forwards it to a Google Ads webpage conversion
+called "AW Sign-up Form Submission". That is the 15.5. GA4 gets the same event
+but it was never marked a key event, and GA4's conversions metric counts only
+key events, hence the 0. Both numbers were right; they measure a form
+submission, and one of them wasn't marked as counting.
+
+So $209 per conversion is cost per form submission, not per trial. The 30-day
+totals settle what the action measures: 15.5 conversions against 16 paid form
+submissions. Confirmation only becomes measurable from Sep 3, when Layer 0
+shipped, so the only honest window is Sep 3–11 — $1,220.25 against 3 confirmed
+paid trials, about 1.9× the headline. The paid confirm rate there is 3 of 4, so
+the gap is mostly the earlier period being unmeasurable rather than mass
+abandonment.
+
+Deciding where `trial_signup` fires was the one real design question. There is
+a confirmation page, so client-side was on the table — but the confirmation
+click arrives from the applicant's email client, which is a different GA4
+session with no referrer. Firing it there would attribute every trial to Direct
+and destroy the exact number the sprint exists to produce. Hence server-side at
+confirmation, with the GA4 client and session ids captured in the originating
+session and carried on the lead row.
+
+Three things only showed up by checking against live GA4 rather than reading
+code. GA4 already emits `form_start` itself via enhanced measurement — 57,647
+events in 30 days against 41,460 sessions, because it fires on every form on
+the site — so sending our own under that name would have double-counted the
+trial form and buried it; ours became `trial_form_start`. The analytics route
+was overwriting `funnel.signups` with the `marketing_leads` row count, so the
+"GA4" toggle had been showing a first-party number as though GA4 measured it,
+counting unconfirmed and bot submissions as trial signups. And `.env.production`
+was never gitignored — only `.env.production.local` was — leaving the file with
+every secret one `git add -A` on the box from a commit.
+
+The debugging lesson worth keeping: Measurement Protocol answers **204 for a
+mismatched measurement_id/api_secret pair and silently drops the event**. The
+payloads validated clean, both sends returned 204, and nothing arrived, because
+this property has two web data streams — GTM sends to G-NB7NWLQG5D while the
+api_secret Allan created is bound to G-22M57J2LLS. Both feed property
+413858087, so reporting is unified, but api_secrets are stream-scoped. Only
+polling Realtime caught it. That also forced a fix to the client-side cookie
+read: the session cookie on this domain is `_ga_NB7NWLQG5D`, so looking only
+for the configured stream's cookie would have silently lost session attribution
+— any `_ga_*` cookie is now accepted.
+
+Verified: payloads validated against the debug endpoint with `[]` messages and
+a malformed param proving the validator was live, then both events sent for
+real and **confirmed in property 413858087's Realtime** (`trial_form_start=1`,
+`trial_signup=1`), plus the live app endpoint exercised end to end.
+
+**Not closed:** `trial_signup` still has to be marked a **key event** in the
+GA4 Admin UI before GA4's conversions metric moves off 0 — that is a click
+Allan has to make. `signup_completed` was deliberately left firing where it is:
+the name is wrong but the live Ads conversion action depends on it, and
+renaming it would silently change conversion volume and therefore Smart
+Bidding. The first-party funnel toggle still counts every lead row as a trial
+signup — same class of overstatement, but it is a number Allan reads and
+changing its meaning is his call. Two test events carrying `cc_test_event=true`
+exist in GA4 from the verification. And the GTM container is still full of
+inert HubSpot-era triggers (`hs-form-event:on-submission:success`,
+`/thank-you`, `#successModal`) that make it misleading to read.
