@@ -9,7 +9,9 @@
 
 import { supabase } from '@/lib/supabase'
 import { seal, open } from './crypto'
-import { googleEnv, OAUTH_SCOPES, oauthRedirectUri, oauthConfigured } from './config'
+import {
+  googleEnv, OAUTH_SCOPES, oauthRedirectUri, oauthConfigured, missingScopes,
+} from './config'
 
 const TOKEN_URL  = 'https://oauth2.googleapis.com/token'
 const AUTH_URL   = 'https://accounts.google.com/o/oauth2/v2/auth'
@@ -20,6 +22,15 @@ export interface ConnectionStatus {
   connected: boolean
   /** A stored grant exists but Google rejected it — reconnect, don't reconfigure. */
   needsReconnect?: boolean
+  /**
+   * The grant is healthy but was issued before the consent screen gained
+   * scopes, so some surfaces cannot work until the operator re-consents.
+   * Distinct from needsReconnect: nothing is broken, it is just narrower than
+   * what the app can now ask for.
+   */
+  needsScopeUpgrade?: boolean
+  /** Scopes in the current request set this grant does not hold. */
+  missingScopes?: string[]
   configured: boolean
   accountEmail?: string | null
   scopes?: string[]
@@ -85,13 +96,41 @@ export async function exchangeCodeAndStore(code: string): Promise<{ email: strin
     grant_type: 'authorization_code',
   })
 
-  if (!token.refresh_token) {
-    // Almost always means a prior grant already exists and Google withheld a new
-    // refresh token. Say so precisely — the fix is to revoke at
-    // myaccount.google.com and reconnect, not to retry.
+  // ── NEVER overwrite a stored refresh token with null ──────────────────────
+  // Google returns a refresh token only on first consent or when
+  // prompt=consent forces re-consent. We always send prompt=consent, so one
+  // should be present — but if Google withholds it and a working token is
+  // already on file, the correct action is to KEEP the stored token and update
+  // only the metadata. Writing null (or throwing before updating the granted
+  // scopes) would turn a re-consent that widened permissions into a dead
+  // connection, which is the worst possible outcome of clicking "Reconnect".
+  let existing: { ciphertext: string; iv: string; tag: string } | null = null
+  {
+    const { data } = await supabase
+      .from('google_connection')
+      .select('refresh_token_ciphertext, refresh_token_iv, refresh_token_tag')
+      .eq('singleton', true)
+      .maybeSingle()
+    if (data?.refresh_token_ciphertext) {
+      existing = {
+        ciphertext: data.refresh_token_ciphertext,
+        iv: data.refresh_token_iv,
+        tag: data.refresh_token_tag,
+      }
+    }
+  }
+
+  if (!token.refresh_token && !existing) {
+    // No new token AND nothing to fall back on — this genuinely cannot be stored.
     throw new Error(
       'Google returned no refresh token. Remove this app at ' +
       'myaccount.google.com/permissions and click Connect Google again.',
+    )
+  }
+  if (!token.refresh_token) {
+    console.warn(
+      '[google-oauth] Google returned no refresh_token on this exchange — ' +
+      'keeping the existing stored token and updating scopes/identity only.',
     )
   }
 
@@ -106,11 +145,20 @@ export async function exchangeCodeAndStore(code: string): Promise<{ email: strin
     // Identity is a nicety for the status panel; never fail the connect over it.
   }
 
-  const sealed = seal(token.refresh_token)
+  const sealed = token.refresh_token ? seal(token.refresh_token) : existing!
+  const granted = token.scope ? token.scope.split(' ') : OAUTH_SCOPES
+  const stillMissing = missingScopes(granted)
+  if (stillMissing.length) {
+    // Not an error: Google grants only what the user ticked, and some scopes
+    // may still be unverified. Recorded so the panel can show which surfaces
+    // remain dark instead of leaving the operator guessing.
+    console.warn(`[google-oauth] connected WITHOUT scopes: ${stillMissing.join(' ')}`)
+  }
+  console.log(`[google-oauth] granted scopes: ${granted.join(' ')}`)
   const row = {
     singleton: true,
     account_email: email,
-    scopes: token.scope ? token.scope.split(' ') : OAUTH_SCOPES,
+    scopes: granted,
     refresh_token_ciphertext: sealed.ciphertext,
     refresh_token_iv: sealed.iv,
     refresh_token_tag: sealed.tag,
@@ -209,12 +257,18 @@ export async function getConnectionStatus(): Promise<ConnectionStatus> {
     .eq('singleton', true)
     .maybeSingle()
   if (error || !data) return { connected: false, configured: true }
+  const granted = data.scopes ?? []
+  const gap = missingScopes(granted)
   return {
     connected: data.status === 'connected',
     // A row exists but the grant is dead: the UI shows "Reconnect Google"
     // rather than the first-time "Connect Google" copy, so it is obvious this
     // is a renewal and not a fresh setup.
     needsReconnect: data.status === 'revoked',
+    // Healthy but narrower than what we now request — offer the reconnect as
+    // an upgrade, not as a repair.
+    needsScopeUpgrade: data.status === 'connected' && gap.length > 0,
+    missingScopes: gap,
     configured: true,
     accountEmail: data.account_email,
     scopes: data.scopes ?? [],

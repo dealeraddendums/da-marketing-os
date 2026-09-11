@@ -1126,22 +1126,34 @@ const Stat = ({ label, value, sub, color }) => (
 
 // Shared fetch hook for the three report panels — same loading/error/range
 // behaviour in one place so the panels differ only in how they render.
-function useGoogleReport(path, days) {
+function useGoogleReport(path, days, extra = "") {
   const [state, setState] = useState({ loading: true, data: null, error: null });
   const [refreshing, setRefreshing] = useState(false);
 
   const load = (force = false) => {
     if (force) setRefreshing(true); else setState(s => ({ ...s, loading: true }));
-    fetch(`${path}?days=${days}${force ? "&refresh=1" : ""}`)
+    fetch(`${path}?days=${days}${extra}${force ? "&refresh=1" : ""}`)
       .then(r => r.json())
       .then(d => setState({ loading: false, data: d, error: d.error || null }))
       .catch(() => setState({ loading: false, data: null, error: "Request failed" }))
       .finally(() => setRefreshing(false));
   };
 
-  useEffect(() => { load(false); /* eslint-disable-next-line */ }, [path, days]);
+  // `extra` is in the dependency list so switching Ads account refetches.
+  useEffect(() => { load(false); /* eslint-disable-next-line */ }, [path, days, extra]);
   return { ...state, refreshing, refresh: () => load(true) };
 }
+
+// Sends the operator to Google to re-consent. prompt=consent is always on
+// server-side, so this both repairs a dead grant and widens a narrow one.
+const ReconnectLink = ({ label = "Reconnect Google" }) => (
+  <a href="/api/google/oauth/start" style={{
+    display: "inline-block", height: 32, lineHeight: "32px", padding: "0 14px",
+    background: C.blue, color: "#fff", border: `1px solid ${C.blue}`,
+    borderRadius: 4, fontSize: 13, fontWeight: 500, textDecoration: "none",
+    fontFamily: "Roboto, sans-serif",
+  }}>{label}</a>
+);
 
 // ── Connect Google ────────────────────────────────────────────────────────────
 function GoogleConnectPanel({ onStatus }) {
@@ -1207,9 +1219,9 @@ function GoogleConnectPanel({ onStatus }) {
             </div>
           ) : (
             <p style={{ fontSize: 13, color: C.textSecondary, margin: "0 0 14px" }}>
-              One-time authorization. Grants read access to Google Ads, Analytics (GA4) and
-              Search Console for this account. The refresh token is stored encrypted on the
-              server and never reaches the browser.
+              One-time authorization. Grants read access to Google Ads, Analytics (GA4),
+              Search Console, Business Profile and the Indexing API for this account. The
+              refresh token is stored encrypted on the server and never reaches the browser.
             </p>
           )}
           <a href="/api/google/oauth/start" style={{
@@ -1241,21 +1253,49 @@ function GoogleConnectPanel({ onStatus }) {
           <div style={{ fontSize: 12, color: C.textMuted, fontFamily: "monospace", wordBreak: "break-all" }}>
             {(conn.scopes || []).map(s => s.replace("https://www.googleapis.com/auth/", "")).join(" · ")}
           </div>
+
+          {/* Per-surface readiness is now driven by the SCOPES this grant
+              actually holds, not by env vars. A grant made before the consent
+              screen was widened keeps its old, narrower scope set — adding
+              scopes to the request does not retroactively widen it — so the
+              only fix is a re-consent. */}
           <div style={{ display: "flex", gap: 8, marginTop: 4, flexWrap: "wrap" }}>
             {[
-              ["Analytics (GA4)", status.surfaces?.ga4?.configured],
-              ["Search Console",  status.surfaces?.gsc?.configured],
-              ["Google Ads",      status.surfaces?.ads?.configured],
+              ["Analytics (GA4)",  status.surfaces?.ga4?.scopeGranted && status.surfaces?.ga4?.configured],
+              ["Search Console",   status.surfaces?.gsc?.scopeGranted],
+              ["Google Ads",       status.surfaces?.ads?.scopeGranted],
+              ["Business Profile", status.surfaces?.gbp?.scopeGranted],
+              ["Indexing",         status.surfaces?.indexing?.scopeGranted],
             ].map(([label, ok]) => (
               <Badge key={label} variant={ok ? "success" : "warning"}>
-                {label}: {ok ? "ready" : "needs config"}
+                {label}: {ok ? "ready" : "not granted"}
               </Badge>
             ))}
           </div>
-          {status.surfaces?.ads?.awaitingDeveloperToken && (
-            <div style={{ fontSize: 12, color: C.textMuted }}>
-              Google Ads reporting turns on when the developer token is approved and added
-              to the environment. Analytics and Search Console do not need it.
+
+          {conn.needsScopeUpgrade && (
+            <div style={{
+              border: `1px solid ${C.warning}`, background: "#fff8ec",
+              borderRadius: 4, padding: "10px 12px", marginTop: 4,
+            }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: C.textPrimary, marginBottom: 4 }}>
+                New permissions available — reconnect to grant them
+              </div>
+              <div style={{ fontSize: 12, color: C.textSecondary, marginBottom: 8 }}>
+                This connection was authorized before the consent screen gained these scopes,
+                and Google does not widen an existing grant retroactively. Reporting that already
+                works keeps working either way; reconnecting takes one click and the stored token
+                is never discarded.
+              </div>
+              <div style={{
+                fontSize: 12, color: C.textMuted, fontFamily: "monospace",
+                wordBreak: "break-all", marginBottom: 10,
+              }}>
+                {(conn.missingScopes || [])
+                  .map(x => x.replace("https://www.googleapis.com/auth/", ""))
+                  .join(" · ")}
+              </div>
+              <ReconnectLink label="Reconnect to grant new permissions" />
             </div>
           )}
         </div>
@@ -1348,10 +1388,77 @@ function AnalyticsPanel() {
 }
 
 // ── Ads (read-only) ───────────────────────────────────────────────────────────
+// Accounts are discovered from Google (customers:listAccessibleCustomers), not
+// configured — so a new account appears here without an env change. Manager
+// (MCC) accounts are listed with their child accounts indented beneath them;
+// only a child actually spends, so managers are not selectable.
+function AdsAccountList({ accounts, selected, onSelect }) {
+  if (!accounts?.length) return null;
+  // Children sit under their manager; directly-reached accounts stand alone.
+  const managers = accounts.filter(a => a.manager);
+  const childrenOf = (id) => accounts.filter(a => a.viaManager === id);
+  const standalone = accounts.filter(a => !a.manager && !a.viaManager);
+
+  const Row = ({ a, indent }) => {
+    const isSel = a.id === selected;
+    return (
+      <button
+        onClick={() => onSelect(a.id)}
+        title={`Customer ID ${a.id}`}
+        style={{
+          display: "flex", alignItems: "center", gap: 10, width: "100%",
+          textAlign: "left", padding: "8px 10px", paddingLeft: 10 + indent * 18,
+          background: isSel ? "#e8f1fb" : C.bgSurface,
+          border: `1px solid ${isSel ? C.blue : C.border}`,
+          borderRadius: 4, cursor: "pointer", fontFamily: "Roboto, sans-serif",
+          fontSize: 13, color: C.textPrimary,
+        }}
+      >
+        <span style={{ fontWeight: isSel ? 600 : 400, flex: 1 }}>{a.name}</span>
+        <span style={{ fontSize: 11, color: C.textMuted, fontFamily: "monospace" }}>{a.id}</span>
+        {a.testAccount && <Badge variant="warning">test</Badge>}
+        {a.status && a.status !== "ENABLED" && <Badge variant="neutral">{a.status}</Badge>}
+      </button>
+    );
+  };
+
+  return (
+    <div style={{ display: "grid", gap: 6 }}>
+      {managers.map(m => (
+        <div key={m.id} style={{ display: "grid", gap: 6 }}>
+          <div style={{
+            display: "flex", alignItems: "center", gap: 8, padding: "6px 10px",
+            fontSize: 12, color: C.textMuted, textTransform: "uppercase", fontWeight: 500,
+          }}>
+            <span>{m.name}</span>
+            <Badge variant="neutral">manager</Badge>
+            <span style={{ fontFamily: "monospace", textTransform: "none" }}>{m.id}</span>
+          </div>
+          {childrenOf(m.id).length === 0 && (
+            <div style={{ fontSize: 12, color: C.textMuted, paddingLeft: 28 }}>
+              No child accounts visible to this connection.
+            </div>
+          )}
+          {childrenOf(m.id).map(c => <Row key={c.id} a={c} indent={1} />)}
+        </div>
+      ))}
+      {standalone.map(a => <Row key={a.id} a={a} indent={0} />)}
+    </div>
+  );
+}
+
 function AdsPanel() {
   const [days, setDays] = useState(30);
-  const { loading, data, refreshing, refresh } = useGoogleReport("/api/google/ads", days);
+  const [customerId, setCustomerId] = useState("");
+  const extra = customerId ? `&customerId=${encodeURIComponent(customerId)}` : "";
+  const { loading, data, refreshing, refresh } = useGoogleReport("/api/google/ads", days, extra);
   const d = data?.data;
+  // The server picks a default account on the first load; adopt it so the list
+  // highlights the row actually being reported on.
+  const selected = customerId || data?.customerId || "";
+
+  const th = { padding: "0 8px 8px 0", fontWeight: 500, whiteSpace: "nowrap" };
+  const td = { padding: "8px 8px 8px 0" };
 
   return (
     <div style={{ display: "grid", gap: 20 }}>
@@ -1362,125 +1469,155 @@ function AdsPanel() {
 
         {loading && <div style={{ fontSize: 13, color: C.textMuted }}>Loading…</div>}
 
+        {!loading && data && !data.connected && data.reason === "missing-scope" && (
+          <div>
+            <NotConnected
+              title="This Google connection cannot read Ads yet"
+              reason={data.detail || "The stored authorization does not include the Google Ads (adwords) scope."}
+              note="Reconnecting re-runs consent with the full scope set. Nothing is lost — the existing token stays in place until Google returns a new one."
+            />
+            <div style={{ marginTop: 12 }}><ReconnectLink label="Reconnect to grant new permissions" /></div>
+          </div>
+        )}
+
         {!loading && data && !data.connected && data.apiNotEnabled && (
           <NotConnected
-            title="Google Ads API is not enabled yet"
+            title="Google Ads API is not enabled for this Cloud project"
             reason={
-              "The Cloud project has not switched the Google Ads API on, so Google answers with an " +
-              "error page rather than data. Enable it in Google Cloud → APIs & Services → Enable APIs, " +
-              "then hit Refresh. Analytics and Search Console are unaffected."
+              "Google answered with an error page rather than data. Enable it in Google Cloud → " +
+              "APIs & Services → Enable APIs (project DA Google Ads, 843950734394), then hit Refresh. " +
+              "Analytics and Search Console are unaffected."
             }
             note={data.detail}
           />
         )}
 
-        {!loading && data && !data.connected && data.awaitingBasicAccess && (
+        {!loading && data && !data.connected && data.reason === "permission" && (
           <NotConnected
-            title="Awaiting Basic Access approval from Google"
-            reason={
-              "The developer token is installed but still at TEST access level, which can only " +
-              "read Google's test accounts — not the live Dealer Addendums account. Google upgrades " +
-              "the token to Basic on its own schedule; this section starts working automatically the " +
-              "day it does, with no code or config change. Analytics and Search Console are unaffected."
+            title="Google refused access to that Ads account"
+            reason={data.detail || "The signed-in Google account does not have access to this customer."}
+            note={
+              (data.requestId ? `Google request id: ${data.requestId}. ` : "") +
+              "If the account is reached through a manager (MCC), that manager must be accessible to this Google user."
             }
-            note={data.code ? `Google reported: ${data.code}` : undefined}
           />
         )}
 
-        {!loading && data && !data.connected && !data.awaitingBasicAccess && !data.apiNotEnabled && (
-          <NotConnected
-            title={data.awaitingDeveloperToken ? "Awaiting Google Ads API token" : "Google Ads not connected"}
-            reason={data.awaitingDeveloperToken
-              ? "Google reviews developer-token applications separately from OAuth — this section turns on the day it is approved and added to the environment. Analytics and Search Console are unaffected."
-              : "Connect Google on the Overview tab, then add the Ads customer ID."}
-            missing={data.missing}
-          />
+        {!loading && data && !data.connected
+          && !["missing-scope", "permission"].includes(data.reason)
+          && !data.apiNotEnabled && (
+          <div>
+            <NotConnected
+              title={data.needsReconnect ? "Google connection expired" : "Google Ads not connected"}
+              reason={data.needsReconnect
+                ? "Google rejected the stored refresh token. Reconnecting takes one click and no data is lost."
+                : "Connect Google on the Overview tab to enable Ads reporting."}
+              note={data.detail}
+            />
+            {data.needsReconnect && <div style={{ marginTop: 12 }}><ReconnectLink /></div>}
+          </div>
         )}
 
         {!loading && data?.error && data.connected && (
           <div style={{ fontSize: 13, color: C.error }}>Google Ads error — {data.error}</div>
         )}
 
-        {!loading && d && (
-          <>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 16 }}>
-              <Stat label="Spend" value={fmtMoney(d.account.cost)} />
-              <Stat label="Impressions" value={fmtInt(d.account.impressions)} />
-              <Stat label="Clicks" value={fmtInt(d.account.clicks)} sub={`CTR ${fmtPct(d.account.ctr)}`} />
-              <Stat label="Conversions" value={fmtInt(d.account.conversions)} color={C.success} />
-              <Stat label="CPA" value={d.account.conversions > 0 ? fmtMoney(d.account.cpa) : "—"} />
+        {!loading && data?.needsAccountChoice && (
+          <div style={{ fontSize: 13, color: C.textSecondary, marginBottom: 12 }}>
+            Choose an account to report on.
+          </div>
+        )}
+
+        {!loading && data?.accounts?.length > 0 && (
+          <div style={{ marginTop: d || data.needsAccountChoice ? 16 : 0 }}>
+            <div style={{ fontSize: 12, fontWeight: 500, color: C.textMuted, textTransform: "uppercase", marginBottom: 8 }}>
+              Accounts
             </div>
-          </>
+            <AdsAccountList accounts={data.accounts} selected={selected} onSelect={setCustomerId} />
+            {data.problems?.length > 0 && (
+              <div style={{ fontSize: 12, color: C.warning, marginTop: 10 }}>
+                {data.problems.map(p => `${p.id}: ${p.error}`).join(" · ")}
+              </div>
+            )}
+          </div>
         )}
       </Card>
 
-      {d && (
+      {!loading && d && (
         <Card>
-          <SectionTitle>Campaigns</SectionTitle>
-          {d.campaigns.length === 0 && (
-            <div style={{ fontSize: 13, color: C.textMuted }}>No campaign activity in this range.</div>
-          )}
-          {d.campaigns.length > 0 && (
+          <SectionTitle>
+            {data.customerName || "Campaigns"}
+            <span style={{ fontSize: 12, fontWeight: 400, color: C.textMuted }}>
+              {" · "}{data.range?.startDate} → {data.range?.endDate}
+            </span>
+          </SectionTitle>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 16, marginBottom: 20 }}>
+            <Stat label="Impressions" value={fmtInt(d.totals.impressions)} />
+            <Stat label="Clicks" value={fmtInt(d.totals.clicks)} />
+            <Stat label="CTR" value={fmtPct(d.totals.ctr)} />
+            <Stat label="Avg CPC" value={d.totals.clicks > 0 ? fmtMoney(d.totals.averageCpc) : "—"} />
+            <Stat label="Cost" value={fmtMoney(d.totals.cost)} />
+            <Stat label="Conversions" value={fmtInt(d.totals.conversions)} color={C.success} />
+          </div>
+
+          {d.rows.length === 0 ? (
+            <div style={{ fontSize: 13, color: C.textMuted }}>
+              No campaign activity in this range.
+            </div>
+          ) : (
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                 <thead>
                   <tr style={{ textAlign: "left", color: C.textMuted }}>
-                    {["Campaign", "Status", "Spend", "Impr.", "Clicks", "CTR", "Conv.", "CPA"].map(h => (
-                      <th key={h} style={{ padding: "0 8px 8px 0", fontWeight: 500, whiteSpace: "nowrap" }}>{h}</th>
+                    {["Campaign", "Status", "Impr.", "Clicks", "CTR", "Avg CPC", "Cost", "Conv."].map(h => (
+                      <th key={h} style={th}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {d.campaigns.map(c => (
+                  {d.rows.map(c => (
                     <tr key={c.id} style={{ borderTop: `1px solid ${C.border}` }}>
-                      <td style={{ padding: "8px 8px 8px 0", color: C.textPrimary }}>{c.name}</td>
-                      <td style={{ padding: "8px 8px 8px 0" }}>
+                      <td style={{ ...td, color: C.textPrimary }}>
+                        {c.name}
+                        {c.channel && (
+                          <span style={{ fontSize: 11, color: C.textMuted }}>{" · "}{c.channel}</span>
+                        )}
+                      </td>
+                      <td style={td}>
                         <Badge variant={c.status === "ENABLED" ? "success" : "neutral"}>{c.status}</Badge>
                       </td>
-                      <td style={{ padding: "8px 8px 8px 0", whiteSpace: "nowrap" }}>{fmtMoney(c.cost)}</td>
-                      <td style={{ padding: "8px 8px 8px 0" }}>{fmtInt(c.impressions)}</td>
-                      <td style={{ padding: "8px 8px 8px 0" }}>{fmtInt(c.clicks)}</td>
-                      <td style={{ padding: "8px 8px 8px 0" }}>{fmtPct(c.ctr)}</td>
-                      <td style={{ padding: "8px 8px 8px 0" }}>{fmtInt(c.conversions)}</td>
-                      <td style={{ padding: "8px 8px 8px 0", whiteSpace: "nowrap" }}>
-                        {c.conversions > 0 ? fmtMoney(c.cpa) : "—"}
-                      </td>
+                      <td style={td}>{fmtInt(c.impressions)}</td>
+                      <td style={td}>{fmtInt(c.clicks)}</td>
+                      <td style={td}>{fmtPct(c.ctr)}</td>
+                      <td style={{ ...td, whiteSpace: "nowrap" }}>{c.clicks > 0 ? fmtMoney(c.averageCpc) : "—"}</td>
+                      <td style={{ ...td, whiteSpace: "nowrap" }}>{fmtMoney(c.cost)}</td>
+                      <td style={td}>{fmtInt(c.conversions)}</td>
                     </tr>
                   ))}
                 </tbody>
+                <tfoot>
+                  <tr style={{ borderTop: `2px solid ${C.borderStrong}`, fontWeight: 600 }}>
+                    <td style={{ ...td, color: C.textPrimary }}>Total</td>
+                    <td style={td} />
+                    <td style={td}>{fmtInt(d.totals.impressions)}</td>
+                    <td style={td}>{fmtInt(d.totals.clicks)}</td>
+                    <td style={td}>{fmtPct(d.totals.ctr)}</td>
+                    <td style={{ ...td, whiteSpace: "nowrap" }}>
+                      {d.totals.clicks > 0 ? fmtMoney(d.totals.averageCpc) : "—"}
+                    </td>
+                    <td style={{ ...td, whiteSpace: "nowrap" }}>{fmtMoney(d.totals.cost)}</td>
+                    <td style={td}>{fmtInt(d.totals.conversions)}</td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
           )}
-        </Card>
-      )}
-
-      {d && d.keywords.length > 0 && (
-        <Card>
-          <SectionTitle>Top keywords by spend</SectionTitle>
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-              <thead>
-                <tr style={{ textAlign: "left", color: C.textMuted }}>
-                  {["Keyword", "Match", "Campaign", "Spend", "Clicks", "CTR", "Conv."].map(h => (
-                    <th key={h} style={{ padding: "0 8px 8px 0", fontWeight: 500, whiteSpace: "nowrap" }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {d.keywords.map((k, i) => (
-                  <tr key={i} style={{ borderTop: `1px solid ${C.border}` }}>
-                    <td style={{ padding: "8px 8px 8px 0", color: C.textPrimary }}>{k.keyword}</td>
-                    <td style={{ padding: "8px 8px 8px 0", color: C.textMuted }}>{k.matchType}</td>
-                    <td style={{ padding: "8px 8px 8px 0", color: C.textMuted }}>{k.campaign}</td>
-                    <td style={{ padding: "8px 8px 8px 0", whiteSpace: "nowrap" }}>{fmtMoney(k.cost)}</td>
-                    <td style={{ padding: "8px 8px 8px 0" }}>{fmtInt(k.clicks)}</td>
-                    <td style={{ padding: "8px 8px 8px 0" }}>{fmtPct(k.ctr)}</td>
-                    <td style={{ padding: "8px 8px 8px 0" }}>{fmtInt(k.conversions)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          {data.fromCache && (
+            <div style={{ fontSize: 11, color: C.textMuted, marginTop: 10 }}>
+              Cached {new Date(data.cachedAt).toLocaleTimeString()} — Refresh re-queries Google.
+            </div>
+          )}
         </Card>
       )}
     </div>
