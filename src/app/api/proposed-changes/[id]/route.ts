@@ -7,16 +7,14 @@ export const dynamic = 'force-dynamic'
 /**
  * POST /api/proposed-changes/:id  { action: 'approve' | 'reject' }
  *
- * PHASE 1: approving records the decision and writes the audit trail, but does
- * NOT push anything to Google — there is no Ads write path in this phase, by
- * design. An approved change therefore lands in 'approved', never 'applied',
- * and the audit log records `apply_skipped_phase1` so the gap is explicit
- * rather than looking like a silent failure.
+ * Records the decision and writes the audit trail. Approving moves the row to
+ * 'approved' and does NOT itself contact Google — execution is a separate,
+ * explicit step through POST /api/ads/apply, which re-checks that the row is
+ * approved before sending anything.
  *
- * TODO (Phase 2): on approve, dispatch on `type` to the Ads mutate client,
- * then transition approved → applied (or failed, with `error` set) and log
- * `applied` / `apply_failed`. Budget caps get enforced there, at the point of
- * application, not here.
+ * Two steps rather than one on purpose: it keeps "I agree with this" separate
+ * from "send it now", lets a batch be reviewed as a whole before any of it is
+ * applied, and means a stray double-click on Approve cannot spend money.
  */
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   if (!isAdminAuthed()) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -55,9 +53,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if (action === 'approve') {
     audit.push({
       proposed_change_id: params.id,
-      action: 'apply_skipped_phase1',
+      action: 'approved',
       actor: 'system',
-      detail: { note: 'Phase 1 is read-only; no Ads mutation was sent to Google.' } as any,
+      detail: { note: 'Approved and queued. Nothing is sent to Google until Apply is run.' } as any,
     })
   }
   await supabase.from('change_audit').insert(audit)

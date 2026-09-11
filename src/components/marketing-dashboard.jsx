@@ -1655,7 +1655,465 @@ function AdsPanel() {
           )}
         </Card>
       )}
+
+      {/* Phase 2. Both are scoped to whichever account is selected above. */}
+      {selected && (
+        <DeepAdsAnalysis customerId={selected} customerName={data?.customerName} />
+      )}
+      {selected && <AdsChangesPanel customerId={selected} />}
     </div>
+  );
+}
+
+// ── Deep Ads Analysis + Changes (Phase 2) ────────────────────────────────────
+// Claude audits one Ads account and proposes concrete mutations. Nothing here
+// can change an account: proposals land in the Approvals queue, and only the
+// Apply step there talks to Google.
+
+const PROPOSAL_LABEL = {
+  negative_keyword: "Negative keyword",
+  new_keyword: "New keyword",
+  new_ad: "New ad",
+  updated_ad: "Replace ad",
+  pause_ad: "Pause ad",
+  enable_ad: "Enable ad",
+  google_recommendation: "Google recommendation",
+};
+
+const VERDICT_VARIANT = { implement: "success", reject: "error", defer: "warning" };
+
+// Side-by-side old/new for an ad rewrite. A list of headlines is unreadable as
+// a blob; what matters is which lines changed.
+function AdDiff({ before, after }) {
+  const col = (title, data, tint) => (
+    <div style={{ flex: 1, minWidth: 240 }}>
+      <div style={{
+        fontSize: 11, fontWeight: 600, color: C.textMuted,
+        textTransform: "uppercase", marginBottom: 6,
+      }}>{title}</div>
+      {!data ? (
+        <div style={{ fontSize: 12, color: C.textMuted, fontStyle: "italic" }}>
+          (new ad — nothing replaced)
+        </div>
+      ) : (
+        <div style={{
+          border: `1px solid ${C.border}`, borderLeft: `3px solid ${tint}`,
+          borderRadius: 4, padding: 10, background: C.bgSubtle,
+        }}>
+          {(data.headlines || []).map((h, i) => (
+            <div key={i} style={{ fontSize: 12, color: C.textPrimary, marginBottom: 3 }}>
+              {h}
+              <span style={{ color: C.textMuted, marginLeft: 6 }}>({Array.from(h).length})</span>
+            </div>
+          ))}
+          {(data.descriptions || []).map((d, i) => (
+            <div key={`d${i}`} style={{ fontSize: 12, color: C.textSecondary, marginTop: 6 }}>
+              {d}
+              <span style={{ color: C.textMuted, marginLeft: 6 }}>({Array.from(d).length})</span>
+            </div>
+          ))}
+          {data.adStrength && (
+            <div style={{ marginTop: 8 }}><Badge variant="neutral">Ad strength: {data.adStrength}</Badge></div>
+          )}
+          {data.impressions != null && (
+            <div style={{ fontSize: 11, color: C.textMuted, marginTop: 8 }}>
+              {fmtInt(data.impressions)} impr · {fmtInt(data.clicks)} clicks · {fmtMoney(data.cost)}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+  return (
+    <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 10 }}>
+      {col("Current", before, C.borderStrong)}
+      {col("Proposed", after, C.success)}
+    </div>
+  );
+}
+
+function ProposalDetail({ row }) {
+  const isAd = row.type === "new_ad" || row.type === "updated_ad";
+  return (
+    <div style={{ marginTop: 8 }}>
+      {row.evidence && (
+        <div style={{ fontSize: 12, color: C.textSecondary, lineHeight: 1.6, marginBottom: 4 }}>
+          <span style={{ color: C.textMuted, fontWeight: 500 }}>Evidence: </span>{row.evidence}
+        </div>
+      )}
+      {row.expected_impact && (
+        <div style={{ fontSize: 12, color: C.textSecondary, lineHeight: 1.6 }}>
+          <span style={{ color: C.textMuted, fontWeight: 500 }}>Expected impact: </span>{row.expected_impact}
+        </div>
+      )}
+      {isAd && <AdDiff before={row.before_json} after={row.after_json} />}
+      {!isAd && row.after_json && (
+        <pre style={{
+          fontSize: 11, fontFamily: "monospace", background: C.bgSubtle,
+          border: `1px solid ${C.border}`, borderRadius: 4, padding: 8,
+          marginTop: 8, marginBottom: 0, whiteSpace: "pre-wrap", wordBreak: "break-word",
+        }}>{JSON.stringify(row.after_json, null, 1)}</pre>
+      )}
+    </div>
+  );
+}
+
+function DeepAdsAnalysis({ customerId, customerName }) {
+  const [state, setState] = useState({ loading: true, latest: null, history: [] });
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState(null);
+  const [runInfo, setRunInfo] = useState(null);
+
+  const load = () => {
+    if (!customerId) return;
+    fetch(`/api/ads/analyses?customerId=${encodeURIComponent(customerId)}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.migrationPending) setError(d.detail);
+        setState({ loading: false, latest: d.latest || null, history: d.history || [] });
+      })
+      .catch(() => setState(s => ({ ...s, loading: false })));
+  };
+  useEffect(() => { setState({ loading: true, latest: null, history: [] }); load(); /* eslint-disable-next-line */ }, [customerId]);
+
+  const run = async () => {
+    setRunning(true); setError(null); setRunInfo(null);
+    try {
+      const res = await fetch(`/api/ads/deep-analysis?customerId=${encodeURIComponent(customerId)}&days=30`,
+        { method: "POST" });
+      const d = await res.json();
+      if (!res.ok) { setError(d.error || `Run failed (HTTP ${res.status})`); return; }
+      setRunInfo(d);
+      load();
+    } catch {
+      setError("Run failed — the request did not complete");
+    } finally { setRunning(false); }
+  };
+
+  const brief = state.latest?.brief;
+  const auto = runInfo?.autoApply;
+
+  return (
+    <Card>
+      <SectionTitle action={
+        <SmallButton variant="primary" disabled={running || !customerId} onClick={run}>
+          {running ? "Analyzing…" : "Run deep analysis"}
+        </SmallButton>
+      }>
+        Deep Ads Analysis
+        <span style={{ fontSize: 12, fontWeight: 400, color: C.textMuted }}>
+          {" · "}{customerName || customerId || "pick an account"} · proposals go to Approvals
+        </span>
+      </SectionTitle>
+
+      {running && (
+        <div style={{
+          border: `1px solid ${C.blueLight}`, background: "#e8f1fb", borderRadius: 4,
+          padding: "10px 12px", marginBottom: 14, fontSize: 13, color: C.textSecondary,
+        }}>
+          Pulling ad groups, keywords, search terms, ads, Google&apos;s recommendations and the
+          account change history, then sending them to Claude. Usually 1–3 minutes.
+          Nothing is changed in Google by this step.
+        </div>
+      )}
+
+      {error && <div style={{ fontSize: 13, color: C.error, marginBottom: 12 }}>{error}</div>}
+
+      {auto?.active && (
+        <div style={{
+          border: `1px solid ${C.error}`, background: "#ffebee", borderRadius: 4,
+          padding: "10px 12px", marginBottom: 14,
+        }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: C.textPrimary, marginBottom: 4 }}>
+            Google is auto-applying its own recommendations to this account
+          </div>
+          <div style={{ fontSize: 12, color: C.textSecondary }}>
+            {auto.count} change(s) in the last 30 days{auto.lastAt ? `, most recently ${auto.lastAt}` : ""}
+            {" "}({Object.keys(auto.operations || {}).join(", ")}). Those bypass this approval queue
+            entirely. Turn auto-apply off in Google Ads → Recommendations → the ⋮ menu → Auto-apply
+            settings if you want every change gated here.
+          </div>
+        </div>
+      )}
+
+      {runInfo && (
+        <div style={{
+          fontSize: 12, color: C.textSecondary, background: C.bgSubtle,
+          border: `1px solid ${C.border}`, borderRadius: 4, padding: "8px 10px", marginBottom: 14,
+        }}>
+          Queued <strong>{runInfo.proposalsQueued}</strong> proposal(s) to Approvals.
+          {runInfo.proposalsNotApplyable?.length > 0 && (
+            <> {runInfo.proposalsNotApplyable.length} could not be made applyable and were dropped:{" "}
+              {runInfo.proposalsNotApplyable.map(r => r.reason).join("; ")}</>
+          )}
+          {runInfo.snapshotCounts && (
+            <div style={{ marginTop: 4, color: C.textMuted }}>
+              Snapshot: {runInfo.snapshotCounts.keywords} keywords · {runInfo.snapshotCounts.searchTerms} search
+              terms · {runInfo.snapshotCounts.ads} ads · {runInfo.snapshotCounts.recommendations} Google
+              recommendations · ~{fmtInt(runInfo.approxSnapshotTokens)} tokens
+            </div>
+          )}
+        </div>
+      )}
+
+      {state.loading && <div style={{ fontSize: 13, color: C.textMuted }}>Loading…</div>}
+
+      {!state.loading && !state.latest && !running && (
+        <NotConnected
+          title="No deep analysis yet for this account"
+          reason={"Run one to have Claude read search terms, keywords, ad copy and Google's own " +
+                  "recommendations together, and propose concrete changes. Every proposal lands in " +
+                  "the Approvals queue — nothing reaches Google without your approval."}
+        />
+      )}
+
+      {brief && (
+        <div style={{ display: "grid", gap: 18 }}>
+          <div style={{
+            fontSize: 14, lineHeight: 1.7, color: C.textPrimary, background: C.bgSubtle,
+            border: `1px solid ${C.border}`, borderRadius: 4, padding: 16,
+          }}>{brief.summary}</div>
+
+          {brief.proposals?.length > 0 && (
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 500, color: C.textMuted, textTransform: "uppercase", marginBottom: 8 }}>
+                Proposals ({brief.proposals.length}) — review and approve in the Approvals tab
+              </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {Object.entries(
+                  brief.proposals.reduce((a, p) => ({ ...a, [p.type]: (a[p.type] || 0) + 1 }), {})
+                ).map(([t, n]) => (
+                  <Badge key={t} variant="info">{PROPOSAL_LABEL[t] || t}: {n}</Badge>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {brief.human_decisions?.length > 0 && (
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 500, color: C.textMuted, textTransform: "uppercase", marginBottom: 8 }}>
+                Needs a human decision ({brief.human_decisions.length})
+              </div>
+              <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 10 }}>
+                Budget, bidding and campaign-structure changes are deliberately not proposable —
+                there is no code path to apply them.
+              </div>
+              <div style={{ display: "grid", gap: 10 }}>
+                {brief.human_decisions.map((h, i) => (
+                  <div key={i} style={{ border: `1px solid ${C.border}`, borderRadius: 4, padding: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                      <Badge variant="warning">{h.area}</Badge>
+                      <span style={{ fontSize: 14, fontWeight: 600, color: C.textPrimary }}>{h.title}</span>
+                    </div>
+                    <div style={{ fontSize: 13, color: C.textSecondary, lineHeight: 1.6 }}>{h.detail}</div>
+                    {h.why_not_automated && (
+                      <div style={{ fontSize: 12, color: C.textMuted, marginTop: 6 }}>
+                        Why not automated: {h.why_not_automated}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <BriefMeta
+            model={state.latest.model}
+            dateRange={state.latest.date_range}
+            createdAt={state.latest.created_at}
+          />
+        </div>
+      )}
+
+      {state.latest?.status === "parse_error" && (
+        <div style={{ fontSize: 13, color: C.warning, marginTop: 12 }}>
+          The last run did not return valid JSON; its raw text is stored on the run.
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// ── Applied changes + results ───────────────────────────────────────────────
+function DeltaCell({ value }) {
+  if (value == null) return <span style={{ color: C.textMuted }}>—</span>;
+  const up = value > 0;
+  return (
+    <span style={{ color: up ? C.success : value < 0 ? C.error : C.textMuted }}>
+      {up ? "+" : ""}{value}%
+    </span>
+  );
+}
+
+function WindowBlock({ w, label }) {
+  if (!w) {
+    return (
+      <div style={{ fontSize: 12, color: C.textMuted, fontStyle: "italic" }}>
+        {label}: not yet — the window has not elapsed
+      </div>
+    );
+  }
+  return (
+    <div style={{ border: `1px solid ${C.border}`, borderRadius: 4, padding: 10, background: C.bgSubtle }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color: C.textMuted, textTransform: "uppercase", marginBottom: 6 }}>
+        {label} · {w.from} → {w.to}
+      </div>
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+          <thead><tr style={{ textAlign: "left", color: C.textMuted }}>
+            {["", "Impr.", "Clicks", "CTR", "Cost", "Conv."].map(h => (
+              <th key={h} style={{ padding: "0 8px 4px 0", fontWeight: 500 }}>{h}</th>
+            ))}
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td style={{ padding: "3px 8px 3px 0", color: C.textMuted }}>after</td>
+              <td>{fmtInt(w.entity.impressions)}</td><td>{fmtInt(w.entity.clicks)}</td>
+              <td>{fmtPct(w.entity.ctr)}</td><td>{fmtMoney(w.entity.cost)}</td>
+              <td>{fmtInt(w.entity.conversions)}</td>
+            </tr>
+            <tr>
+              <td style={{ padding: "3px 8px 3px 0", color: C.textMuted }}>vs before</td>
+              <td><DeltaCell value={w.delta.impressions} /></td><td><DeltaCell value={w.delta.clicks} /></td>
+              <td><DeltaCell value={w.delta.ctr} /></td><td><DeltaCell value={w.delta.cost} /></td>
+              <td><DeltaCell value={w.delta.conversions} /></td>
+            </tr>
+            <tr>
+              <td style={{ padding: "3px 8px 3px 0", color: C.textMuted }}>account, same window</td>
+              <td><DeltaCell value={w.accountDelta.impressions} /></td><td><DeltaCell value={w.accountDelta.clicks} /></td>
+              <td><DeltaCell value={w.accountDelta.ctr} /></td><td><DeltaCell value={w.accountDelta.cost} /></td>
+              <td><DeltaCell value={w.accountDelta.conversions} /></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      {w.caveats?.length > 0 && (
+        <ul style={{ fontSize: 11, color: C.textMuted, margin: "8px 0 0", paddingLeft: 16, lineHeight: 1.5 }}>
+          {w.caveats.map((c, i) => <li key={i}>{c}</li>)}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function AdsChangesPanel({ customerId }) {
+  const [data, setData] = useState(null);
+  const [openId, setOpenId] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const load = () => {
+    if (!customerId) return;
+    fetch(`/api/ads/changes?customerId=${encodeURIComponent(customerId)}&external=1`)
+      .then(r => r.json()).then(setData).catch(() => setData({ changes: [] }));
+  };
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [customerId]);
+
+  // Fill in any post-windows that have matured since the last visit. Cheap and
+  // idempotent — the cron does the same thing on a schedule.
+  const refreshResults = async () => {
+    setRefreshing(true);
+    await fetch("/api/cron/ads-results", { method: "POST" }).catch(() => {});
+    setRefreshing(false);
+    load();
+  };
+
+  const rows = data?.changes || [];
+  return (
+    <Card>
+      <SectionTitle action={
+        <SmallButton onClick={refreshResults} disabled={refreshing}>
+          {refreshing ? "Measuring…" : "Refresh results"}
+        </SmallButton>
+      }>
+        Changes &amp; results
+        {data && !data.writesEnabled && (
+          <span style={{ marginLeft: 8 }}><Badge variant="warning">dry run</Badge></span>
+        )}
+      </SectionTitle>
+
+      {rows.length === 0 && (
+        <div style={{ fontSize: 13, color: C.textMuted }}>
+          No changes have been applied for this account yet.
+        </div>
+      )}
+
+      <div style={{ display: "grid", gap: 8 }}>
+        {rows.map(r => (
+          <div key={r.id} style={{ border: `1px solid ${C.border}`, borderRadius: 4 }}>
+            <button onClick={() => setOpenId(openId === r.id ? null : r.id)} style={{
+              display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left",
+              padding: "10px 12px", background: C.bgSurface, border: "none", borderRadius: 4,
+              cursor: "pointer", fontFamily: "Roboto, sans-serif", fontSize: 13, color: C.textPrimary,
+            }}>
+              <span style={{ color: C.textMuted, fontSize: 11 }}>{openId === r.id ? "▾" : "▸"}</span>
+              <Badge variant={r.status === "applied" ? "success" : "error"}>{r.status}</Badge>
+              {r.dry_run && <Badge variant="warning">dry run</Badge>}
+              <Badge variant="neutral">{PROPOSAL_LABEL[r.type] || r.type}</Badge>
+              <span style={{ flex: 1 }}>{r.target_label || r.summary}</span>
+              <span style={{ fontSize: 11, color: C.textMuted }}>
+                {r.applied_at ? new Date(r.applied_at).toLocaleDateString() : "—"}
+              </span>
+            </button>
+            {openId === r.id && (
+              <div style={{ padding: "0 12px 12px", display: "grid", gap: 10 }}>
+                {r.error && <div style={{ fontSize: 12, color: C.error }}>{r.error}</div>}
+                {r.dry_run && (
+                  <div style={{ fontSize: 12, color: C.textMuted }}>
+                    Dry run — nothing was sent to Google, so there is nothing to measure.
+                  </div>
+                )}
+                {r.applied_snapshot?.entity && (
+                  <div style={{ fontSize: 12, color: C.textSecondary }}>
+                    <span style={{ color: C.textMuted, fontWeight: 500 }}>At apply (30d before): </span>
+                    {fmtInt(r.applied_snapshot.entity.impressions)} impr ·{" "}
+                    {fmtInt(r.applied_snapshot.entity.clicks)} clicks ·{" "}
+                    {fmtPct(r.applied_snapshot.entity.ctr)} CTR ·{" "}
+                    {fmtMoney(r.applied_snapshot.entity.cost)} ·{" "}
+                    {fmtInt(r.applied_snapshot.entity.conversions)} conv
+                  </div>
+                )}
+                {!r.dry_run && <WindowBlock w={r.post_14d} label="14 days after" />}
+                {!r.dry_run && <WindowBlock w={r.post_30d} label="30 days after" />}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {data?.external && (
+        <div style={{ marginTop: 18 }}>
+          <div style={{ fontSize: 12, fontWeight: 500, color: C.textMuted, textTransform: "uppercase", marginBottom: 8 }}>
+            Everything that changed in this account ({data.external.total} in 30 days)
+          </div>
+          <div style={{ fontSize: 12, color: C.textSecondary, marginBottom: 8 }}>
+            Including changes this app did not make — a human in the Google Ads UI, or Google
+            applying its own recommendations.
+            {data.external.autoApply?.active && (
+              <strong style={{ color: C.error }}>
+                {" "}Auto-apply is active: {data.external.autoApply.count} change(s) made by Google itself.
+              </strong>
+            )}
+          </div>
+          <div style={{ maxHeight: 260, overflowY: "auto", border: `1px solid ${C.border}`, borderRadius: 4 }}>
+            {data.external.events.map((e, i) => (
+              <div key={i} style={{
+                display: "flex", gap: 10, alignItems: "baseline", padding: "6px 10px",
+                borderTop: i ? `1px solid ${C.border}` : "none", fontSize: 12,
+              }}>
+                <span style={{ color: C.textMuted, whiteSpace: "nowrap" }}>{(e.at || "").slice(0, 16)}</span>
+                <Badge variant={/RECOMMENDATIONS_SUBSCRIPTION/.test(e.clientType) ? "error" : e.ours ? "success" : "neutral"}>
+                  {/RECOMMENDATIONS_SUBSCRIPTION/.test(e.clientType) ? "Google auto" : e.ours ? "us" : "manual"}
+                </Badge>
+                <span style={{ color: C.textPrimary }}>{e.resourceType} {e.operation}</span>
+                <span style={{ color: C.textMuted, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {e.userEmail}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </Card>
   );
 }
 
@@ -1761,19 +2219,29 @@ function ApprovalsPanel() {
   const [rows, setRows] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [note, setNote] = useState(null);
+  const [openId, setOpenId] = useState(null);
+  const [selected, setSelected] = useState(() => new Set());
+  const [applying, setApplying] = useState(false);
+  const [applyResult, setApplyResult] = useState(null);
+  const [writesEnabled, setWritesEnabled] = useState(null);
+  const [filter, setFilter] = useState("pending");
 
-  const load = () => fetch("/api/proposed-changes?status=pending")
-    .then(r => r.json())
-    .then(d => setRows(d.changes || []))
-    .catch(() => setRows([]));
-
-  useEffect(() => { load(); }, []);
+  const load = () => {
+    fetch(`/api/proposed-changes?status=${filter}`)
+      .then(r => r.json())
+      .then(d => { setRows(d.changes || []); setSelected(new Set()); })
+      .catch(() => setRows([]));
+    // The apply endpoint is the authority on whether writes are armed; ask the
+    // changes endpoint, which reports the same flag without mutating anything.
+    fetch("/api/ads/changes")
+      .then(r => r.json()).then(d => setWritesEnabled(!!d.writesEnabled)).catch(() => {});
+  };
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [filter]);
 
   const decide = async (id, action) => {
     setBusyId(id);
     const res = await fetch(`/api/proposed-changes/${id}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action }),
     }).then(r => r.json()).catch(() => ({ error: "Request failed" }));
     setBusyId(null);
@@ -1781,16 +2249,80 @@ function ApprovalsPanel() {
     load();
   };
 
+  const toggle = (id) => setSelected(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+
+  const applySelected = async () => {
+    const ids = Array.from(selected);
+    if (!ids.length) return;
+    if (!confirm(
+      writesEnabled
+        ? `Apply ${ids.length} approved change(s) to Google Ads? This is live and spends real money.`
+        : `Dry run ${ids.length} change(s)? ADS_WRITES_ENABLED is off, so nothing will be sent to Google.`
+    )) return;
+    setApplying(true); setApplyResult(null);
+    const res = await fetch("/api/ads/apply", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    }).then(r => r.json()).catch(() => ({ error: "Request failed" }));
+    setApplying(false);
+    setApplyResult(res);
+    load();
+  };
+
+  const approved = (rows || []).filter(r => r.status === "approved");
+
   return (
     <Card>
-      <SectionTitle action={<SmallButton onClick={load}>Refresh</SmallButton>}>
+      <SectionTitle action={
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          {["pending", "approved", "applied", "rejected", "all"].map(f => (
+            <button key={f} onClick={() => setFilter(f)} style={{
+              height: 28, padding: "0 10px", fontSize: 12,
+              background: filter === f ? C.blue : C.bgSurface,
+              color: filter === f ? "#fff" : C.textPrimary,
+              border: `1px solid ${filter === f ? C.blue : C.border}`,
+              borderRadius: 4, cursor: "pointer", fontFamily: "Roboto, sans-serif",
+            }}>{f}</button>
+          ))}
+          <SmallButton onClick={load}>Refresh</SmallButton>
+        </div>
+      }>
         Recommendations &amp; Approvals
       </SectionTitle>
 
-      <p style={{ fontSize: 13, color: C.textSecondary, margin: "0 0 16px" }}>
-        Anything that would spend money lands here first. Nothing is pushed to Google
-        until you approve it.
+      <p style={{ fontSize: 13, color: C.textSecondary, margin: "0 0 12px" }}>
+        Anything that would change a Google Ads account lands here first. Approving records the
+        decision; nothing reaches Google until you then run Apply on the approved rows.
       </p>
+
+      {writesEnabled === false && (
+        <div style={{
+          border: `1px solid ${C.warning}`, background: "#fff8ec", borderRadius: 4,
+          padding: "10px 12px", marginBottom: 12,
+        }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: C.textPrimary, marginBottom: 4 }}>
+            Dry run — Ads writes are disabled
+          </div>
+          <div style={{ fontSize: 12, color: C.textSecondary }}>
+            <code>ADS_WRITES_ENABLED</code> is not <code>true</code>, so Apply records exactly what
+            it <em>would</em> send to Google and sends nothing. Set it to <code>true</code> in
+            <code> .env.production</code> and restart to arm live writes.
+          </div>
+        </div>
+      )}
+      {writesEnabled === true && (
+        <div style={{
+          border: `1px solid ${C.error}`, background: "#ffebee", borderRadius: 4,
+          padding: "10px 12px", marginBottom: 12, fontSize: 12, color: C.textSecondary,
+        }}>
+          <strong style={{ color: C.textPrimary }}>Live writes are armed.</strong> Applying an
+          approved change will modify the Google Ads account and can spend money.
+        </div>
+      )}
 
       {note && (
         <div style={{
@@ -1799,44 +2331,110 @@ function ApprovalsPanel() {
         }}>{note}</div>
       )}
 
+      {applyResult && (
+        <div style={{
+          fontSize: 12, color: C.textSecondary, background: C.bgSubtle,
+          border: `1px solid ${C.border}`, borderRadius: 4, padding: "10px 12px", marginBottom: 12,
+        }}>
+          <div style={{ fontWeight: 600, color: C.textPrimary, marginBottom: 4 }}>
+            {applyResult.dryRun ? "Dry run complete" : "Applied"} — {applyResult.applied} ok,
+            {" "}{applyResult.failed} failed
+          </div>
+          {applyResult.note && <div style={{ marginBottom: 6 }}>{applyResult.note}</div>}
+          {(applyResult.results || []).filter(r => !r.ok).map(r => (
+            <div key={r.id} style={{ color: C.error }}>{r.summary}: {r.error}</div>
+          ))}
+          {applyResult.dryRun && (applyResult.results || []).filter(r => r.ok).map(r => (
+            <pre key={r.id} style={{
+              fontSize: 11, fontFamily: "monospace", whiteSpace: "pre-wrap",
+              wordBreak: "break-word", margin: "6px 0 0",
+            }}>{r.summary}\n{JSON.stringify(r.requests, null, 1)}</pre>
+          ))}
+        </div>
+      )}
+
+      {approved.length > 0 && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: 10, marginBottom: 12,
+          padding: "8px 10px", border: `1px solid ${C.border}`, borderRadius: 4,
+        }}>
+          <span style={{ fontSize: 12, color: C.textSecondary }}>
+            {selected.size} of {approved.length} approved selected
+            {selected.size > 25 && (
+              <strong style={{ color: C.error }}> — max 25 per batch</strong>
+            )}
+          </span>
+          <SmallButton onClick={() => setSelected(new Set(approved.slice(0, 25).map(r => r.id)))}>
+            Select all (max 25)
+          </SmallButton>
+          <SmallButton variant={writesEnabled ? "danger" : "primary"}
+            disabled={applying || selected.size === 0 || selected.size > 25}
+            onClick={applySelected}>
+            {applying ? "Applying…" : writesEnabled ? `Apply ${selected.size} to Google` : `Dry run ${selected.size}`}
+          </SmallButton>
+        </div>
+      )}
+
       {rows === null && <div style={{ fontSize: 13, color: C.textMuted }}>Loading…</div>}
 
       {rows?.length === 0 && (
         <NotConnected
-          title="No pending changes"
-          reason="Nothing is waiting for approval. Phase 1 is read-only reporting — no automation proposes changes yet."
-          note="Phase 2 (Ads management) and Phase 3 (AI recommendations) will populate this queue."
+          title={`No ${filter === "all" ? "" : filter + " "}changes`}
+          reason={filter === "pending"
+            ? "Nothing is waiting for approval. Run a Deep Ads Analysis from the Ads tab to generate proposals."
+            : "Nothing in this state."}
         />
       )}
 
-      {rows?.map(r => (
-        <div key={r.id} style={{
-          border: `1px solid ${C.border}`, borderRadius: 4,
-          padding: 14, marginBottom: 10,
-        }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-            <div>
-              <Badge variant="info">{r.type}</Badge>
-              <span style={{ fontSize: 14, color: C.textPrimary, marginLeft: 8 }}>
-                {r.summary || r.target_label || "Proposed change"}
-              </span>
-              <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>
-                {new Date(r.created_at).toLocaleString()}
-                {r.source ? ` · ${r.source}` : ""}
+      <div style={{ display: "grid", gap: 8 }}>
+        {rows?.map(r => (
+          <div key={r.id} style={{ border: `1px solid ${C.border}`, borderRadius: 4, padding: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+              <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flex: 1, minWidth: 0 }}>
+                {r.status === "approved" && (
+                  <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggle(r.id)}
+                         style={{ marginTop: 4, cursor: "pointer" }} />
+                )}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <Badge variant="info">{PROPOSAL_LABEL[r.type] || r.type}</Badge>
+                    <Badge variant={
+                      r.status === "applied" ? "success" : r.status === "failed" ? "error"
+                      : r.status === "approved" ? "info" : r.status === "rejected" ? "neutral" : "warning"
+                    }>{r.status}</Badge>
+                    {r.recommendation_verdict && (
+                      <Badge variant={VERDICT_VARIANT[r.recommendation_verdict] || "neutral"}>
+                        {r.recommendation_verdict}
+                      </Badge>
+                    )}
+                    {r.dry_run && <Badge variant="warning">dry run</Badge>}
+                  </div>
+                  <div style={{ fontSize: 14, color: C.textPrimary, marginTop: 6 }}>
+                    {r.summary || r.target_label || "Proposed change"}
+                  </div>
+                  <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>
+                    {new Date(r.created_at).toLocaleString()}{r.source ? ` · ${r.source}` : ""}
+                    {r.target_label ? ` · ${r.target_label}` : ""}
+                  </div>
+                  <button onClick={() => setOpenId(openId === r.id ? null : r.id)} style={{
+                    marginTop: 6, background: "none", border: "none", padding: 0, cursor: "pointer",
+                    fontSize: 12, color: C.blue, fontFamily: "Roboto, sans-serif",
+                  }}>{openId === r.id ? "Hide detail" : "Show evidence & diff"}</button>
+                  {openId === r.id && <ProposalDetail row={r} />}
+                </div>
               </div>
-              {r.rationale && (
-                <div style={{ fontSize: 12, color: C.textSecondary, marginTop: 6 }}>{r.rationale}</div>
+              {r.status === "pending" && (
+                <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                  <SmallButton variant="success" disabled={busyId === r.id}
+                               onClick={() => decide(r.id, "approve")}>Approve</SmallButton>
+                  <SmallButton variant="danger" disabled={busyId === r.id}
+                               onClick={() => decide(r.id, "reject")}>Reject</SmallButton>
+                </div>
               )}
             </div>
-            <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-              <SmallButton variant="success" disabled={busyId === r.id}
-                           onClick={() => decide(r.id, "approve")}>Approve</SmallButton>
-              <SmallButton variant="danger" disabled={busyId === r.id}
-                           onClick={() => decide(r.id, "reject")}>Reject</SmallButton>
-            </div>
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </Card>
   );
 }
