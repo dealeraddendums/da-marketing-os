@@ -17,12 +17,23 @@ export interface AnalysisRow {
   error: string | null
 }
 
-/** PostgREST's code for "relation does not exist" — i.e. migration 012 has not
- *  been applied yet. Detected so the route can say exactly that instead of
- *  surfacing an opaque database error. */
+/**
+ * Is this error "migration 012 has not been applied yet"?
+ *
+ * Detected so the routes can say exactly that instead of surfacing an opaque
+ * database error. Both shapes are real and were both observed: supabase-js
+ * normally answers through PostgREST, which reports an unknown relation as
+ * **PGRST205 — "Could not find the table 'public.analyses' in the schema
+ * cache"** (this is what actually came back on the first live run; matching
+ * only Postgres's own 42P01 silently missed it), while a direct Postgres error
+ * surfaces as 42P01 "relation ... does not exist".
+ */
 export function isMissingTable(err: { code?: string; message?: string } | null): boolean {
   if (!err) return false
-  return err.code === '42P01' || /relation .*analyses.* does not exist/i.test(err.message || '')
+  if (err.code === 'PGRST205' || err.code === '42P01') return true
+  const m = err.message || ''
+  return /relation .*analyses.* does not exist/i.test(m) ||
+         /could not find the table .*analyses.*/i.test(m)
 }
 
 export const MIGRATION_HINT =
