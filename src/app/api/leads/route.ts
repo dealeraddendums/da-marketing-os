@@ -190,14 +190,19 @@ Based on the dealership name and email domain, provide a brief intelligence summ
     from_email: 'noreply@dealeraddendums.com',
     from_name: 'DealerAddendums',
     to: [{ email: process.env.LEAD_NOTIFY_EMAIL || 'allan@dealeraddendums.com' }],
-    subject: `New trial signup: ${name} — ${dealership}`,
+    // "Form Submitted" is the stable phrase Allan's mail rules filter on —
+    // the sibling notifications are "New Trial — Account Created" (da-platform
+    // provisioning, once the dealer confirms) and "New Trial — Needs Review"
+    // (the AI gate). Do not reword the leading phrase.
+    subject: `New Trial — Form Submitted (awaiting confirmation): ${dealership}`,
     html: `
       <div style="font-family: Roboto, sans-serif; font-size: 14px; color: #333; max-width: 600px;">
         <div style="background: #2a2b3c; padding: 16px 24px; border-radius: 6px 6px 0 0;">
           <span style="background:#ffa500;color:#2a2b3c;font-weight:700;font-size:11px;padding:3px 8px;border-radius:4px;letter-spacing:.08em;">DA</span>
-          <span style="color:#fff;font-size:14px;margin-left:10px;">New Trial Signup</span>
+          <span style="color:#fff;font-size:14px;margin-left:10px;">New Trial — Form Submitted</span>
         </div>
         <div style="border:1px solid #e0e0e0;border-top:none;padding:24px;border-radius:0 0 6px 6px;">
+          <p style="margin:0 0 16px;font-size:14px;color:#333;"><strong>A trial form was submitted and is awaiting email confirmation.</strong> The account is not provisioned yet — that happens when the dealer clicks the confirmation link.</p>
           <table style="width:100%;border-collapse:collapse;">
             <tr><td style="padding:6px 0;font-weight:500;color:#55595c;width:120px;">Name</td><td style="padding:6px 0;">${name}</td></tr>
             <tr><td style="padding:6px 0;font-weight:500;color:#55595c;">Email</td><td style="padding:6px 0;"><a href="mailto:${email}">${email}</a></td></tr>
