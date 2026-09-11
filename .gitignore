@@ -9,11 +9,19 @@ out/
 build/
 
 # Environment
+# .env.production is the FILE ACTUALLY IN USE on the box and holds every secret
+# (Supabase service role, Anthropic, Mandrill, the GA4 MP api_secret). Only
+# `.env.production.local` was ignored, so the real one was merely untracked —
+# one `git add -A` on the box away from being committed. Added 2026-09-11.
 .env
 .env.local
 .env.development.local
 .env.test.local
+.env.production
 .env.production.local
+# Timestamped env backups taken before edits — same contents, same risk.
+.env*.bak*
+.env.production.bak*
 
 # Logs
 npm-debug.log*

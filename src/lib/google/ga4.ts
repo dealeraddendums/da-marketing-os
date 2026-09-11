@@ -38,7 +38,7 @@ export interface Ga4Summary {
   sources: { source: string; sessions: number }[]
   funnel: {
     sessions: number; engaged: number; pricingViews: number
-    /** Real GA4 `form_start` event count for the period. */
+    /** Real GA4 `trial_form_start` event count for the period (trial form only). */
     formStarts: number
     /** Real GA4 `trial_signup` event count for the period. */
     signups: number
@@ -52,6 +52,12 @@ export interface Ga4Summary {
   eventCounts: Record<string, number>
   /** When these events started being sent, so the UI can date an empty state. */
   instrumentedAt: string
+  /**
+   * First-party lead counts for the same window, attached by the analytics
+   * route. Kept beside the GA4 numbers rather than substituted for them, so
+   * the panel can show GA4-counted vs. actually-happened side by side.
+   */
+  firstParty?: { leads: number; confirmedLeads: number }
 }
 
 /**
@@ -62,8 +68,16 @@ export interface Ga4Summary {
  */
 export const EVENTS_INSTRUMENTED_AT = '2026-09-11'
 
-/** Events sent via the Measurement Protocol, counted for the funnel. */
-const TRACKED_EVENTS = ['form_start', 'trial_signup'] as const
+/**
+ * Event names pulled for the funnel.
+ *
+ * `trial_form_start` and `trial_signup` are ours, sent over the Measurement
+ * Protocol. `form_start` is GA4's own ENHANCED MEASUREMENT event — it fires on
+ * every form on the site (57,647 in the 30 days to 2026-09-11, against 41,460
+ * sessions), so it is collected here as CONTEXT only and deliberately not used
+ * as the funnel's Form Started step, which needs the trial form alone.
+ */
+const TRACKED_EVENTS = ['trial_form_start', 'trial_signup', 'form_start'] as const
 
 export async function fetchGa4Summary(startDate: string, endDate: string): Promise<Ga4Summary> {
   const dateRanges = [{ startDate, endDate }]
@@ -142,7 +156,9 @@ export async function fetchGa4Summary(startDate: string, endDate: string): Promi
     // failure. The first-party lead table remains the authoritative count.
     funnel: {
       sessions, engaged: engagedSessions, pricingViews,
-      formStarts: eventCounts.form_start ?? 0,
+      // The trial form specifically — NOT GA4's site-wide enhanced-measurement
+      // `form_start`, which is available in eventCounts for context.
+      formStarts: eventCounts.trial_form_start ?? 0,
       signups: eventCounts.trial_signup ?? 0,
     },
   }

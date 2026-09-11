@@ -32,14 +32,31 @@ export async function GET(req: NextRequest) {
       `google:ga4:${startDate}:${endDate}`,
       async () => {
         const summary = await fetchGa4Summary(startDate, endDate)
-        // Signups come from marketing_leads, not GA4: the lead table is the
-        // authoritative record of a trial signup, and GA4 would only know about
-        // it if a conversion event happened to be configured for it.
-        const { count } = await supabase
-          .from('marketing_leads')
-          .select('id', { count: 'exact', head: true })
-          .gte('created_at', `${startDate}T00:00:00.000Z`)
-        summary.funnel.signups = count ?? 0
+
+        // funnel.signups used to be OVERWRITTEN here with the marketing_leads
+        // row count, because GA4 had no signup event. That is no longer true —
+        // trial_signup is sent at email confirmation (lib/ga4-mp.ts) — and the
+        // override was doing real harm: under the funnel's "GA4" toggle it
+        // presented a first-party number as if GA4 had measured it, and it
+        // counted every lead ROW, including unconfirmed and bot submissions,
+        // as a trial signup. GA4's own count now stands on the GA4 toggle.
+        //
+        // The first-party numbers ride alongside instead, so the panel can show
+        // the reconciliation that started this whole exercise: what GA4 counted
+        // vs. what actually happened. `confirmedLeads` is the honest
+        // first-party definition of a trial signup under Layer 0 — a submitted
+        // form is a lead, a confirmed one is a signup.
+        const since = `${startDate}T00:00:00.000Z`
+        const [{ count: leads }, { count: confirmedLeads }] = await Promise.all([
+          supabase.from('marketing_leads')
+            .select('id', { count: 'exact', head: true })
+            .gte('created_at', since),
+          supabase.from('marketing_leads')
+            .select('id', { count: 'exact', head: true })
+            .gte('created_at', since)
+            .not('confirmed_at', 'is', null),
+        ])
+        summary.firstParty = { leads: leads ?? 0, confirmedLeads: confirmedLeads ?? 0 }
         return summary
       },
       { force },

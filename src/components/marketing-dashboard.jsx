@@ -795,9 +795,20 @@ function FunnelPanel({ ga4 = null }) {
             by up to the trial length, so Converted is a rolling count, not a same-cohort rate.
             {useGa4 && sinceLabel && (
               <>
-                {" "}On the GA4 side, Form Started and Trial Signup read the <code>form_start</code> and{" "}
-                <code>trial_signup</code> events, sent server-side since {sinceLabel};{" "}
-                <code>trial_signup</code> fires at email confirmation, not at form submit.
+                {" "}On the GA4 side, Form Started and Trial Signup read the{" "}
+                <code>trial_form_start</code> and <code>trial_signup</code> events, sent
+                server-side since {sinceLabel}; <code>trial_signup</code> fires at email
+                confirmation, not at form submit. GA4&apos;s own site-wide{" "}
+                <code>form_start</code> (enhanced measurement, every form on the site) is
+                deliberately not used here.
+                {ga4?.firstParty && (
+                  <>
+                    {" "}First-party over the same window:{" "}
+                    <strong>{ga4.firstParty.leads.toLocaleString()}</strong> leads submitted,{" "}
+                    <strong>{ga4.firstParty.confirmedLeads.toLocaleString()}</strong> confirmed
+                    — confirmed is the number a trial signup actually means.
+                  </>
+                )}
               </>
             )}
           </div>

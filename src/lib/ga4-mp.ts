@@ -14,12 +14,22 @@
 //     it server-side with the client id captured in the ORIGINAL session
 //     preserves the attribution.
 //
-//   form_start — a genuine browser interaction, but routing it through here
-//     too keeps one transport, one source of truth, and needs no GTM work.
+//   trial_form_start — a genuine browser interaction, but routing it through
+//     here too keeps one transport, one source of truth, and needs no GTM work.
 //
-// ⚠️ Consequence worth remembering: because GA4 receives these two events ONLY
-// via this module, do NOT also create GTM GA4 event tags named `form_start` or
-// `trial_signup`. That would double-count them.
+// ⚠️ Why `trial_form_start` and not `form_start`: GA4's own ENHANCED MEASUREMENT
+// already collects `form_start` automatically, and it fires for every form on
+// the site — 57,647 events in the 30 days to 2026-09-11, against 41,460
+// sessions. Sending our own `form_start` would both double-count the trial form
+// and bury it inside a site-wide number that cannot answer "how many people
+// started the trial form". A distinct name is queryable by eventName on day
+// one, with no custom-dimension registration, and can never be confused with
+// the enhanced-measurement figure. The `form_id` param is kept so the two
+// remain relatable.
+//
+// ⚠️ Because GA4 receives these events ONLY via this module, do NOT also create
+// GTM GA4 event tags named `trial_form_start` or `trial_signup` — that would
+// double-count them.
 
 const ENDPOINT = 'https://www.google-analytics.com/mp/collect'
 /** Validates a payload and returns validationMessages WITHOUT ingesting it.

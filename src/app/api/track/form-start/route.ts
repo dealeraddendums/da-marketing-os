@@ -32,7 +32,9 @@ export async function POST(req: NextRequest) {
   const sourcePage = /^\/[\w\-./]{0,120}$/.test(rawPage) ? rawPage : '/'
 
   await sendGa4Event({
-    name: 'form_start',
+    // NOT `form_start` — GA4 enhanced measurement already emits that for every
+    // form on the site (57,647/30d). See lib/ga4-mp.ts for the full reasoning.
+    name: 'trial_form_start',
     clientId: body?.ga_client_id || null,
     sessionId: body?.ga_session_id || null,
     fallbackSeed: `form_start:${ip}`,
