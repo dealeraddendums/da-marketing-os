@@ -146,13 +146,24 @@ export interface GscSummary {
   trend: { date: string; clicks: number; impressions: number; position: number }[]
 }
 
-export async function fetchGscSummary(startDate: string, endDate: string): Promise<GscSummary> {
+/**
+ * `limits` lets a caller ask for more rows than the SEO tab shows without
+ * introducing a different Search Console call — it is the same
+ * searchAnalytics/query endpoint with a different rowLimit. Defaults match what
+ * the tab has always requested, so the tab's behaviour is unchanged.
+ */
+export async function fetchGscSummary(
+  startDate: string, endDate: string,
+  limits: { queries?: number; pages?: number } = {},
+): Promise<GscSummary> {
   const { site, resolvedFrom } = await resolveSite()
+  const queryLimit = limits.queries ?? 25
+  const pageLimit = limits.pages ?? 25
 
   const [totalRows, queryRows, pageRows, dateRows] = await Promise.all([
     query(site, { startDate, endDate, dimensions: [] }),
-    query(site, { startDate, endDate, dimensions: ['query'], rowLimit: 25 }),
-    query(site, { startDate, endDate, dimensions: ['page'], rowLimit: 25 }),
+    query(site, { startDate, endDate, dimensions: ['query'], rowLimit: queryLimit }),
+    query(site, { startDate, endDate, dimensions: ['page'], rowLimit: pageLimit }),
     query(site, { startDate, endDate, dimensions: ['date'], rowLimit: 500 }),
   ])
 

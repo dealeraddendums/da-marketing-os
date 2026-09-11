@@ -1806,6 +1806,404 @@ function ApprovalsPanel() {
   );
 }
 
+// ── Analyst (Claude-powered analysis) ─────────────────────────────────────────
+// Assembles a snapshot from the three Google integrations, sends it to Claude,
+// and renders the returned brief. Read-only: a recommendation is advice until
+// someone acts on it — the Approvals queue is where they will become write
+// actions (Phase 2).
+
+const SEVERITY_VARIANT = {
+  critical:    "error",
+  warning:     "warning",
+  opportunity: "info",
+  info:        "neutral",
+};
+
+const EFFORT_LABEL = { low: "Low effort", med: "Medium effort", high: "High effort" };
+
+const fmtMoney4 = (n) =>
+  n == null ? "—" : `$${n < 0.01 ? n.toFixed(4) : n.toFixed(2)}`;
+
+const fmtWhen = (iso) => {
+  if (!iso) return "—";
+  try { return new Date(iso).toLocaleString(); } catch { return iso; }
+};
+
+// Small print under each brief: which model produced it, how long it took, and
+// roughly what it cost. Cheap to show and it stops "run it again" from feeling
+// free when it isn't.
+function BriefMeta({ model, runMs, usage, dateRange, approxSnapshotTokens, createdAt }) {
+  const u = usage || (dateRange && dateRange.usage) || null;
+  const ms = runMs != null ? runMs : (dateRange && dateRange.runMs);
+  const snapTokens =
+    approxSnapshotTokens != null
+      ? approxSnapshotTokens
+      : (dateRange && dateRange.approxSnapshotTokens);
+
+  const bits = [];
+  if (model) bits.push(model);
+  if (createdAt) bits.push(fmtWhen(createdAt));
+  if (dateRange && dateRange.startDate) {
+    bits.push(`${dateRange.startDate} → ${dateRange.endDate}`);
+  }
+  if (ms != null) bits.push(`${(ms / 1000).toFixed(1)}s`);
+  if (u) {
+    bits.push(
+      `${fmtInt(u.inputTokens)} in / ${fmtInt(u.outputTokens)} out` +
+      (u.estimatedCostUsd != null ? ` · ~${fmtMoney4(u.estimatedCostUsd)}` : "")
+    );
+  }
+  if (snapTokens != null) bits.push(`snapshot ~${fmtInt(snapTokens)} tok`);
+
+  return (
+    <div style={{ fontSize: 11, color: C.textMuted, marginTop: 14, lineHeight: 1.6 }}>
+      {bits.join(" · ")}
+    </div>
+  );
+}
+
+function BriefBody({ brief, status, rawResponse }) {
+  if (status === "parse_error") {
+    return (
+      <div>
+        <div style={{
+          border: `1px solid ${C.warning}`, background: "#fff8ec",
+          borderRadius: 4, padding: "10px 12px", marginBottom: 14,
+        }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: C.textPrimary, marginBottom: 4 }}>
+            The model did not return valid JSON
+          </div>
+          <div style={{ fontSize: 12, color: C.textSecondary }}>
+            The run was stored with its raw text so nothing is lost. Running again
+            usually resolves it.
+          </div>
+        </div>
+        <pre style={{
+          fontSize: 12, fontFamily: "monospace", whiteSpace: "pre-wrap",
+          wordBreak: "break-word", background: C.bgSubtle, border: `1px solid ${C.border}`,
+          borderRadius: 4, padding: 12, margin: 0, maxHeight: 400, overflow: "auto",
+        }}>{rawResponse || "(no text captured)"}</pre>
+      </div>
+    );
+  }
+  if (!brief) {
+    return <div style={{ fontSize: 13, color: C.textMuted }}>No brief in this run.</div>;
+  }
+
+  return (
+    <div style={{ display: "grid", gap: 24 }}>
+      <div style={{
+        fontSize: 14, lineHeight: 1.7, color: C.textPrimary,
+        background: C.bgSubtle, border: `1px solid ${C.border}`,
+        borderRadius: 4, padding: 16,
+      }}>
+        {brief.summary}
+      </div>
+
+      {brief.findings?.length > 0 && (
+        <div>
+          <div style={{
+            fontSize: 12, fontWeight: 500, color: C.textMuted,
+            textTransform: "uppercase", marginBottom: 10,
+          }}>
+            Findings ({brief.findings.length})
+          </div>
+          <div style={{ display: "grid", gap: 10 }}>
+            {brief.findings.map((f, i) => (
+              <div key={i} style={{
+                border: `1px solid ${C.border}`, borderRadius: 4, padding: 14,
+                // Severity is carried on the left edge as well as the badge, so
+                // the shape of a brief is readable at a glance while scrolling.
+                borderLeft: `3px solid ${
+                  f.severity === "critical" ? C.error
+                  : f.severity === "warning" ? C.warning
+                  : f.severity === "opportunity" ? C.blueLight
+                  : C.borderStrong
+                }`,
+              }}>
+                <div style={{
+                  display: "flex", alignItems: "center", gap: 8,
+                  marginBottom: 8, flexWrap: "wrap",
+                }}>
+                  <Badge variant={SEVERITY_VARIANT[f.severity] || "neutral"}>
+                    {f.severity}
+                  </Badge>
+                  <Badge variant="neutral">{f.area}</Badge>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: C.textPrimary }}>
+                    {f.title}
+                  </span>
+                </div>
+                <div style={{ fontSize: 13, color: C.textSecondary, lineHeight: 1.6, marginBottom: 6 }}>
+                  <span style={{ color: C.textMuted, fontWeight: 500 }}>Evidence: </span>
+                  {f.evidence}
+                </div>
+                <div style={{ fontSize: 13, color: C.textSecondary, lineHeight: 1.6 }}>
+                  <span style={{ color: C.textMuted, fontWeight: 500 }}>Diagnosis: </span>
+                  {f.diagnosis}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {brief.recommendations?.length > 0 && (
+        <div>
+          <div style={{
+            fontSize: 12, fontWeight: 500, color: C.textMuted,
+            textTransform: "uppercase", marginBottom: 10,
+          }}>
+            Recommendations ({brief.recommendations.length})
+          </div>
+          <div style={{ display: "grid", gap: 10 }}>
+            {brief.recommendations.map((r, i) => (
+              <div key={i} style={{
+                border: `1px solid ${C.border}`, borderRadius: 4, padding: 14,
+                display: "flex", gap: 14, alignItems: "flex-start",
+              }}>
+                <div style={{
+                  flexShrink: 0, width: 28, height: 28, borderRadius: 14,
+                  background: C.blue, color: "#fff", fontSize: 13, fontWeight: 600,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>{r.priority}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{
+                    fontSize: 14, fontWeight: 600, color: C.textPrimary,
+                    marginBottom: 8, lineHeight: 1.5,
+                  }}>{r.action}</div>
+                  <div style={{ fontSize: 13, color: C.textSecondary, lineHeight: 1.6, marginBottom: 4 }}>
+                    <span style={{ color: C.textMuted, fontWeight: 500 }}>Why: </span>
+                    {r.rationale}
+                  </div>
+                  <div style={{ fontSize: 13, color: C.textSecondary, lineHeight: 1.6, marginBottom: 10 }}>
+                    <span style={{ color: C.textMuted, fontWeight: 500 }}>Expected impact: </span>
+                    {r.expected_impact}
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    <Badge variant={
+                      r.effort === "low" ? "success" : r.effort === "high" ? "warning" : "neutral"
+                    }>{EFFORT_LABEL[r.effort] || r.effort}</Badge>
+                    <span style={{ fontSize: 12, color: C.textMuted }}>
+                      Watch: <strong style={{ color: C.textSecondary }}>{r.watch_metric}</strong>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AnalystPanel() {
+  const [latest, setLatest]   = useState(null);   // { analysis } | run result
+  const [loading, setLoading] = useState(true);
+  const [running, setRunning] = useState(false);
+  const [error, setError]     = useState(null);
+  const [notice, setNotice]   = useState(null);   // save/migration warnings
+  const [history, setHistory] = useState([]);
+  const [openId, setOpenId]   = useState(null);
+  const [openRun, setOpenRun] = useState(null);
+
+  const loadLatest = () =>
+    fetch("/api/analyst/latest")
+      .then(r => r.json())
+      .then(d => {
+        if (d.error) { setError(d.error); return; }
+        if (d.migrationPending) setNotice(d.detail);
+        setLatest(d.analysis ? {
+          brief: d.analysis.brief,
+          status: d.analysis.status,
+          rawResponse: d.analysis.raw_response,
+          model: d.analysis.model,
+          dateRange: d.analysis.date_range,
+          createdAt: d.analysis.created_at,
+        } : null);
+      })
+      .catch(() => setError("Could not load the latest analysis"))
+      .finally(() => setLoading(false));
+
+  const loadHistory = () =>
+    fetch("/api/analyst/history?limit=20")
+      .then(r => r.json())
+      .then(d => setHistory(d.analyses || []))
+      .catch(() => {});
+
+  useEffect(() => { loadLatest(); loadHistory(); /* eslint-disable-next-line */ }, []);
+
+  const run = async () => {
+    setRunning(true); setError(null); setNotice(null);
+    try {
+      const res = await fetch("/api/analyst/run?days=30", { method: "POST" });
+      const d = await res.json();
+      if (!res.ok) {
+        setError(d.error || `Run failed (HTTP ${res.status})`);
+        return;
+      }
+      setLatest({
+        brief: d.brief, status: d.status, rawResponse: d.rawResponse,
+        model: d.model, usage: d.usage, runMs: d.runMs,
+        dateRange: d.dateRange, approxSnapshotTokens: d.approxSnapshotTokens,
+        createdAt: new Date().toISOString(),
+      });
+      if (d.saveError) setNotice(d.saveError);
+      if (d.sourceErrors?.length) {
+        setNotice(n => [
+          n, `Some sources were unavailable: ${d.sourceErrors.map(e => `${e.source} (${e.error})`).join("; ")}`,
+        ].filter(Boolean).join(" "));
+      }
+      loadHistory();
+    } catch {
+      setError("Run failed — the request did not complete");
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const toggleHistory = async (id) => {
+    if (openId === id) { setOpenId(null); setOpenRun(null); return; }
+    setOpenId(id); setOpenRun(null);
+    const d = await fetch(`/api/analyst/history?id=${encodeURIComponent(id)}`)
+      .then(r => r.json()).catch(() => null);
+    if (d?.analysis) setOpenRun(d.analysis);
+  };
+
+  return (
+    <div style={{ display: "grid", gap: 20 }}>
+      <Card>
+        <SectionTitle action={
+          <SmallButton onClick={run} variant="primary" disabled={running}>
+            {running ? "Analyzing…" : "Run analysis"}
+          </SmallButton>
+        }>
+          Analyst <span style={{ fontSize: 12, fontWeight: 400, color: C.textMuted }}>
+            · Claude reads Ads, Search Console and GA4 together
+          </span>
+        </SectionTitle>
+
+        {running && (
+          <div style={{
+            border: `1px solid ${C.blueLight}`, background: "#e8f1fb",
+            borderRadius: 4, padding: "10px 12px", marginBottom: 14,
+            fontSize: 13, color: C.textSecondary,
+          }}>
+            Building the snapshot from Google, then sending it to Claude. This
+            normally takes 30–90 seconds — leaving the tab is fine, the run
+            continues on the server.
+          </div>
+        )}
+
+        {error && (
+          <div style={{ fontSize: 13, color: C.error, marginBottom: 14 }}>
+            {error}
+          </div>
+        )}
+
+        {notice && (
+          <div style={{
+            border: `1px solid ${C.warning}`, background: "#fff8ec",
+            borderRadius: 4, padding: "10px 12px", marginBottom: 14,
+            fontSize: 12, color: C.textSecondary,
+          }}>{notice}</div>
+        )}
+
+        {loading && <div style={{ fontSize: 13, color: C.textMuted }}>Loading…</div>}
+
+        {!loading && !latest && !running && (
+          <NotConnected
+            title="No analysis yet"
+            reason={
+              "Run one to have Claude read the last 30 days across Google Ads, Search " +
+              "Console and GA4 together, and return findings, diagnoses and prioritized " +
+              "recommendations. Nothing is changed in any Google account — the brief is advice."
+            }
+          />
+        )}
+
+        {!loading && latest && (
+          <>
+            <BriefBody
+              brief={latest.brief}
+              status={latest.status}
+              rawResponse={latest.rawResponse}
+            />
+            <BriefMeta
+              model={latest.model}
+              runMs={latest.runMs}
+              usage={latest.usage}
+              dateRange={latest.dateRange}
+              approxSnapshotTokens={latest.approxSnapshotTokens}
+              createdAt={latest.createdAt}
+            />
+          </>
+        )}
+      </Card>
+
+      {history.length > 0 && (
+        <Card>
+          <SectionTitle>Previous runs</SectionTitle>
+          <div style={{ display: "grid", gap: 6 }}>
+            {history.map(h => (
+              <div key={h.id}>
+                <button
+                  onClick={() => toggleHistory(h.id)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 10, width: "100%",
+                    textAlign: "left", padding: "8px 10px", background: C.bgSurface,
+                    border: `1px solid ${openId === h.id ? C.blue : C.border}`,
+                    borderRadius: 4, cursor: "pointer",
+                    fontFamily: "Roboto, sans-serif", fontSize: 13, color: C.textPrimary,
+                  }}
+                >
+                  <span style={{ color: C.textMuted, fontSize: 11 }}>
+                    {openId === h.id ? "▾" : "▸"}
+                  </span>
+                  <span style={{ flex: 1 }}>{fmtWhen(h.createdAt)}</span>
+                  {h.dateRange?.startDate && (
+                    <span style={{ fontSize: 11, color: C.textMuted }}>
+                      {h.dateRange.startDate} → {h.dateRange.endDate}
+                    </span>
+                  )}
+                  <Badge variant={h.status === "ok" ? "success" : "warning"}>{h.status}</Badge>
+                  <span style={{ fontSize: 11, color: C.textMuted, fontFamily: "monospace" }}>
+                    {h.model}
+                  </span>
+                </button>
+                {openId === h.id && (
+                  <div style={{
+                    border: `1px solid ${C.border}`, borderTop: "none",
+                    borderRadius: "0 0 4px 4px", padding: 16,
+                  }}>
+                    {!openRun && (
+                      <div style={{ fontSize: 13, color: C.textMuted }}>Loading…</div>
+                    )}
+                    {openRun && (
+                      <>
+                        <BriefBody
+                          brief={openRun.brief}
+                          status={openRun.status}
+                          rawResponse={openRun.raw_response}
+                        />
+                        <BriefMeta
+                          model={openRun.model}
+                          dateRange={openRun.date_range}
+                          createdAt={openRun.created_at}
+                        />
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 // ── Nav tabs ──────────────────────────────────────────────────────────────────
 const TABS = [
   { id: "overview",  label: "Overview"     },
@@ -1816,6 +2214,7 @@ const TABS = [
   { id: "copy",      label: "AI Copy"      },
   { id: "blog",      label: "Blog & Social"},
   { id: "leads",     label: "Leads"        },
+  { id: "analyst",   label: "Analyst"      },
   { id: "approvals", label: "Approvals"    },
 ];
 
@@ -1966,6 +2365,7 @@ export default function App() {
         {tab === "analytics" && <AnalyticsPanel />}
         {tab === "ads"       && <AdsPanel />}
         {tab === "seo"       && <SeoPanel />}
+        {tab === "analyst"   && <AnalystPanel />}
         {tab === "approvals" && <ApprovalsPanel />}
 
         {tab === "ab" && (
