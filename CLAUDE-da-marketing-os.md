@@ -31,6 +31,30 @@ Handles UTM personalization, A/B testing, AI blog generation, social automation,
 - HubSpot API (portal ID: `23896347`, private app token `pat-na1-` prefix)
 - PM2 + EC2
 
+## Supabase schema (project `huqohncglbshwuzeguvb`)
+
+`supabase/migrations/001…011` is the complete, authoritative schema — verified
+2026-09-08 by applying the whole chain to a scratch PostgreSQL 16 database and
+diffing columns, indexes, constraints, triggers, functions, sequences, views and
+RLS against the live project: 280 objects, zero differences. Applied by hand in
+the SQL editor (or via the Management API — see the memory note on DDL access);
+there is no migration-tracking table, so **file presence never proves applied**
+— verify by object existence.
+
+**RLS is on for all 16 tables with zero policies** (default-deny). Every reader
+is a server-side route using the service-role key, which bypasses RLS; the
+`supabaseAnon` client in `src/lib/supabase.ts` is exported but has no consumers.
+Adding a permissive policy would expose the table to the anon key that ships in
+the public site's JavaScript — don't, unless that is explicitly the goal.
+
+⚠️ **`self_serve_signups` is NOT a table in this project.** It belongs to
+**da-platform** (its migration 154, project `byouefbebqgffhtfdggu`) and backs
+the per-IP signup rate limit in `da-platform/lib/signup-guard.ts`. The
+2026-09-03 signup hardening spanned both repos, which makes this easy to
+misread: the marketing side owns the lead row and the confirmation flow
+(`marketing_leads`, migration 010), the platform side owns provisioning and
+rate limiting. Do not create `self_serve_signups` here.
+
 ## Team
 
 - **Marlena** — content editing via Keystatic, deploys via `git pull && npm run build && pm2 restart da-marketing`
