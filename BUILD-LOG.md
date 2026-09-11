@@ -71,3 +71,91 @@ replay would touch it. `reputation_settings.review_page_url` is still the
 absent migration-tracking table means the next audit is another object-by-object
 diff; adopting the scratch-DB diff as the standing check would make it a
 one-command answer.
+
+---
+
+## Google Ads + Search Console reconciled with the live APIs
+**Sep 11, 2026** · 12:26 – 13:05 PDT (~39m wall clock) · ~37m CC active ·
+~0m operator (Cloud-side scopes and Ads API enablement were done before the session)
+
+Shipped: `e4182c5` — the Ads tab reports real campaign data and the SEO tab
+returns real Search Console data, both for the first time. Plus `b9b7b0c`, a
+file-level catch-up committing the Sep 8 migrations (010, 011) and build log
+that had been left untracked, so the repo again contains the migrations that
+describe production.
+
+Both tabs were broken, for unrelated reasons, and in both cases the message on
+screen pointed away from the cause. The session's actual work was a diagnosis:
+calling Google directly with the stored refresh token before touching code.
+That took one script and settled everything.
+
+**Ads had three independently fatal faults.** The developer token was the
+red herring — Google retired developer tokens on 2026-09-09, and
+`listAccessibleCustomers` answers 200 with no such header at all, which the
+diagnostic confirmed in one call. Worse, the old code *gated the whole panel*
+on that token being present, so the tab would have kept saying "awaiting Basic
+Access" forever no matter what Google approved. Second, v18 → v25 turns out to
+reject `pageSize` outright (`PAGE_SIZE_NOT_SUPPORTED`, fixed 10,000-row pages)
+and the old client sent `pageSize: 1000` on every request — so every query was
+a hard 400 even with perfect auth. Third, and the one that actually produced
+the 403s on screen: `GOOGLE_ADS_LOGIN_CUSTOMER_ID=6947440699` named a manager
+account this grant cannot access, and Google's reply to that is
+`USER_PERMISSION_DENIED` with a message *suggesting you set a
+login-customer-id* — advice that is exactly backwards when a wrong one is the
+problem. Both reachable accounts are non-manager, so the header must be absent.
+
+**Search Console was a wrong identifier wearing a permissions costume.** The
+error read `User does not have sufficient permission for site
+'https://www.dealeraddendums.com'`, which sent the previous session looking for
+a missing grant or a service account to authorize. There is no service account
+anywhere in this integration — GA4, Ads and Search Console all authenticate as
+the one OAuth user, and `sites.list` showed that user is `siteOwner` of exactly
+one property: `sc-domain:dealeraddendums.com`. A URL-prefix property and a
+domain property are different objects, so the configured string simply did not
+exist in the account, and asking for a property you don't own is a 403 rather
+than a 404. The domain form returned data immediately.
+
+Rather than just correcting the string, the property is now resolved at query
+time from Google's own `sites.list` — explicit value first when it is real,
+then its slash/`sc-domain` variants, then the sole usable property. Verified
+both directions: with the correct value it resolves `env`; with the old wrong
+value temporarily restored it resolves `variant-of-env` and returns identical
+data. The tab now survives a future property or domain change.
+
+Scopes got the same treatment. The consent screen was widened earlier in the
+day, but adding scopes to a *request* never widens an existing *grant* — so
+readiness badges now read the scopes the stored grant actually holds, and the
+connect panel offers "Reconnect to grant new permissions" naming exactly what
+is absent. The live grant already had `adwords`, so Ads needed no reconnect at
+all; only Business Profile and Indexing do. `exchangeCodeAndStore` was also
+hardened to never overwrite a stored refresh token with null — it previously
+threw before updating scopes, which would have turned a successful re-consent
+into a dead connection.
+
+The lasting fix is the logging. Both clients now dump the complete Google error
+body, the GAQL query, and Google's requestId. Every fault in this session was
+named explicitly in a response body nobody was printing.
+
+Verified live over the 30 days to Sep 11: Ads/Dealer Addendums 3,185 impressions,
+460 clicks, 14.44% CTR, $7.05 avg CPC, $3,241.72 cost, 15.5 conversions across
+12 campaigns; Ads/Little Farm 2,366 impressions, 27 clicks; SEO 317 clicks,
+2,621 impressions, 12.09% CTR, avg position 6.67. Analytics was deliberately
+untouched and re-checked unchanged at 41,202 sessions.
+
+**No migration** — `google_connection.scopes` already held everything the
+scope-gap logic needed, and Ads accounts are discovered at runtime rather than
+stored.
+
+Two corrections to the docs fell out of it. The live box is **54.176.9.39**
+(us-west-1); `18.212.227.125` is a stale June copy that still answers on :3020
+and looks plausible if you land on it — it has no `.env.production` and none of
+the Google work. And the deploy line said `git pull && npm run build && pm2
+restart`, which is the failure mode `deploy.sh` was written to prevent.
+
+**Not closed:** the reference implementation named for this work
+(`agencykiller.tar.gz`) was not on the Mac, the live box, or the stale box, so
+the port was done from the written spec and verified against the live API
+instead. `business.manage` and `indexing` stay ungranted until Allan clicks
+reconnect. Pre-existing and unrelated: `ImageError: "url" parameter is valid
+but upstream response is invalid` recurs in the pm2 log from the Next image
+optimizer, predating this deploy.
