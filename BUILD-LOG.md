@@ -159,3 +159,78 @@ instead. `business.manage` and `indexing` stay ungranted until Allan clicks
 reconnect. Pre-existing and unrelated: `ImageError: "url" parameter is valid
 but upstream response is invalid` recurs in the pm2 log from the Next image
 optimizer, predating this deploy.
+
+---
+
+## Analyst — Claude reads Ads, Search Console and GA4 together
+**Sep 11, 2026** · 13:10 – 14:25 PDT (~75m wall clock) · ~70m CC active ·
+~2m operator (pasting migration 012, and the answer on how to apply it)
+
+Shipped: `e123a22` + `e8bcf3a` — an Analyst tab that assembles a marketing
+snapshot from the three live Google integrations, sends it to Claude
+(`claude-sonnet-5`), and renders a structured brief: findings → diagnoses →
+prioritized recommendations. Migration 012 (`analyses`) stores every run.
+Read-only in both directions; nothing in this path can change a campaign.
+
+The design decision that mattered was not the API call — it was deciding what
+the model is allowed to believe. A snapshot of numbers cannot distinguish "zero
+happened" from "zero recorded", and this account has a live example of exactly
+that: GA4 reports 0 conversions, the funnel's signup value is a hardcoded 0 in
+the GA4 client rather than a measurement, and `form_start` has never been
+tracked. A brief handed those numbers raw would confidently recommend bid and
+budget changes optimised toward a metric nobody is recording. So instrumentation
+state is computed from the fetched data and passed in as its own `measurement`
+block, with the system prompt required to establish tracking integrity before
+any tactical advice and to raise a critical measurement finding whenever a gap
+exists. Every flag is derived, not asserted, so it stops being raised the moment
+the gap is fixed.
+
+That earned its keep on the first real run. The brief led with the conversion
+signal being broken — and then found something nobody had told it: Google Ads
+reports 15.5 conversions for the same account and period where GA4 reports 0,
+so neither number can be trusted until the Ads conversion action is audited
+against first-party signup records. It also declined to act on the one
+juicy-looking finding, noting that a $337 vs $104 cost-per-conversion gap
+between two campaigns rests on 7 and 8.5 conversions and is too small to move
+budget on. Recommendations 1–3 are all tracking fixes; the campaign work is
+ranked below them.
+
+Three engineering choices are worth remembering. The client is a raw `fetch`
+rather than the installed SDK: this project pins `@anthropic-ai/sdk` at
+`^0.20.0`, which predates the parameters used, and `lib/ai.ts` is shared with
+the live chat widget and the reputation reply drafter — bumping it to reach
+newer parameters would move two unrelated features onto a new client version.
+The snapshot deliberately bypasses `lib/google/cache.ts`, because pressing "Run
+analysis" means *look at the data now*, and reusing the tabs' cache keys with
+different row limits would let a 25-row cached entry satisfy a 50-row request.
+And the concurrency guard is an in-process flag, which is a real lock only
+while da-marketing runs as a single PM2 fork — noted in the code for the day
+that changes.
+
+One bug came out of testing rather than review. The first live run generated a
+brief fine but stored nothing, and showed the raw database message instead of
+the migration hint: `isMissingTable` matched only Postgres's `42P01`, while
+supabase-js answers through PostgREST, which reports an unknown relation as
+`PGRST205` — "Could not find the table 'public.analyses' in the schema cache".
+Fixed in `e8bcf3a` to match both shapes.
+
+Verified after Allan applied 012: run stored (`status=ok`, brief and snapshot
+both persisted, `raw_response` null as intended for a success), `/latest` and
+`/history` return it, `?id=` expands a history row's full brief, a second
+concurrent run gets 409 and the lock releases when the in-flight run finishes
+(the queued run completed and saved on its own), and the anon key reads `[]`
+from `analyses` — which matters more here than most tables, because a row holds
+full campaign spend and the entire marketing dataset. Snapshot came in at
+~2,700 tokens against the ~15k target; runs cost ~$0.08–0.12 and take 65–100
+seconds.
+
+**Not closed:** the write path. Recommendations are text today. Migration 009
+already ships `proposed_changes` (with `source='ai'`) and `change_audit`, and
+the Approvals tab renders that queue empty — the intended evolution is Analyst
+emits proposals → human approves → an applier executes. Deliberately not built:
+`lib/google/ads.ts` still exposes no mutate surface at all, so there is no code
+path in this repo that can spend money, and that is worth keeping until the
+approval queue is real. Also open: GBP is the next snapshot source but needs
+both Google's API approval and a reconnect for the `business.manage` scope, and
+`lib/gbp.ts` is still stubbed — when it lands it needs a `gbpIsStubbed` flag so
+a brief can never mistake mock reviews for real ones.

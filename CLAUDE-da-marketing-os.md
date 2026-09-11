@@ -338,3 +338,189 @@ This work needed **no migration** — `google_connection.scopes` already carries
 everything the scope-gap logic needs, and Ads accounts are discovered at
 runtime rather than stored. Per the schema-audit notes above, any future change
 here goes in a numbered migration file, never the SQL editor.
+
+---
+
+## Analyst (`/admin` → Analyst)
+
+On demand, assemble a marketing snapshot from the three Google integrations,
+send it to Claude, and render a structured analyst brief: **findings →
+diagnoses → prioritized recommendations**. Read-only in both directions —
+nothing here can change a Google account, and the model is never given a write
+tool. A recommendation is advice until a human acts on it.
+
+| Thing | Value |
+|---|---|
+| Table | `analyses` (migration **012**) |
+| Model | `claude-sonnet-5`, pinned in `ANALYST_MODEL` (`lib/analyst/analyze.ts`) |
+| Key | `ANTHROPIC_API_KEY` (already in `.env.production`) |
+| Code | `src/lib/analyst/{snapshot,analyze,store}.ts`, routes under `src/app/api/analyst/`, UI `AnalystPanel` in `src/components/marketing-dashboard.jsx` |
+| Cost | ~$0.08 per run at observed sizes (~8.7k in / ~6.7k out); ~60–90 s |
+
+### Why raw `fetch`, not the SDK
+
+`lib/analyst/analyze.ts` calls `https://api.anthropic.com/v1/messages` directly
+instead of using `lib/ai.ts`. Two reasons, and both still hold:
+
+1. This project pins `@anthropic-ai/sdk` at **`^0.20.0`** (2024-era), which
+   predates the parameters used here (`thinking: {type:'adaptive'}`,
+   `output_config.effort`).
+2. `lib/ai.ts` is **shared with the live chat widget and the reputation reply
+   drafter**, and its `MODEL` is a different, older model. Bumping the SDK or
+   that constant to serve the Analyst would move two unrelated live features
+   onto new versions.
+
+So the Analyst names its own model constant and owns its own HTTP call. If you
+ever do upgrade the SDK, this is the file that can move back — but re-test the
+chat widget and reputation drafting when you do.
+
+⚠️ `claude-sonnet-5` **rejects** `budget_tokens` and the sampling parameters
+(`temperature`/`top_p`/`top_k`) with a 400. Adaptive thinking is the only
+on-mode. Don't "helpfully" add a temperature.
+
+### The snapshot (`lib/analyst/snapshot.ts`)
+
+Built **entirely from the existing Google clients** — no new Google API
+surface:
+
+| Source | Function | Content |
+|---|---|---|
+| Ads | `listAdsAccounts()` + `campaignReport()` | per non-manager account: totals + up to 25 campaigns (impressions, clicks, CTR, avg CPC, cost, conversions) |
+| Search Console | `fetchGscSummary()` | top 50 queries, top 25 pages, 30d totals (clicks/impressions/CTR/position) |
+| GA4 | `fetchGa4Summary()` | channels, top sources, funnel numbers — **untouched** |
+
+`fetchGscSummary` gained an optional `limits` argument so the snapshot can ask
+for 50 queries where the SEO tab asks for 25. **Defaults are unchanged**, so
+the SEO tab behaves exactly as before — it is the same `searchAnalytics/query`
+endpoint with a different `rowLimit`, not a new call.
+
+Two deliberate choices:
+
+- **Not cached.** It deliberately does not go through `lib/google/cache.ts`: a
+  run is manual and infrequent, pressing "Run analysis" means *look at the data
+  now*, and sharing the tabs' cache keys with different row limits would let a
+  25-row cached entry satisfy a 50-row request.
+- **One failing source never fails the run.** A brief about Ads and SEO is
+  still worth having when GA4 is down. Failures land in `meta.errors` and are
+  passed to the model, so it is *told* what is missing instead of silently
+  reasoning over a hole.
+
+Rows are capped and numbers rounded (money to cents, ratios to 4dp) to stay
+well under the token target. **`meta.approxTokens` reports the realised size**
+and is shown in the UI, so a regression in this file is visible rather than
+quietly expensive. Observed: **~2,700 tokens**, against a ~15k target.
+
+### The `measurement` block — the part that earns its keep
+
+A snapshot alone cannot distinguish *"zero happened"* from *"zero recorded"*,
+and a brief that reads the first as fact will confidently optimise toward a
+metric that isn't wired up. So instrumentation state is **computed** and passed
+in explicitly:
+
+- `ga4ConversionsZero` — GA4 reports 0 conversions; no key event is configured.
+- `ga4SignupsInstrumented: false` — `funnel.signups` is a **hardcoded 0** in
+  `lib/google/ga4.ts`, not a measurement.
+- `ga4FormStartInstrumented: false` — no `form_start` event exists, which is
+  why the admin funnel greys that step out.
+- `adsConversionsZeroAccounts` — any Ads account reporting 0 conversions
+  against real paid clicks.
+- `gscPropertyIsDomainLevel` — `sc-domain:` spans every subdomain including the
+  app, so GSC clicks are not comparable to marketing-site GA4 sessions.
+
+Every flag is **derived from the data actually fetched**, so it stops being
+raised the moment the underlying gap is fixed. The system prompt then requires
+the brief to establish measurement integrity *before* any campaign advice, and
+to raise at least one `critical` finding in area `measurement` whenever a gap
+is present. Optimising bids while the conversion signal is broken is the
+failure mode this is designed against.
+
+### Brief schema
+
+```
+{ summary,
+  findings:        [{ severity: critical|warning|opportunity|info,
+                      area: ads|seo|analytics|measurement,
+                      title, evidence, diagnosis }],
+  recommendations: [{ priority, action, rationale,
+                      expected_impact, effort: low|med|high, watch_metric }] }
+```
+
+`evidence` must cite real numbers from the snapshot. Findings are sorted
+critical-first and recommendations by priority in `normalise()`, so the UI never
+depends on the model's ordering. Unknown enum values are coerced to safe
+defaults rather than crashing a render.
+
+**Parsing is layered**: verbatim → fences stripped → outermost braces. A parsed
+object that isn't shaped like a brief counts as a *failure*, not a success —
+storing it would render an empty panel with no explanation. A parse failure is
+a recorded outcome: `status='parse_error'`, raw text in `raw_response`, shown in
+the UI. The full raw response is logged server-side either way:
+
+```
+pm2 logs da-marketing --lines 200 --nostream | grep '\[analyst\]'
+```
+
+### Routes
+
+| Route | Behaviour |
+|---|---|
+| `POST /api/analyst/run?days=30` | snapshot → Claude → store → return brief. `maxDuration = 300`. Returns **409** if a run is already in flight. **503** if no Google source is available (rather than paying for a call over an empty object). |
+| `GET /api/analyst/latest` | most recent run with its full brief |
+| `GET /api/analyst/history?limit=20` | light list (no snapshot/brief) so the payload stays small; `?id=<uuid>` returns that run's full brief for expanding a history row |
+
+All three are gated by `isAdminAuthed()` (`da_admin_auth` cookie).
+
+**Concurrency** is an in-process flag in `lib/analyst/store.ts`. That is a real
+lock *while da-marketing runs as a single PM2 fork* — the same assumption
+`lib/google/cache.ts` makes. **If this is ever clustered, move it to the
+database** (an `in_flight` row or a Postgres advisory lock). A stale flag
+self-clears after 5 minutes so a wedged run can't lock the feature out forever.
+
+### Missing-table detection
+
+Until 012 is applied, the routes detect it and say so precisely, and a run
+still returns its brief with a banner explaining it couldn't be saved — a
+pending migration shouldn't look like a broken feature.
+
+⚠️ supabase-js answers through PostgREST, which reports an unknown relation as
+**`PGRST205` — "Could not find the table 'public.analyses' in the schema
+cache"**, *not* Postgres's `42P01`. Matching only 42P01 silently missed it on
+the first live run. `isMissingTable()` now matches both, by code and by message.
+
+### Adding a data source to the snapshot
+
+The snapshot is the only file to touch. For each new source:
+
+1. Call the **existing** client for it; don't add a Google/HTTP surface here.
+2. Wrap it in its own `try/catch` that pushes to `errors` — never let it fail
+   the run.
+3. Add the trimmed shape to `AnalystSnapshot` and cap the rows.
+4. If it can be *absent vs. zero*, add a computed flag and a note to the
+   `measurement` block. This is the important step: an uninstrumented source
+   that looks like a real zero is worse than no source at all.
+5. Re-check `meta.approxTokens` in the UI after the change.
+
+**GBP is the next one**, once Google approves the Business Profile API. The
+`business.manage` scope is in the request set but **not yet granted** on the
+live connection (it needs a reconnect — see the Google Integration section), and
+`src/lib/gbp.ts` is still stubbed on mock data. When it goes live, add review
+volume/rating/response-rate to the snapshot and a `gbpIsStubbed` flag to
+`measurement` so a brief can never mistake mock reviews for real ones.
+
+### Intended evolution: recommendations → Approvals-gated actions
+
+Today a recommendation is text. Migration 009 already ships the foundation for
+turning them into gated writes: `proposed_changes` (typed, with
+`before_json`/`after_json`, a `status` lifecycle, and `source` including `'ai'`)
+and `change_audit`. The Approvals tab renders that queue and is deliberately
+empty.
+
+The path is: the Analyst emits a `proposed_changes` row with `source='ai'`
+alongside each actionable recommendation → a human approves or rejects it in
+Approvals → an applier executes it against the Google Ads API and writes
+`change_audit`.
+
+**The write path does not exist yet, and `lib/google/ads.ts` deliberately
+exposes no mutate surface at all** — there is no code path in this repo that
+can spend money, which is a property worth keeping until the approval queue is
+real. Build the queue and the audit trail before the applier, not after.

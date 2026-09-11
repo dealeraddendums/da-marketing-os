@@ -2090,8 +2090,8 @@ function AnalystPanel() {
             fontSize: 13, color: C.textSecondary,
           }}>
             Building the snapshot from Google, then sending it to Claude. This
-            normally takes 30–90 seconds — leaving the tab is fine, the run
-            continues on the server.
+            normally takes a minute or two — leaving the tab is fine, the run
+            continues on the server and will be in Previous runs when it lands.
           </div>
         )}
 
