@@ -708,12 +708,27 @@ function FunnelPanel({ ga4 = null }) {
   const visitors = useGa4 ? (ga4.sessions ?? 0)      : (data?.visitors ?? 0);
   const engaged  = useGa4 ? (ga4.engaged ?? 0)       : (data?.engaged ?? 0);
   const pricing  = useGa4 ? (ga4.pricingViews ?? 0)  : (data?.pricingViewed ?? 0);
-  const formed   = useGa4 ? null                     : (data?.formStarted ?? 0);
-  const trials   = useGa4 ? (ga4.signups ?? 0)       : (data?.trialSignups ?? 0);
+  // Form Started and Trial Signup used to be a hardcoded 0 on the GA4 side —
+  // a zero that read as measured failure when nothing was being measured at
+  // all. They are now real GA4 event counts (form_start / trial_signup, sent
+  // over the Measurement Protocol). A genuine 0 still shows as "awaiting
+  // data", dated, because GA4 cannot be backfilled and any period before
+  // instrumentation legitimately has none.
+  const formed   = useGa4 ? (ga4.funnel?.formStarts ?? 0) : (data?.formStarted ?? 0);
+  const trials   = useGa4 ? (ga4.funnel?.signups ?? 0)    : (data?.trialSignups ?? 0);
   const converted = data?.converted ?? 0;
   const pct = (n) => (visitors > 0 ? Math.round((n / visitors) * 1000) / 10 : 0);
 
-  // tracked: live number + bar. untracked: greyed, no bar, no number.
+  const instrumentedAt = ga4?.instrumentedAt;
+  const sinceLabel = instrumentedAt
+    ? new Date(instrumentedAt + "T00:00:00").toLocaleDateString(undefined,
+        { month: "short", day: "numeric", year: "numeric" })
+    : null;
+  // On the GA4 side an instrumented-but-empty step is honest about which it is
+  // rather than rendering a number nobody should trust.
+  const awaiting = (v) => useGa4 && !v;
+
+  // tracked: live number + bar. untracked: greyed, with the reason.
   const steps = [
     { label: useGa4 ? "Sessions" : "Visitors",
                                        tracked: true,  value: visitors,  pct: 100,            color: C.blue },
@@ -721,10 +736,12 @@ function FunnelPanel({ ga4 = null }) {
                                        tracked: true,  value: engaged,   pct: pct(engaged),   color: C.blueLight },
     { label: useGa4 ? "Pricing pageviews" : "Pricing Viewed",
                                        tracked: true,  value: pricing,   pct: pct(pricing),   color: C.blueLight },
-    // GA4 has no first-party "form_start" event configured, so this step is
-    // greyed rather than shown as a real zero when GA4 is the source.
-    { label: "Form Started",           tracked: !useGa4, value: formed,   pct: pct(formed ?? 0), color: C.blueLight },
-    { label: "Trial Signup",           tracked: true,  value: trials,    pct: pct(trials),    color: C.success },
+    { label: "Form Started",
+      tracked: !awaiting(formed), value: formed, pct: pct(formed ?? 0), color: C.blueLight,
+      note: awaiting(formed) && sinceLabel ? `no events yet — instrumented ${sinceLabel}` : undefined },
+    { label: "Trial Signup",
+      tracked: !awaiting(trials), value: trials, pct: pct(trials), color: C.success,
+      note: awaiting(trials) && sinceLabel ? `no events yet — instrumented ${sinceLabel}` : undefined },
     { label: "Converted (trial→paid)", tracked: true,  value: converted, pct: pct(converted), color: C.success },
   ];
 
@@ -765,7 +782,7 @@ function FunnelPanel({ ga4 = null }) {
                     </span>
                   ) : (
                     <span style={{ fontSize: 12, color: C.textMuted, fontStyle: "italic" }}>
-                      not tracked yet{step.note ? ` · ${step.note}` : ""}
+                      {step.note || "not tracked yet"}
                     </span>
                   )}
                 </div>
@@ -776,6 +793,13 @@ function FunnelPanel({ ga4 = null }) {
           <div style={{ fontSize: 12, color: C.textMuted, marginTop: 14, lineHeight: 1.5 }}>
             Stage counts are per-visit events (raw, not de-duplicated by session). Trial→paid lags signup
             by up to the trial length, so Converted is a rolling count, not a same-cohort rate.
+            {useGa4 && sinceLabel && (
+              <>
+                {" "}On the GA4 side, Form Started and Trial Signup read the <code>form_start</code> and{" "}
+                <code>trial_signup</code> events, sent server-side since {sinceLabel};{" "}
+                <code>trial_signup</code> fires at email confirmation, not at form submit.
+              </>
+            )}
           </div>
         </>
       )}

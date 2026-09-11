@@ -136,6 +136,13 @@ Based on the dealership name and email domain, provide a brief intelligence summ
     // The real browser IP — forwarded to the platform's rate-limit ledger at
     // confirmation time, since this box is the only hop that sees it.
     source_ip: ip === 'unknown' ? null : ip,
+    // GA4 identity from the session that actually produced this lead. The
+    // trial_signup conversion is sent at confirmation — a different session,
+    // arriving from an email client — so without these the conversion would
+    // land attributed to Direct and cost-per-trial-by-channel would be
+    // meaningless. Non-identifying: random first-party cookie values.
+    ga_client_id: (body.ga_client_id as string) || null,
+    ga_session_id: (body.ga_session_id as string) || null,
   }
   const _leadPayloadReady = true
   void _leadPayloadReady
@@ -151,6 +158,21 @@ Based on the dealership name and email domain, provide a brief intelligence summ
   // saves rather than failing the whole submission.
   if (dbError && /zip/i.test(dbError.message)) {
     delete leadPayload.zip
+    ;({ data: lead, error: dbError } = await supabase
+      .from('marketing_leads')
+      .insert(leadPayload)
+      .select()
+      .single())
+  }
+
+  // Same guard for the GA4 identity columns (migration 013). Analytics
+  // attribution is worth a lot less than a signup, so if the migration has not
+  // been applied yet the columns are dropped and the lead still saves — losing
+  // attribution on that lead rather than losing the customer.
+  if (dbError && /ga_client_id|ga_session_id/i.test(dbError.message)) {
+    console.warn('[leads] ga_client_id/ga_session_id rejected — migration 013 not applied yet; saving without GA4 attribution')
+    delete leadPayload.ga_client_id
+    delete leadPayload.ga_session_id
     ;({ data: lead, error: dbError } = await supabase
       .from('marketing_leads')
       .insert(leadPayload)

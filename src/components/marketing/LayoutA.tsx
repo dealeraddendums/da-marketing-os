@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import Image from 'next/image'
 import type { PersonalizationContext } from '@/lib/personalization'
-import { getAttribution, pushSignupEvent } from '@/lib/attribution'
+import { getAttribution, pushSignupEvent, getGaIds } from '@/lib/attribution'
 import Turnstile from './Turnstile'
 import LoginMenu from './LoginMenu'
 
@@ -143,6 +143,7 @@ export default function LayoutA({ personalization }: Props) {
         body: JSON.stringify({
           ...form,
           ...getAttribution(),
+          ...getGaIds(),
           accountType: activeTab,
           accountKind: activeTab === 'group' ? 'group' : 'single',
           groupName: activeTab === 'group' ? form.dealership : undefined,

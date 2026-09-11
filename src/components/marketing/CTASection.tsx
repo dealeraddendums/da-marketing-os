@@ -1,6 +1,8 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
-import { getAttribution, pushSignupEvent } from '@/lib/attribution'
+import {
+  getAttribution, pushSignupEvent, getGaIds, sendFormStartOncePerSession,
+} from '@/lib/attribution'
 import Turnstile from './Turnstile'
 import { capture, abTrackOnce } from './HeroSection'
 import type { HeroTracking } from '@/lib/hero-engine'
@@ -56,6 +58,10 @@ export default function CTASection({ tracking }: Props) {
   }, [])
 
   const handleFormStart = () => {
+    // GA4 gets form_start once per SESSION, which is the semantics GA4 itself
+    // uses — and it is guarded inside the helper via sessionStorage rather than
+    // by the ref below, which only survives until this component remounts.
+    sendFormStartOncePerSession()
     if (formStarted.current) return
     formStarted.current = true
     abTrackOnce('da_ev_formstart', 'form_start', tracking) // funnel (ab_events)
@@ -104,6 +110,10 @@ export default function CTASection({ tracking }: Props) {
         body: JSON.stringify({
           ...form,
           ...getAttribution(),
+          // GA4 identity from THIS session, stored on the lead so the
+          // trial_signup conversion sent at email-confirmation time (a
+          // different session) still attributes to the channel that earned it.
+          ...getGaIds(),
           accountKind,
           groupName: accountKind === 'group' ? form.dealership : undefined,
           turnstileToken,

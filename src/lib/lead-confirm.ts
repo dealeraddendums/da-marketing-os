@@ -10,9 +10,10 @@
 // would let an email link scanner create a dealership by prefetching — the same
 // failure mode that made DA Platform's migration invites code-based.
 
-import { randomBytes } from 'node:crypto'
+import { randomBytes, createHash } from 'node:crypto'
 import { sendMandrillEmail } from '@/lib/mandrill'
 import { supabase } from '@/lib/supabase'
+import { sendGa4Event } from '@/lib/ga4-mp'
 
 export interface ProvisionOutcome {
   status: 'provisioned' | 'existing' | 'pending_review' | 'after_hours' | 'rejected' | 'failed' | 'skipped'
@@ -145,6 +146,53 @@ export interface LeadRow {
   gclid: string | null
   referrer: string | null
   landing_page: string | null
+  ga_client_id?: string | null
+  ga_session_id?: string | null
+}
+
+/**
+ * Send the GA4 `trial_signup` conversion.
+ *
+ * Fired HERE — at email confirmation — and nowhere else, because that is the
+ * only moment a trial signup is real. The pre-existing `signup_completed`
+ * dataLayer push fires on form SUBMIT, which is why Google Ads has been
+ * counting unconfirmed submissions (including the 2026-09-03 bot signups) as
+ * conversions; see CLAUDE-da-marketing-os.md → Tracking.
+ *
+ * Uses the client/session ids captured in the originating session, so the
+ * conversion attributes to the channel that earned it rather than to the email
+ * client the confirmation click came from.
+ *
+ * NO PII: GA4 receives a truncated hash of the lead id, never the email,
+ * name or dealership.
+ */
+async function fireTrialSignup(lead: LeadRow, outcome: ProvisionOutcome): Promise<void> {
+  const leadHash = createHash('sha256').update(lead.id).digest('hex').slice(0, 16)
+  const res = await sendGa4Event({
+    name: 'trial_signup',
+    clientId: lead.ga_client_id || null,
+    sessionId: lead.ga_session_id || null,
+    fallbackSeed: `lead:${lead.id}`,
+    params: {
+      lead_id_hash: leadHash,
+      source_page: lead.landing_page || '/',
+      account_kind: lead.account_kind || 'single',
+      provision_status: outcome.status,
+      // Carried as params so signups can be broken down in explorations even
+      // though Measurement Protocol does not rewrite session attribution.
+      lead_utm_source: lead.utm_source || '(none)',
+      lead_utm_medium: lead.utm_medium || '(none)',
+      lead_utm_campaign: lead.utm_campaign || '(none)',
+      lead_is_paid: lead.gclid ? 'true' : 'false',
+      // Makes it visible in GA4 when attribution had to be synthesised, so an
+      // unattributed conversion is never mistaken for a Direct one.
+      attribution_recovered: lead.ga_client_id ? 'true' : 'false',
+    },
+  })
+  console.log(
+    `[trial-signup] lead=${leadHash} sent=${res.sent} attributed=${res.attributed}` +
+    `${res.reason ? ` reason=${res.reason}` : ''}`,
+  )
 }
 
 /** Consume the token, mark the lead confirmed, then provision. Single-use:
@@ -190,6 +238,22 @@ export async function confirmAndProvision(token: string): Promise<
       provision_status: outcome.status,
     })
     .eq('id', lead.id)
+
+  // The conversion. Awaited (it is a sub-second POST) so the send is logged
+  // before the response returns, but wrapped so analytics can never turn a
+  // successful signup into a failed one.
+  //
+  // Sent for every outcome that means "a real person proved they own this
+  // address": provisioned, existing, and pending_review (held for a human, but
+  // the signup itself is genuine). NOT sent for after_hours or rejected, which
+  // did not produce a trial.
+  if (['provisioned', 'existing', 'pending_review'].includes(outcome.status)) {
+    try {
+      await fireTrialSignup(lead, outcome)
+    } catch (err) {
+      console.error('[trial-signup] send failed:', err instanceof Error ? err.message : err)
+    }
+  }
 
   return { ok: true, outcome, lead }
 }
