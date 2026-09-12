@@ -111,15 +111,27 @@ export async function POST(req: NextRequest) {
     if (appliedSnapshot && newAdId) appliedSnapshot.adId = newAdId
 
     const now = new Date().toISOString()
-    const patch: Record<string, unknown> = result.ok
-      ? {
-          status: 'applied', applied_at: now, error: null,
-          dry_run: result.dryRun,
-          google_response: result.dryRun ? { dryRun: true, requests: result.requests } : result.responses,
-          applied_resource_names: result.resourceNames,
-          applied_snapshot: appliedSnapshot,
-        }
-      : { status: 'failed', error: result.error ?? 'Unknown error', google_response: result.responses }
+    // A DRY RUN IS NOT A CHANGE, so it must not consume the row.
+    //
+    // Marking it 'applied' would strand it: after ADS_WRITES_ENABLED is turned
+    // on, the row would sit in a terminal state having never reached Google,
+    // and the operator would have to reset it by hand to actually apply what
+    // they approved. Instead the row stays 'approved', records that a dry run
+    // happened and exactly what it would have sent, and remains applyable.
+    const patch: Record<string, unknown> = !result.ok
+      ? { status: 'failed', error: result.error ?? 'Unknown error', google_response: result.responses }
+      : result.dryRun
+        ? {
+            dry_run: true,
+            google_response: { dryRun: true, at: now, requests: result.requests },
+            applied_snapshot: appliedSnapshot,
+          }
+        : {
+            status: 'applied', applied_at: now, error: null, dry_run: false,
+            google_response: result.responses,
+            applied_resource_names: result.resourceNames,
+            applied_snapshot: appliedSnapshot,
+          }
 
     const { error: updErr } = await supabase.from('proposed_changes').update(patch).eq('id', row.id)
     if (updErr) console.error('[ads-apply] status update failed:', updErr.message)
@@ -140,7 +152,9 @@ export async function POST(req: NextRequest) {
 
     results.push({
       id: row.id, ok: result.ok, dryRun: result.dryRun,
-      status: result.ok ? 'applied' : 'failed',
+      // Still 'approved' after a dry run: nothing was applied, and the row is
+      // deliberately left ready to apply for real.
+      status: !result.ok ? 'failed' : result.dryRun ? 'approved (dry run recorded)' : 'applied',
       summary: row.summary ?? '',
       error: result.error,
       resourceNames: result.resourceNames,
@@ -162,6 +176,8 @@ export async function POST(req: NextRequest) {
     results,
     note: adsWritesEnabled
       ? undefined
-      : 'ADS_WRITES_ENABLED is not "true" — nothing was sent to Google. Each row records the exact request that would have been sent.',
+      : 'ADS_WRITES_ENABLED is not "true" — nothing was sent to Google. Each row records the ' +
+        'exact request that would have been sent and stays approved, so the same batch can be ' +
+        'applied for real once writes are armed.',
   })
 }

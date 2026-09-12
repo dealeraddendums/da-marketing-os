@@ -2407,7 +2407,10 @@ function ApprovalsPanel() {
                         {r.recommendation_verdict}
                       </Badge>
                     )}
-                    {r.dry_run && <Badge variant="warning">dry run</Badge>}
+                    {r.dry_run && r.status === "approved" && (
+                      <Badge variant="warning">dry run recorded</Badge>
+                    )}
+                    {r.dry_run && r.status === "applied" && <Badge variant="warning">dry run</Badge>}
                   </div>
                   <div style={{ fontSize: 14, color: C.textPrimary, marginTop: 6 }}>
                     {r.summary || r.target_label || "Proposed change"}
@@ -2421,6 +2424,18 @@ function ApprovalsPanel() {
                     fontSize: 12, color: C.blue, fontFamily: "Roboto, sans-serif",
                   }}>{openId === r.id ? "Hide detail" : "Show evidence & diff"}</button>
                   {openId === r.id && <ProposalDetail row={r} />}
+                  {openId === r.id && r.dry_run && r.google_response?.requests && (
+                    <div style={{ marginTop: 8 }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: C.textMuted, textTransform: "uppercase", marginBottom: 4 }}>
+                        Dry run — exactly what would be sent to Google
+                      </div>
+                      <pre style={{
+                        fontSize: 11, fontFamily: "monospace", background: C.bgSubtle,
+                        border: `1px solid ${C.border}`, borderRadius: 4, padding: 8, margin: 0,
+                        whiteSpace: "pre-wrap", wordBreak: "break-word",
+                      }}>{JSON.stringify(r.google_response.requests, null, 1)}</pre>
+                    </div>
+                  )}
                 </div>
               </div>
               {r.status === "pending" && (
