@@ -310,3 +310,66 @@ changing its meaning is his call. Two test events carrying `cc_test_event=true`
 exist in GA4 from the verification. And the GTM container is still full of
 inert HubSpot-era triggers (`hs-form-event:on-submission:success`,
 `/thank-you`, `#successModal`) that make it misleading to read.
+
+---
+
+## Google Ads Phase 2 — proposals, gated write path, results
+**Sep 11, 2026** · 16:20 – 18:40 PDT (~140m wall clock) · ~135m CC active ·
+~2m operator (migration 014)
+
+Shipped: `511e889` + `5b3a3d4` — a deep Ads analyst, Claude-drafted
+keyword/ad/negative proposals, adversarial review of Google's own
+recommendations, the first write path in this repo that can change a Google Ads
+account, and results tracking. Migration 014. Ships with writes disabled.
+
+Validating all six GAQL reads against the live account before writing any code
+paid for itself twice: `recommendation.impact` sub-fields turn out not to be
+individually selectable, and `change_event` demands a bounded date filter plus a
+LIMIT. Both would have been silent rework later.
+
+It also surfaced the finding of the session, which nobody asked for and which
+undercuts the premise of the whole build. `change_event` shows Google's
+Recommendations Auto-Apply is ON for this account and has executed 7 keyword
+removals without human review — including the phrase-match keyword
+`dealer addendums`, which had 148 clicks and $778.95 of spend at the ad group's
+cheapest CPC. An approval queue that only shows its own writes would have given
+a comfortable and false sense of control, so the Changes view pulls the whole
+account's change history and labels each entry us / manual / Google auto.
+
+The write path is deliberately small and unpleasant to misuse. Three gates:
+an env flag that must equal exactly `true` (fail-closed — a typo must not arm
+spending), an approved row re-read from the database at apply time rather than
+trusted from the request, and a 25-per-batch cap. Approve and Apply are separate
+steps so a stray double-click cannot spend money. Budget and bid-strategy
+changes are excluded structurally rather than by policy: no function exists, and
+migration 014 drops those types from the constraint so the database cannot hold
+such a row.
+
+RSA validation runs at proposal time, not apply time — an over-length headline
+must never reach a queue where a human approves it and gets an opaque 400
+minutes later. Character counts are code points, which the tests pin with a
+30-astral-character headline that a naive `.length` would reject. The 21 tests
+run against the real exported function via the TypeScript transpiler rather than
+a copy that could drift.
+
+One design flaw only appeared by running the thing end to end. The first dry run
+marked both rows `applied`, which is a trap: after the flag is turned on, the
+exact batch you dry-ran to build confidence is the one batch that silently would
+not go. A dry run now leaves the row approved and records what it would have
+sent, so "Changes & results" only ever lists things that actually happened.
+
+The live run produced 17 proposals — 9 negatives, 3 keywords, 1 ad replacement,
+4 recommendation verdicts (3 reject, 1 defer) — with none unapplyable. It found
+that the account's highest-spend ad is running consumer used-car copy ("Browse
+Our Inventory Online", "Allan Auto Detailing") on a B2B SaaS account, and it
+rejected Google's budget recommendation on the grounds that a 3× conversion
+projection off a 3× spend projection is proportionality, not efficiency —
+especially on a conversion signal that counts unconfirmed form submits.
+
+**Not closed:** writes stay disabled until Allan reviews the batch and sets
+`ADS_WRITES_ENABLED=true`. The results cron is not registered in EasyCron yet;
+the on-page Refresh button covers it. Auto-apply is still on in Google's UI —
+only Allan can turn that off, no API exposes it. And one proposal's evidence
+contains a visible self-correction mid-sentence ("wait, actually...") — the
+content is right and the ids check out, but it is a reminder that evidence
+strings are model prose, not validated fields.

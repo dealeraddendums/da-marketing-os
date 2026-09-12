@@ -723,3 +723,155 @@ Watch the wiring with:
 ```
 pm2 logs da-marketing --lines 200 --nostream | grep -E '\[ga4-mp\]|\[trial-signup\]'
 ```
+
+---
+
+## Google Ads Phase 2 — proposals, write path, results
+
+Claude audits one Ads account in depth and proposes concrete mutations. Those
+land in the approval queue; a separate, explicit Apply step is the only code in
+this repo that can change a Google Ads account. **Ships in dry run.**
+
+| Piece | Where |
+|---|---|
+| Deep reads | `lib/google/ads.ts` (bottom half) — ad groups, keywords + QS, search terms, ads/RSA assets, Google recommendations, `change_event` |
+| Snapshot | `lib/ads-analyst/snapshot.ts` |
+| Analyst | `lib/ads-analyst/analyze.ts` (`claude-sonnet-5`) |
+| Proposal → mutation | `lib/ads-analyst/proposals.ts` |
+| **Write path** | `lib/google/ads-write.ts` |
+| Results | `lib/ads-results.ts` |
+| Migration | **014** (`ads_analyses`, + `proposed_changes` columns) |
+| Tests | `npm run test:rsa` (21 cases) |
+
+**Routes:** `POST /api/ads/deep-analysis?customerId=` · `GET /api/ads/analyses`
+· `POST /api/proposed-changes/:id` (approve/reject) · `POST /api/ads/apply`
+· `GET /api/ads/changes` · `POST /api/cron/ads-results`
+
+**UI:** Ads tab → *Deep Ads Analysis* + *Changes & results*; Approvals tab →
+status filters, evidence, ad diffs, batch Apply.
+
+### The write path, and why it is shaped like this
+
+**Three gates, all required:**
+
+1. `ADS_WRITES_ENABLED` must equal exactly `true`. Unset, `false`, `1`, `yes`
+   — all dry run. **Fail-closed:** a typo must never arm live spending.
+2. Every mutation must carry an **approved row**, re-read from the database at
+   apply time. Nothing authorises a write except a row a human approved; the
+   request body cannot.
+3. **Max 25 mutations per batch** (`MAX_MUTATIONS_PER_BATCH`).
+
+**Approve and Apply are separate steps** on purpose: it keeps "I agree with
+this" apart from "send it now", lets a batch be reviewed whole, and means a
+stray double-click on Approve cannot spend money.
+
+**A dry run is not a change.** It leaves the row `approved`, records the exact
+request it would have sent, and stays applyable. (It originally marked rows
+`applied`, which stranded them — the very batch you dry-ran to build confidence
+would have been the one batch that silently never went.)
+
+⚠️ **There is no budget or bid-strategy mutation, and there must never be one.**
+Those are the two levers that run up spend fastest. They are excluded
+*structurally*, not by policy: no function exists, and **migration 014 removed
+`budget_change` / `bid_change` from the `proposed_changes` type constraint**, so
+the database cannot hold such a row even if something tried to insert one. The
+analyst returns those as prose in `human_decisions` instead.
+
+**What can be written:** add a negative keyword (campaign or ad-group level),
+add a keyword, create an RSA, replace an RSA (**create-new-then-pause-old**, so
+history survives and the before/after comparison still has a baseline), pause or
+enable an ad, apply one specific Google recommendation.
+
+**RSAs are validated at proposal time, not apply time** — an over-length
+headline must never reach the queue, or a human approves it and gets an opaque
+400 minutes later. Counts are **code points**, so an astral character is not
+double-counted. Limits: 15 headlines ≤30 chars, 4 descriptions ≤90, min 3/2, no
+duplicates, https final URL.
+
+### Dry run → first real change
+
+1. Review the batch in **Approvals**; each row shows the exact JSON it would send.
+2. On the box: set `ADS_WRITES_ENABLED=true` in `.env.production`, then
+   `bash deploy.sh` (or `pm2 restart da-marketing --update-env`).
+3. Approvals then shows a **red "live writes are armed"** banner instead of the
+   amber dry-run one, and the button reads *Apply N to Google*.
+4. Apply. Each row records Google's response, the created resource names, and a
+   30-day at-apply metrics snapshot.
+
+### Results tracking
+
+Honest by construction:
+
+- The **"before" can only be captured at apply time** — Google will not return
+  that window again — so `applied_snapshot` is written during apply or the
+  comparison is impossible forever. Captured even on a dry run.
+- Post-windows (**14d, 30d**) start the day *after* application (the apply day
+  is a partial, mixed day) and are measured **only once fully elapsed**. A 14-day
+  read on day 3 is noise, so the column stays empty and the UI says so.
+- **Account-level metrics for the same window ride alongside**: an ad group down
+  20% while the account is down 25% did not get worse.
+- Volumes below 30 clicks / 500 impressions are **flagged, not interpreted**,
+  and a Smart Bidding learning-period caveat appears for changes under 21 days
+  old. A negative keyword carries a standing note that **falling impressions are
+  the intended effect**.
+- **Dry-run rows are never measured** — nothing changed, so attributing drift to
+  them would be fiction.
+- Filled by `POST /api/cron/ads-results` (cron key **or** admin session, so the
+  page can refresh on demand). Idempotent: a window is measured once, when ripe.
+  ⬜ Not yet registered in EasyCron — the "Refresh results" button covers it
+  until it is.
+
+### ⚠️ Google auto-applies its own recommendations
+
+`change_event` shows what changed **regardless of who changed it**, and on
+account `2056900150` it shows Google's **Recommendations Auto-Apply is ON**: 7
+`AD_GROUP_CRITERION/REMOVE` operations by `Recommendations Auto-Apply`
+(`GOOGLE_ADS_RECOMMENDATIONS_SUBSCRIPTION`) in the 30 days to 2026-09-11,
+most recently 2026-09-08.
+
+**Those bypass this approval queue entirely.** One of them removed the
+phrase-match keyword `dealer addendums` (`191914386163~367495643035`) that had
+148 clicks, $778.95 spend and a $5.26 avg CPC — the ad group's cheapest.
+Removing negatives and keywords broadens matching and raises spend.
+
+`autoApplyEvidence()` derives this from change **authorship** (the setting
+itself is not exposed by the API); it is surfaced in red in the Ads tab and the
+Changes view. **Turn it off in Google Ads → Recommendations → ⋮ → Auto-apply
+settings** — no API can do it.
+
+### Google API gotchas found here
+
+- `recommendation.impact.*` sub-fields are **not individually selectable**
+  (`UNRECOGNIZED_FIELD`). Select the whole `recommendation.impact` message.
+- `recommendation` accepts **no date filter and no metrics segmentation**.
+- `change_event` **requires** a bounded `change_date_time` filter **and** a
+  `LIMIT` (max 10,000).
+- `segments.conversion_action_name` cannot be selected alongside
+  `metrics.cost_micros` — cost is not segmentable by conversion action.
+- This project's tsconfig targets ES5: no spread-iteration of strings or
+  `.entries()`. Use `Array.from` and indexed loops (same constraint noted in
+  `lib/google/cache.ts`).
+- supabase-js cannot infer a row type from a **concatenated** select string and
+  widens to `GenericStringError` — assert the shape.
+
+### Snapshot sizing
+
+The DA account returns **2,740 keyword rows and 514 search terms** for 30 days,
+nearly all zero-impression rows in abandoned legacy campaigns. Everything is
+filtered to rows with activity, sorted by what matters (cost for waste, clicks
+for opportunity) and capped; counts of what was dropped go to the model so it
+knows it is seeing a slice. First live run: **~16.8k tokens, ~$0.36, 4.5 min**.
+
+### First live run (2026-09-11, account 2056900150)
+
+17 proposals queued: 9 negative keywords, 3 new keywords, 1 ad replacement, and
+4 Google-recommendation verdicts (**3 reject, 1 defer** — auto-filed as
+`rejected`, never offered for approval, since only `implement` needs a human).
+0 proposals were unapplyable.
+
+Two findings worth keeping: the highest-spend ad in the account
+(`806943322052`, $882.71) carries **consumer used-car copy** — "Browse Our
+Inventory Online", "Allan Auto Detailing" — on a B2B SaaS account; and Google's
+budget recommendation projects 3× spend for 3× conversions, i.e. a lift
+proportional to spend, on a conversion signal that counts unconfirmed form
+submits.
