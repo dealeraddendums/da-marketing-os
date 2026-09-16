@@ -7,7 +7,8 @@
 // and its /admin/trial-signups page read them through this endpoint.
 //
 // GET  → count + rows awaiting confirmation past the stuck threshold
-// POST → resend the confirmation email for one of them
+// POST → { action: 'resend' }  re-send the confirmation email for one of them
+//        { action: 'dismiss' } retire a lead that should not be in the queue
 //
 // AUTH: X-Webhook-Secret === MARKETING_WEBHOOK_SECRET, the secret DA Platform
 // already shares with this app (same pattern as /api/conversions). Server-to-
@@ -105,7 +106,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const body = (await req.json().catch(() => null)) as { email?: string } | null
+  const body = (await req.json().catch(() => null)) as
+    { email?: string; id?: string; action?: 'resend' | 'dismiss'; actor?: string } | null
+  const action = body?.action ?? 'resend'
+
+  if (action === 'dismiss') return dismiss(body?.id, body?.email, body?.actor)
+
   const email = body?.email?.trim()
   if (!email) return NextResponse.json({ error: 'email required' }, { status: 400 })
 
@@ -126,4 +132,74 @@ export async function POST(req: NextRequest) {
     { ok: outcome === 'sent', outcome, message: message[outcome] ?? outcome },
     { status: outcome === 'error' ? 500 : 200 },
   )
+}
+
+/**
+ * Retire a lead that should not be in the follow-up queue — a duplicate of an
+ * existing customer, an internal test, junk.
+ *
+ * SOFT, not a row delete: the lead is kept in full and only its
+ * `provision_status` moves to 'dismissed'. That one write does all three jobs:
+ *   - it leaves the stuck query, the panel and the topbar count, all of which
+ *     require 'awaiting_confirmation';
+ *   - resendConfirmation() already refuses anything that isn't
+ *     'awaiting_confirmation' ('not_pending'), so no further mail can go out;
+ *   - reversing it is a single UPDATE back to 'awaiting_confirmation'.
+ *
+ * NO SCHEMA CHANGE: `provision_status` is plain text with no CHECK constraint
+ * and nothing else in this app filters or aggregates on it. Dedicated
+ * `dismissed_at` / `dismissed_by` columns would be a migration on the marketing
+ * project, which was deliberately not taken unprompted — WHO dismissed and WHEN
+ * are recorded in DA Platform's `admin_audit` instead.
+ *
+ * The confirmation token is also cleared, and that part matters: a confirmation
+ * token has NO expiry, so a dismissed lead holding a live token could still
+ * self-provision weeks later from the old emailed link. Clearing it makes that
+ * link inert.
+ *
+ * Idempotent: dismissing an already-dismissed lead reports ok with
+ * outcome='already_dismissed' and writes nothing.
+ */
+async function dismiss(id?: string, rawEmail?: string, actor?: string) {
+  const email = rawEmail?.trim().toLowerCase()
+  if (!id && !email) return NextResponse.json({ error: 'id or email required' }, { status: 400 })
+
+  // Prefer the id: emails can repeat across signups, and dismissing the wrong
+  // one of a pair would be silent.
+  const q = supabase
+    .from('marketing_leads')
+    .select('id, email, dealership, provision_status, confirm_token')
+  const { data, error } = id
+    ? await q.eq('id', id).limit(1)
+    : await q.ilike('email', email as string).order('created_at', { ascending: false }).limit(1)
+
+  if (error) {
+    console.error('[pending-confirmation] dismiss lookup failed:', error.message)
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+  const lead = data?.[0]
+  if (!lead) {
+    return NextResponse.json({ ok: false, outcome: 'unknown', message: 'No lead found.' }, { status: 404 })
+  }
+  if (lead.provision_status === 'dismissed') {
+    return NextResponse.json({ ok: true, outcome: 'already_dismissed', message: 'Already dismissed.' })
+  }
+
+  const { error: upErr } = await supabase
+    .from('marketing_leads')
+    .update({ provision_status: 'dismissed', confirm_token: null })
+    .eq('id', lead.id)
+  if (upErr) {
+    console.error('[pending-confirmation] dismiss failed:', upErr.message)
+    return NextResponse.json({ error: upErr.message }, { status: 500 })
+  }
+
+  console.log(
+    `[pending-confirmation] dismissed lead=${lead.id} (${lead.dealership ?? lead.email}) ` +
+    `was=${lead.provision_status} token_cleared=${lead.confirm_token ? 'yes' : 'none'} by=${actor ?? 'unknown'}`,
+  )
+  return NextResponse.json({
+    ok: true, outcome: 'dismissed',
+    message: 'Lead dismissed — it has left the queue and its old confirmation link is dead.',
+  })
 }
