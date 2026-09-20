@@ -359,20 +359,15 @@ tool. A recommendation is advice until a human acts on it.
 
 ### Why raw `fetch`, not the SDK
 
-`lib/analyst/analyze.ts` calls `https://api.anthropic.com/v1/messages` directly
-instead of using `lib/ai.ts`. Two reasons, and both still hold:
+`lib/analyst/analyze.ts` calls `https://api.anthropic.com/v1/messages` directly.
+**As of 2026-09-20 `lib/ai.ts` does too** — the Analyst's pattern became the
+house pattern after the outage below. The original reason still holds: this
+project pins `@anthropic-ai/sdk` at **`^0.20.0`** (2024-era), which predates
+`thinking: {type:'adaptive'}` and `output_config.effort`.
 
-1. This project pins `@anthropic-ai/sdk` at **`^0.20.0`** (2024-era), which
-   predates the parameters used here (`thinking: {type:'adaptive'}`,
-   `output_config.effort`).
-2. `lib/ai.ts` is **shared with the live chat widget and the reputation reply
-   drafter**, and its `MODEL` is a different, older model. Bumping the SDK or
-   that constant to serve the Analyst would move two unrelated live features
-   onto new versions.
-
-So the Analyst names its own model constant and owns its own HTTP call. If you
-ever do upgrade the SDK, this is the file that can move back — but re-test the
-chat widget and reputation drafting when you do.
+The Analyst keeps its own `ANALYST_MODEL` constant separate from `lib/ai.ts`'s
+`MODEL` — same value today (`claude-sonnet-5`), different owners, so tuning one
+cannot silently retune the other.
 
 ⚠️ `claude-sonnet-5` **rejects** `budget_tokens` and the sampling parameters
 (`temperature`/`top_p`/`top_k`) with a 400. Adaptive thinking is the only
@@ -982,3 +977,88 @@ results across two rows.
 ⚠️ **The ads must actually send `utm_source=chatgpt_ads`.** Nothing in this view
 can see an untagged ad, and an untagged pilot would read as a channel nobody
 clicked. Correct `start_date` in the UI if spend began before the seed date.
+
+---
+
+## The shared AI module (`lib/ai.ts`) and the 2026-09-20 outage
+
+**Root cause: a retired model name, copy-pasted into four files.** The API
+answered a clean 404 — `not_found_error: "model: claude-sonnet-4-20250514"`.
+The SDK pin was never implicated; it formed the request correctly and got a
+truthful rejection.
+
+### What that cost, and why it went unnoticed
+
+Four features called that model independently, so four died independently:
+
+| Caller | Failure mode | Visible? |
+|---|---|---|
+| `/api/ai-copy` | HTTP 500 | yes — logged `ai-copy error:` |
+| `/api/insights` | HTTP 500 | yes — logged `insights error:` |
+| **Chat widget** (`/api/chat`, public homepage) | caught inside the stream, emitted *"Sorry, I ran into an issue… call us"* | **no — logged nothing** |
+| **Reputation reply drafter** | caught, emitted *"the AI draft could not be generated"* | **no — logged nothing** |
+
+The two that logged were noticed. The two that swallowed their exception and
+apologised to the user in prose were not — and those were the customer-facing
+ones. Earliest recorded failure in the retained log (which starts 2026-06-03):
+**2026-07-01**.
+
+Two lessons, both now encoded in the code:
+
+1. **A swallowed `catch` turns an outage into a UX quirk.** Both streaming
+   routes now `console.error` before falling back.
+2. **A constant duplicated across files is a constant nobody owns.**
+
+### The shape now
+
+| Thing | Value |
+|---|---|
+| Model constant | **`MODEL` in `lib/ai.ts`** — the only one for marketing AI. `claude-sonnet-5`, overridable via **`AI_MODEL`** in `.env.production` with no code change |
+| Transport | raw `fetch` against the Messages API (the Analyst's pattern) |
+| Interface | `generateText(prompt, maxTokens)`, `createMessage({model?, maxTokens?, system?, messages})`, `parseJSON<T>()` — `generateText` and `parseJSON` unchanged from before |
+| Still on the SDK | the two **streaming** routes only (chat widget, reputation drafter). They import `MODEL` from `lib/ai.ts`. Hand-rolling SSE parsing to shed a dependency that works correctly would be a downgrade |
+
+**Deliberate exception — `lib/hero-engine.ts` keeps its own models**
+(`HERO_MODEL` → `claude-opus-4-8`, `HERO_VALIDATOR_MODEL` → `claude-haiku-4-5`,
+both current, both env-overridable). Writing public homepage copy is a
+different quality bar from drafting three ad variants, and it was never broken.
+It moved onto `createMessage` only so the SDK client export could go.
+
+### ⚠️ Never read `content[0].text`
+
+Fixed in four places during this work (`lib/ai.ts`, both hero-engine call
+sites, the chat contact extractor). A **thinking block can arrive first**, and
+under the default display setting its text is empty — so `content[0].text`
+reads as an empty response *from a call that succeeded*. That is the same
+silent-failure shape as the outage itself: no exception, no log, just nothing.
+
+**Always filter to the text blocks and join them**, as `createMessage` and
+`lib/analyst/analyze.ts` both do.
+
+### AI Insights is retired (2026-09-20)
+
+The `InsightsPanel` is gone from all three tabs that rendered it (Overview, AI
+Copy, Leads), replaced by **`AnalystBriefCard`** — the latest stored Analyst
+brief plus an *Open Analyst* button. Insights ran a one-shot prompt over a thin
+Supabase slice and returned flat sentences with no evidence, no severity and no
+persistence; the Analyst answers the same question with cited numbers and
+stored runs.
+
+It was replaced on **all three** tabs, not just AI Copy: leaving a superseded
+panel on two other tabs is how it went a quarter without anyone noticing it was
+broken.
+
+`POST /api/insights` **still exists and now works** — it accepts a cron key
+(`DA_CRON_KEY`) as well as an admin session, and deleting a possibly-cronned
+endpoint was out of scope for an outage fix. The card never triggers a run; the
+**Analyst tab is the only place a run starts.**
+
+### If the AI features break again, check this first
+
+```bash
+pm2 logs da-marketing --lines 200 --nostream | grep -E '\[ai\]|\[chat\]|\[reputation\]|error:'
+```
+
+`lib/ai.ts` logs the **entire** Anthropic error body on failure. Anthropic's
+error JSON names the exact cause (`"model: claude-sonnet-4-20250514"`), which
+is the difference between a one-line fix and another quarter of silence.
