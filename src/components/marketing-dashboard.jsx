@@ -1,7 +1,5 @@
 import { useState, useEffect, useRef } from "react";
 
-const ANTHROPIC_MODEL = "claude-sonnet-4-20250514";
-
 // ── DA Design System — exact values from DADesignGuidelines.md ────────────────
 const C = {
   // Core
@@ -818,56 +816,84 @@ function FunnelPanel({ ga4 = null }) {
   );
 }
 
-// ── AI Insights ───────────────────────────────────────────────────────────────
-function InsightsPanel() {
-  const [loading, setLoading] = useState(false);
-  const [fresh,   setFresh]   = useState(null);
-  const [error,   setError]   = useState(null);
+// ── Analyst brief summary (replaced the old "AI Insights" panel) ────────────
+// The AI Insights panel ran its own one-shot prompt over a thin slice of
+// Supabase data and returned a flat list of sentences with no evidence, no
+// severity and no persistence. The Analyst does the same job properly — it
+// reads Ads, Search Console and GA4 together, cites real numbers, and stores
+// every run. Two features answering one question, one of them worse, is how
+// the worse one goes three months without anyone noticing it was broken.
+//
+// This card reads the latest stored brief. It never triggers a run: the
+// Analyst tab owns that, so there is exactly one place a run can start.
+function AnalystBriefCard({ onGoToAnalyst }) {
+  const [data, setData] = useState(null);
 
-  const refresh = async () => {
-    setLoading(true); setFresh(null); setError(null);
-    try {
-      const res = await fetch("/api/insights", { method: "POST" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setFresh(data.insights);
-    } catch (e) {
-      setError(`Could not fetch insights — ${e.message || "check API connection."}`);
-    }
-    setLoading(false);
-  };
+  useEffect(() => {
+    fetch("/api/analyst/latest").then(r => r.json()).then(setData)
+      .catch(() => setData({ analysis: null }));
+  }, []);
 
-  const items = fresh || [];
+  const a = data?.analysis;
+  const brief = a?.brief;
+  const findings = brief?.findings || [];
+  const recs = brief?.recommendations || [];
+  const sevVariant = { critical: "error", warning: "warning", opportunity: "info", info: "neutral" };
 
   return (
     <Card>
-      <SectionTitle
-        action={
-          <Button onClick={refresh} loading={loading} variant="secondary">
-            Generate AI Insights
-          </Button>
-        }
-      >
-        {fresh ? "AI Insights (Live)" : "AI Insights"}
+      <SectionTitle action={
+        <SmallButton variant="primary" onClick={onGoToAnalyst}>Open Analyst</SmallButton>
+      }>
+        Latest analyst brief
       </SectionTitle>
-      {error && <div style={{ fontSize: 12, color: C.error, marginBottom: 10 }}>{error}</div>}
-      {items.length === 0 && !error && (
-        <div style={{ fontSize: 13, color: C.textMuted, padding: "16px 0", textAlign: "center" }}>
-          No insights yet — click “Generate AI Insights” to analyze the latest data.
+
+      {!data && <div style={{ fontSize: 13, color: C.textMuted }}>Loading…</div>}
+
+      {data && !a && (
+        <div style={{ fontSize: 13, color: C.textMuted }}>
+          No analyst run yet — open the Analyst tab and run one. It reads Google Ads,
+          Search Console and Analytics together and cites the numbers behind every finding.
         </div>
       )}
-      <div style={{ display: "grid", gap: 8 }}>
-        {items.map((insight, i) => (
-          <div key={i} style={{
-            background: C.bgSubtle, border: `1px solid ${C.border}`,
-            borderRadius: 6, padding: "10px 14px",
-            fontSize: 14, color: C.textPrimary, lineHeight: 1.5,
-          }}>
-            {insight}
+
+      {a && (
+        <div style={{ display: "grid", gap: 12 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <Badge variant={a.status === "ok" ? "success" : "warning"}>{a.status}</Badge>
+            <span style={{ fontSize: 11, color: C.textMuted }}>
+              {new Date(a.created_at).toLocaleString()} · {a.model}
+            </span>
           </div>
-        ))}
-      </div>
+
+          {brief?.summary && (
+            <div style={{ fontSize: 13, color: C.textPrimary, lineHeight: 1.6 }}>
+              {brief.summary}
+            </div>
+          )}
+
+          {findings.length > 0 && (
+            <div style={{ display: "grid", gap: 6 }}>
+              {findings.slice(0, 3).map((f, i) => (
+                <div key={i} style={{
+                  background: C.bgSubtle, border: `1px solid ${C.border}`,
+                  borderRadius: 4, padding: "8px 12px", fontSize: 12,
+                }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 4 }}>
+                    <Badge variant={sevVariant[f.severity] || "neutral"}>{f.severity}</Badge>
+                    <span style={{ fontWeight: 500, color: C.textPrimary }}>{f.title}</span>
+                  </div>
+                  <div style={{ color: C.textMuted, lineHeight: 1.5 }}>{f.evidence}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div style={{ fontSize: 11, color: C.textMuted }}>
+            {findings.length} finding(s) · {recs.length} recommendation(s) — full brief on the Analyst tab.
+          </div>
+        </div>
+      )}
     </Card>
   );
 }
@@ -3341,7 +3367,7 @@ export default function App() {
                 : "Traffic from first-party events (homepage + landing pages only). Connect Google below for site-wide GA4 numbers."}
             </div>
             <GoogleConnectPanel />
-            <InsightsPanel />
+            <AnalystBriefCard onGoToAnalyst={() => setTab("analyst")} />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
               <FunnelPanel ga4={ga4} />
               <LeadsPanel />
@@ -3365,7 +3391,7 @@ export default function App() {
         {tab === "copy" && (
           <div style={{ display: "grid", gap: 20 }}>
             <CopyGenerator />
-            <InsightsPanel />
+            <AnalystBriefCard onGoToAnalyst={() => setTab("analyst")} />
           </div>
         )}
 
@@ -3382,7 +3408,7 @@ export default function App() {
         {tab === "leads" && (
           <div style={{ display: "grid", gap: 20 }}>
             <LeadsPanel />
-            <InsightsPanel />
+            <AnalystBriefCard onGoToAnalyst={() => setTab("analyst")} />
           </div>
         )}
       </div>

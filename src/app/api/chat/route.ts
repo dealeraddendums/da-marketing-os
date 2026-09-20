@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { sendMandrillEmail } from '@/lib/mandrill'
 import { supabase } from '@/lib/supabase'
-import { parseJSON } from '@/lib/ai'
+import { MODEL, parseJSON } from '@/lib/ai'
 import { rateLimit } from '@/lib/rate-limit'
 import { upsertChatContact } from '@/lib/hubspot'
 import { escalateLead, wantsHuman } from '@/lib/escalate'
@@ -71,8 +71,13 @@ function captureChatLead(opts: {
           system: 'Extract the contact details from this car-dealer sales chat. Respond ONLY with JSON, no markdown: {"name":"","dealership":"","phone":""}. Use an empty string for any field not clearly present.',
           messages: [{ role: 'user', content: transcript }],
         })
-        const block = msg.content[0]
-        extracted = parseJSON(block.type === 'text' ? block.text : '')
+        // Join the text blocks rather than indexing [0] — a thinking block
+        // arriving first would read as an empty extraction from a good call.
+        const text = msg.content
+          .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+          .map(b => b.text)
+          .join('')
+        extracted = parseJSON(text)
       } catch {
         // extraction is best-effort — still capture the email
       }
@@ -175,7 +180,7 @@ export async function POST(req: NextRequest) {
       async start(controller) {
         try {
           const response = await client.messages.create({
-            model: 'claude-sonnet-4-20250514',
+            model: MODEL,
             max_tokens: 400,
             system: SYSTEM_PROMPT,
             messages: messages.map((m: ChatMsg) => ({
@@ -194,6 +199,9 @@ export async function POST(req: NextRequest) {
             }
           }
         } catch (e) {
+          // Log before falling back. Without this the widget failed silently
+          // for months: the visitor saw an apology, the operator saw nothing.
+          console.error('[chat] streaming completion failed:', e)
           controller.enqueue(encoder.encode('\n\nSorry, I ran into an issue. Please try again or call us at (801) 415-9435.'))
         } finally {
           controller.close()

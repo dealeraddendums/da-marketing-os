@@ -14,7 +14,7 @@
 //   4. Every attempt logged to generated_variations, pass or fail.
 //   5. HERO_KILL_SWITCH=1 ⇒ everyone gets static. Daily budget cap ⇒ static.
 
-import { anthropic, parseJSON } from '@/lib/ai'
+import { createMessage, parseJSON } from '@/lib/ai'
 import { supabase } from '@/lib/supabase'
 import {
   FACTS, BENEFIT_OPTIONS, CTA_OPTIONS, PROOF_OPTIONS,
@@ -217,9 +217,9 @@ export function validateHeroRules(hero: unknown): { ok: boolean; errors: string[
 // Any API failure ⇒ fail closed (copy is not published unchecked).
 async function secondaryCheck(hero: HeroContent): Promise<{ ok: boolean; errors: string[] }> {
   try {
-    const msg = await anthropic.messages.create({
+    const text = await createMessage({
       model: VALIDATOR_MODEL(),
-      max_tokens: 300,
+      maxTokens: 300,
       system:
         'You are a strict brand-compliance checker for DealerAddendums.com. ' +
         'You receive an approved fact corpus and a generated hero. FAIL the hero ONLY if its headline ' +
@@ -234,8 +234,6 @@ async function secondaryCheck(hero: HeroContent): Promise<{ ok: boolean; errors:
         content: `${corpusFactSheet()}\n\n== GENERATED HERO ==\n${JSON.stringify(hero, null, 2)}`,
       }],
     })
-    const block = msg.content[0]
-    const text = block.type === 'text' ? block.text : ''
     // Haiku occasionally wraps the JSON in prose — fall back to the first
     // {...} block before failing closed.
     const verdict =
@@ -312,9 +310,9 @@ async function generateAndPublish(signals: VisitorSignals & { contextKey: string
   let pass = false
 
   try {
-    const msg = await anthropic.messages.create({
+    const text = await createMessage({
       model: GEN_MODEL(),
-      max_tokens: 600,
+      maxTokens: 600,
       system:
         'You write above-the-fold hero copy for DealerAddendums.com, a SaaS platform for car dealerships. ' +
         'You may ONLY use facts from the APPROVED BRAND CORPUS provided. HARD RULES, no exceptions: ' +
@@ -349,8 +347,6 @@ async function generateAndPublish(signals: VisitorSignals & { contextKey: string
           `{"headline": "...", "subheadline": "...", "ctaText": "...", "proofLine": "...", "featuredBenefits": ["...", "...", "..."]}`,
       }],
     })
-    const block = msg.content[0]
-    const text = block.type === 'text' ? block.text : ''
     hero = parseJSON<HeroContent>(text)
     if (!hero) errors.push('generation: unparseable JSON')
   } catch (e) {

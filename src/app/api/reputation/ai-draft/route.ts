@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { supabase } from '@/lib/supabase'
 import { starToNumber } from '@/lib/gbp'
+import { MODEL } from '@/lib/ai'
 
 export const dynamic = 'force-dynamic'
 
@@ -45,7 +46,7 @@ Write only the reply text, with no preamble or quotation marks.`
     async start(controller) {
       try {
         const response = await client.messages.create({
-          model: 'claude-sonnet-4-20250514',
+          model: MODEL,
           max_tokens: 400,
           messages: [{ role: 'user', content: prompt }],
           stream: true,
@@ -56,7 +57,10 @@ Write only the reply text, with no preamble or quotation marks.`
             controller.enqueue(encoder.encode(event.delta.text))
           }
         }
-      } catch {
+      } catch (e) {
+        // Same reason as the chat widget: a swallowed cause is an outage
+        // nobody can see.
+        console.error('[reputation] AI draft failed:', e)
         controller.enqueue(encoder.encode('Sorry — the AI draft could not be generated. Please try again.'))
       } finally {
         controller.close()
