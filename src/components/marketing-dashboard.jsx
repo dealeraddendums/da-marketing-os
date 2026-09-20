@@ -1661,6 +1661,10 @@ function AdsPanel() {
         <DeepAdsAnalysis customerId={selected} customerName={data?.customerName} />
       )}
       {selected && <AdsChangesPanel customerId={selected} />}
+
+      {/* Channel experiments are deliberately outside the `selected` gate:
+          the first one is a ChatGPT Ads pilot, which has no Google account. */}
+      <ChannelExperimentsPanel />
     </div>
   );
 }
@@ -2113,6 +2117,341 @@ function AdsChangesPanel({ customerId }) {
           </div>
         </div>
       )}
+    </Card>
+  );
+}
+
+// ── Channel experiments (Phase 2, item 7) ────────────────────────────────────
+// A paid channel with no API of its own — the ChatGPT Ads pilot is the first —
+// judged entirely on our own data: leads carrying the experiment's utm_source,
+// and how many of them became real trial accounts. Spend is the one number a
+// human types in. Nothing here writes to any ad account.
+
+const OUTCOME_BADGE = {
+  trial:                { variant: "success", label: "trial" },
+  awaiting_review:      { variant: "warning", label: "held for review" },
+  awaiting_confirmation:{ variant: "neutral", label: "not confirmed" },
+  existing_account:     { variant: "info",    label: "existing account" },
+  not_confirmed:        { variant: "neutral", label: "not confirmed" },
+  dismissed:            { variant: "neutral", label: "dismissed" },
+};
+
+function ExperimentCard({ exp, onChange }) {
+  const r = exp.result;
+  const [spend, setSpend] = useState(String(exp.spend ?? 0));
+  const [saving, setSaving] = useState(false);
+  const [showLeads, setShowLeads] = useState(false);
+  const [err, setErr] = useState(null);
+
+  useEffect(() => { setSpend(String(exp.spend ?? 0)); }, [exp.spend]);
+
+  const patch = async (body) => {
+    setSaving(true); setErr(null);
+    try {
+      const res = await fetch(`/api/experiments/${exp.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const d = await res.json();
+      if (!res.ok) setErr(d.error || "Save failed.");
+      else onChange(d.experiment);
+    } catch { setErr("Save failed."); }
+    setSaving(false);
+  };
+
+  if (!r) {
+    return (
+      <Card style={{ padding: 16 }}>
+        <div style={{ fontSize: 13, fontWeight: 600 }}>{exp.name}</div>
+        <div style={{ fontSize: 12, color: C.error, marginTop: 6 }}>
+          Results unavailable — {exp.resultError || "unknown error"}
+        </div>
+      </Card>
+    );
+  }
+
+  const decisionBadge = exp.decision === "keep" ? "success"
+    : exp.decision === "kill" ? "error" : "info";
+
+  return (
+    <Card style={{ padding: 16 }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+        <span style={{ fontSize: 14, fontWeight: 600, color: C.textPrimary }}>{exp.name}</span>
+        <Badge variant="neutral">{exp.channel}</Badge>
+        <Badge variant={decisionBadge}>{exp.decision}</Badge>
+        {r.windowClosed && <Badge variant="neutral">window closed</Badge>}
+        <code style={{ fontSize: 11, color: C.textMuted, background: C.bgSubtle, padding: "2px 6px", borderRadius: 3 }}>
+          utm_source={exp.utm_source}
+        </code>
+        <span style={{ flex: 1 }} />
+        <span style={{ fontSize: 11, color: C.textMuted }}>
+          {exp.start_date} → {exp.end_date || "open-ended"} · day {r.daysElapsed}
+          {r.daysRemaining !== null && !r.windowClosed && ` · ${r.daysRemaining} day(s) left`}
+        </span>
+      </div>
+
+      {/* The verdict line — the only number the keep/kill rule looks at. */}
+      <div style={{
+        border: `1px solid ${r.thresholdMet ? C.success : C.border}`,
+        background: r.thresholdMet ? "#e8f5e9" : C.bgSubtle,
+        borderRadius: 4, padding: "10px 12px", marginBottom: 14,
+      }}>
+        <div style={{ fontSize: 13, color: C.textPrimary, fontWeight: 500 }}>
+          {r.trials} of {exp.threshold} confirmed trial(s) —{" "}
+          {r.thresholdMet
+            ? "threshold met."
+            : `${r.stillNeeded} more needed${r.daysRemaining !== null && !r.windowClosed
+                ? ` in the remaining ${r.daysRemaining} day(s)` : ""}.`}
+        </div>
+        <div style={{ marginTop: 8 }}>
+          <MiniBar
+            pct={exp.threshold ? (r.trials / exp.threshold) * 100 : 0}
+            color={r.thresholdMet ? C.success : C.blue}
+          />
+        </div>
+        {r.projection && (
+          <div style={{ fontSize: 11, color: C.textMuted, marginTop: 7 }}>{r.projection.note}</div>
+        )}
+      </div>
+
+      {/* Funnel. Trials and confirmations are shown separately on purpose —
+          they are not the same number, and the gap is where the overstatement
+          would otherwise hide. */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 10, marginBottom: 14 }}>
+        <Stat label="Leads" value={fmtInt(r.leads)} sub="carried this UTM" />
+        <Stat label="Confirmed" value={fmtInt(r.confirmed)} sub="clicked confirm" />
+        <Stat label="Trials" value={fmtInt(r.trials)} sub="real accounts"
+              color={r.trials > 0 ? C.success : undefined} />
+        <Stat label="Held" value={fmtInt(r.awaitingReview)} sub="in review queue"
+              color={r.awaitingReview > 0 ? C.warning : undefined} />
+        <Stat label="Paid" value={fmtInt(r.converted)}
+              sub={r.mrr > 0 ? `${fmtMoney(r.mrr)} MRR` : "trial → paid"} />
+        <Stat label="Cost / trial"
+              value={r.costPerTrial === null ? "—" : fmtMoney(r.costPerTrial)}
+              sub={r.costPerTrial === null
+                ? (r.spend > 0 ? "no trials yet" : "no spend entered")
+                : `${fmtMoney(r.spend)} spent`} />
+      </div>
+
+      {/* Spend + budget. */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+        <label style={{ fontSize: 12, color: C.textMuted }}>Spend to date $</label>
+        <input
+          type="number" min="0" step="0.01" value={spend}
+          onChange={(e) => setSpend(e.target.value)}
+          style={{
+            width: 100, height: 28, padding: "0 8px", fontSize: 12,
+            border: `1px solid ${C.border}`, borderRadius: 4,
+            fontFamily: "Roboto, sans-serif", background: C.bgSurface, color: C.textPrimary,
+          }}
+        />
+        <SmallButton
+          variant="primary" disabled={saving || String(exp.spend ?? 0) === spend}
+          onClick={() => patch({ spend: Number(spend) })}
+        >{saving ? "Saving…" : "Save spend"}</SmallButton>
+
+        {exp.budget_cap != null && (
+          <div style={{ flex: 1, minWidth: 180 }}>
+            <div style={{ fontSize: 11, color: r.overBudget ? C.error : C.textMuted, marginBottom: 4 }}>
+              {fmtMoney(r.spend)} of {fmtMoney(exp.budget_cap)} cap
+              {r.budgetUsedPct !== null && ` (${r.budgetUsedPct}%)`}
+              {r.overBudget && " — over cap"}
+            </div>
+            <MiniBar pct={r.budgetUsedPct || 0} color={r.overBudget ? C.error : C.blue} />
+          </div>
+        )}
+
+        <span style={{ fontSize: 11, color: C.textMuted }}>
+          {exp.spend_updated_at
+            ? `updated ${new Date(exp.spend_updated_at).toLocaleDateString()}`
+            : "never updated"}
+        </span>
+      </div>
+
+      {err && <div style={{ fontSize: 12, color: C.error, marginBottom: 10 }}>{err}</div>}
+
+      {/* Caveats — verbatim, never summarised. */}
+      {r.caveats.length > 0 && (
+        <ul style={{ fontSize: 11, color: C.textMuted, margin: "0 0 12px", paddingLeft: 16, lineHeight: 1.6 }}>
+          {r.caveats.map((c, i) => <li key={i}>{c}</li>)}
+        </ul>
+      )}
+
+      {/* Decision + the lead list behind the numbers. */}
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <span style={{ fontSize: 12, color: C.textMuted }}>Decision:</span>
+        <SmallButton variant={exp.decision === "keep" ? "success" : "secondary"}
+          disabled={saving} onClick={() => patch({ decision: "keep" })}>Keep</SmallButton>
+        <SmallButton variant={exp.decision === "kill" ? "danger" : "secondary"}
+          disabled={saving} onClick={() => patch({ decision: "kill" })}>Kill</SmallButton>
+        {exp.decision !== "running" && (
+          <SmallButton disabled={saving} onClick={() => patch({ decision: "running" })}>
+            Reopen
+          </SmallButton>
+        )}
+        <span style={{ flex: 1 }} />
+        {r.leads > 0 && (
+          <SmallButton onClick={() => setShowLeads(!showLeads)}>
+            {showLeads ? "Hide" : "Show"} the {Math.min(r.leads, 50)} lead(s)
+          </SmallButton>
+        )}
+      </div>
+
+      {showLeads && (
+        <div style={{ marginTop: 10, border: `1px solid ${C.border}`, borderRadius: 4, maxHeight: 260, overflowY: "auto" }}>
+          {r.recent.map((l, i) => {
+            const b = OUTCOME_BADGE[l.outcome] || OUTCOME_BADGE.not_confirmed;
+            return (
+              <div key={l.id} style={{
+                display: "flex", gap: 10, alignItems: "baseline", padding: "6px 10px",
+                borderTop: i ? `1px solid ${C.border}` : "none", fontSize: 12,
+              }}>
+                <span style={{ color: C.textMuted, whiteSpace: "nowrap" }}>
+                  {(l.createdAt || "").slice(0, 10)}
+                </span>
+                <Badge variant={b.variant}>{b.label}</Badge>
+                {l.converted && <Badge variant="success">paid</Badge>}
+                <span style={{ color: C.textPrimary, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {l.dealership || l.email || "—"}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {exp.notes && (
+        <div style={{ fontSize: 11, color: C.textMuted, marginTop: 10, fontStyle: "italic" }}>
+          {exp.notes}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function NewExperimentForm({ onCreated, onCancel }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const [f, setF] = useState({
+    name: "", channel: "", utm_source: "", start_date: today,
+    end_date: "", budget_cap: "", threshold: 2, notes: "",
+  });
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+
+  const input = {
+    height: 28, padding: "0 8px", fontSize: 12, width: "100%",
+    border: `1px solid ${C.border}`, borderRadius: 4,
+    fontFamily: "Roboto, sans-serif", background: C.bgSurface, color: C.textPrimary,
+  };
+  const label = { fontSize: 11, color: C.textMuted, display: "block", marginBottom: 4 };
+
+  const submit = async () => {
+    setBusy(true); setErr(null);
+    try {
+      const res = await fetch("/api/experiments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(f),
+      });
+      const d = await res.json();
+      if (!res.ok) setErr(d.error || "Could not create.");
+      else onCreated(d.experiment);
+    } catch { setErr("Could not create."); }
+    setBusy(false);
+  };
+
+  return (
+    <Card style={{ padding: 16, background: C.bgSubtle }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 12 }}>
+        <div><label style={label}>Name</label>
+          <input style={input} value={f.name} onChange={set("name")} placeholder="Reddit Ads pilot" /></div>
+        <div><label style={label}>Channel</label>
+          <input style={input} value={f.channel} onChange={set("channel")} placeholder="Reddit Ads" /></div>
+        <div><label style={label}>utm_source (must match the ad URL)</label>
+          <input style={input} value={f.utm_source} onChange={set("utm_source")} placeholder="reddit_ads" /></div>
+        <div><label style={label}>Keep if ≥ N trials</label>
+          <input style={input} type="number" min="1" value={f.threshold} onChange={set("threshold")} /></div>
+        <div><label style={label}>Start</label>
+          <input style={input} type="date" value={f.start_date} onChange={set("start_date")} /></div>
+        <div><label style={label}>End (optional)</label>
+          <input style={input} type="date" value={f.end_date} onChange={set("end_date")} /></div>
+        <div><label style={label}>Budget cap $</label>
+          <input style={input} type="number" min="0" value={f.budget_cap} onChange={set("budget_cap")} placeholder="500" /></div>
+        <div><label style={label}>Notes</label>
+          <input style={input} value={f.notes} onChange={set("notes")} /></div>
+      </div>
+      {err && <div style={{ fontSize: 12, color: C.error, marginBottom: 10 }}>{err}</div>}
+      <div style={{ display: "flex", gap: 8 }}>
+        <SmallButton variant="primary" disabled={busy} onClick={submit}>
+          {busy ? "Creating…" : "Create experiment"}
+        </SmallButton>
+        <SmallButton onClick={onCancel}>Cancel</SmallButton>
+      </div>
+    </Card>
+  );
+}
+
+function ChannelExperimentsPanel() {
+  const [data, setData] = useState(null);
+  const [adding, setAdding] = useState(false);
+
+  const load = () => {
+    fetch("/api/experiments").then(r => r.json()).then(setData)
+      .catch(() => setData({ experiments: [] }));
+  };
+  useEffect(load, []);
+
+  const replace = (exp) => setData(d => ({
+    ...d, experiments: (d?.experiments || []).map(e => e.id === exp.id ? exp : e),
+  }));
+
+  const list = data?.experiments || [];
+  return (
+    <Card>
+      <SectionTitle action={
+        <SmallButton onClick={() => setAdding(!adding)}>
+          {adding ? "Close" : "New experiment"}
+        </SmallButton>
+      }>
+        Channel experiments
+      </SectionTitle>
+
+      <div style={{ fontSize: 12, color: C.textSecondary, marginBottom: 14 }}>
+        Paid channels with no reporting API of their own, measured against our own data.
+        A <strong>trial</strong> here means a provisioned account — not a lead, and not a
+        confirmed email. Spend is entered by hand; everything else is computed from
+        leads carrying the experiment&apos;s <code>utm_source</code>.
+      </div>
+
+      {data?.migrationPending && (
+        <div style={{ fontSize: 12, color: C.warning }}>{data.detail}</div>
+      )}
+
+      {adding && (
+        <div style={{ marginBottom: 16 }}>
+          <NewExperimentForm
+            onCreated={(exp) => { setAdding(false); setData(d => ({ ...d, experiments: [exp, ...(d?.experiments || [])] })); }}
+            onCancel={() => setAdding(false)}
+          />
+        </div>
+      )}
+
+      {!data && <div style={{ fontSize: 13, color: C.textMuted }}>Loading…</div>}
+
+      {data && !data.migrationPending && list.length === 0 && (
+        <div style={{ fontSize: 13, color: C.textMuted }}>
+          No experiments yet. Create one before the spend starts — leads are matched by
+          arrival date, so an experiment added after the fact will miss everything that
+          arrived before its start date.
+        </div>
+      )}
+
+      <div style={{ display: "grid", gap: 14 }}>
+        {list.map(e => <ExperimentCard key={e.id} exp={e} onChange={replace} />)}
+      </div>
     </Card>
   );
 }

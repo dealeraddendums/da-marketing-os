@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start -p 3020",
     "lint": "next lint",
-    "test:rsa": "node scripts/test-rsa-validation.mjs"
+    "test:rsa": "node scripts/test-rsa-validation.mjs",
+    "test:experiments": "node scripts/test-experiments.mjs"
   },
   "dependencies": {
     "next": "14.2.3",
