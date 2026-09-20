@@ -875,3 +875,110 @@ Inventory Online", "Allan Auto Detailing" — on a B2B SaaS account; and Google'
 budget recommendation projects 3× spend for 3× conversions, i.e. a lift
 proportional to spend, on a conversion signal that counts unconfirmed form
 submits.
+
+---
+
+## Channel experiments (`/admin` → Ads → *Channel experiments*)
+
+Phase 2 measures a Google Ads change against Google's own reporting API. A
+channel with no API — the first is a **$500 ChatGPT Ads pilot** — has nothing to
+measure against, so it is judged entirely on **our** data: `marketing_leads`
+rows carrying the experiment's `utm_source`, and what became of each one.
+**Spend is the only figure a human types in.** Nothing here can write to any ad
+account; an experiment is a measurement, not a mutation, which is why it stays
+out of `proposed_changes` / `change_audit` entirely.
+
+| Piece | Where |
+|---|---|
+| Results engine | `lib/experiments.ts` (`computeResult`, pure and unit-tested) |
+| Routes | `GET`/`POST /api/experiments` · `PATCH`/`DELETE /api/experiments/:id` |
+| UI | Ads tab → *Channel experiments* (`ChannelExperimentsPanel`) |
+| Migration | **015** (`channel_experiments`, seeded with the ChatGPT pilot) |
+| Tests | `npm run test:experiments` (39 cases) |
+
+### A confirmed email is not a trial
+
+This is the whole reason the table separates four numbers instead of reporting
+one. On the live account **13 leads have confirmed their email but only 9
+became trial accounts** — 3 are held in the signup legitimacy-review queue and
+1 belonged to a dealer that already existed.
+
+`provision_status` is the authority, **not `confirmed_at`**:
+
+| `provision_status` | Counts as | Shown as |
+|---|---|---|
+| `provisioned` | **the success metric** | Trials |
+| `pending_review` | not yet — may still count | Held |
+| `existing` | never — not a new trial | (in the lead list) |
+| `awaiting_confirmation` / `dismissed` | no | (in the lead list) |
+| `null` (pre-Layer-0 rows) | falls back to `confirmed_at` | — |
+
+Counting confirmations as trials would overstate by a third, and against a
+two-trial keep/kill threshold that is enough to renew a channel that produced
+nothing. `threshold_metric` has a check constraint allowing exactly
+`confirmed_trials` so the success metric cannot quietly be widened to something
+easier to hit — the same structural-not-policy approach that removed
+`budget_change` from the proposals constraint.
+
+### Attribution, and which way it is wrong
+
+Leads are matched on `utm_source`, compared case-insensitively and stored
+lower-cased so the stored value and the matcher cannot drift. The attribution
+cookie (`da_attribution`, `src/middleware.ts`) is **first-touch, 90 days, and
+written once per visitor**. So a visitor who had already arrived from another
+source keeps that source even after clicking this channel's ad.
+
+**This can only ever undercount a new channel, never overcount it** — the true
+figure is the reported one or better. The UI says so on every experiment rather
+than burying it, because the failure it guards against is killing a channel
+that actually worked.
+
+### Honest by construction
+
+Same discipline as the Ads results view. The caveats are computed, printed
+verbatim, and never summarised:
+
+- **Spend age is tracked.** Cost-per-trial is computed from a hand-entered
+  figure, so `spend_updated_at` is stamped on every spend write and a figure
+  older than 7 days is flagged as stale. Zero spend yields **no** cost figure
+  rather than a divide-by-zero or a flattering `$0`.
+- **No forecast off fewer than 3 trials.** Below that it states what is still
+  needed in the days remaining instead of drawing a line through two points.
+- **A small threshold is always flagged as directional.** At ≥2, one signup
+  moves the verdict; that is a check on whether the channel produces anything,
+  not a measurement of how well.
+- **Early is not failure.** Under 14 days with no trials says so explicitly.
+- **Zero leads after a week questions the tagging first** — an untagged ad is
+  invisible here and looks identical to one nobody clicked.
+- **Late confirmations.** Leads are counted by *arrival* date, so a lead that
+  lands on day 59 can confirm afterwards. A closed window's count is a floor and
+  can still rise.
+- Lead fetches **page with `.range()`**, never `.limit()` (PostgREST clamps any
+  limit to 1000 silently); hitting the 20,000-row safety cap is reported as a
+  floor.
+
+### Results are computed on read, never stored
+
+The opposite of the Ads results path, and deliberately. There, Google will not
+return an old window again, so `applied_snapshot` has to be frozen at apply
+time. Here we own `marketing_leads` and can always recompute, so there is no
+cached number to go stale — a lead that confirms an hour from now shows up on
+the next page load.
+
+### Placement
+
+The panel renders in the Ads tab below *Changes & results* but **outside** the
+selected-account gate. Gating it would hide a ChatGPT Ads experiment behind a
+Google Ads account picker, which is the one channel it is not about.
+
+### The seeded pilot
+
+Migration 015 seeds **"ChatGPT Ads pilot"** — `utm_source=chatgpt_ads`, $500
+cap, 60 days from the day the migration was applied (**2026-09-20 → 2026-11-19**),
+keep if ≥ 2 confirmed trials. The insert is idempotent and the name carries a
+case-insensitive unique index, so re-running the file cannot split one channel's
+results across two rows.
+
+⚠️ **The ads must actually send `utm_source=chatgpt_ads`.** Nothing in this view
+can see an untagged ad, and an untagged pilot would read as a channel nobody
+clicked. Correct `start_date` in the UI if spend began before the seed date.
