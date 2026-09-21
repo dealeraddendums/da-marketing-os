@@ -40,7 +40,14 @@ export async function sendMandrillEmail(message: MandrillMessage): Promise<void>
   const res = await fetch(`${MANDRILL_API}/messages/send.json`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ key: apiKey, message }),
+    // track_clicks FIRST so an explicit per-message value still wins.
+    //
+    // Click tracking rewrites every href into https://mandrillapp.com/track/click/…
+    // The self-serve signup CONFIRMATION link is the whole Layer-0 gate: if a
+    // prospect's network DNS-filters that redirector (dealership networks
+    // commonly do), they can never confirm and the lead silently stalls.
+    // Transactional links must point straight at our own host.
+    body: JSON.stringify({ key: apiKey, message: { track_clicks: false, ...message } }),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
