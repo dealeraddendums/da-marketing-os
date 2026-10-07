@@ -2,7 +2,7 @@ import crypto from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { hubspotChatEnv } from '@/lib/hubspot-chat/config'
-import { checkSignatureV3, downloadAgentAttachment } from '@/lib/hubspot-chat/client'
+import { checkSignatureV3, downloadAgentAttachment, getActorFirstName } from '@/lib/hubspot-chat/client'
 import { getConversationById, insertMessage, setHubspotThreadId } from '@/lib/chat-store'
 import { storeChatFile, type ChatAttachment } from '@/lib/chat-files'
 
@@ -41,6 +41,7 @@ interface HsMessage {
   channelAccountId?: string | number
   conversationsThreadId?: string | number
   senders?: { name?: string; actorId?: string }[]
+  createdBy?: string
   text?: string
   richText?: string
   direction?: string
@@ -122,7 +123,8 @@ export async function POST(req: NextRequest) {
       if (!text && !attachments.length) continue
       await insertMessage(convo.id, 'agent', text, {
         attachments,
-        senderName: msg.senders?.[0]?.name || null,
+        senderName: msg.senders?.[0]?.name
+          || await getActorFirstName(msg.senders?.[0]?.actorId || msg.createdBy),
         externalId: msg.id,
       })
       relayed = true

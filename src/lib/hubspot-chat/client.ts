@@ -105,6 +105,24 @@ export async function publishVisitorMessage(opts: {
   return { ok: true, messageId: (r.data as { id?: string } | null)?.id }
 }
 
+/**
+ * An agent's display name for the widget ("Allan"). The webhook carries only
+ * the sender's actor id (A-<userId>), so it's resolved through the
+ * Conversations actors endpoint (conversations.read) and cached for the life
+ * of the process. First name only — that's how agents sign chats. Any failure
+ * returns null and the widget shows "DA Team".
+ */
+const actorNames = new Map<string, string | null>()
+export async function getActorFirstName(actorId: string | null | undefined): Promise<string | null> {
+  if (!actorId) return null
+  if (actorNames.has(actorId)) return actorNames.get(actorId) ?? null
+  const r = await hsFetch(`/conversations/v3/conversations/actors/${encodeURIComponent(actorId)}`).catch(() => null)
+  const d = (r?.ok ? r.data : null) as { name?: string; email?: string } | null
+  const first = (d?.name || '').trim().split(/\s+/)[0] || null
+  actorNames.set(actorId, first)
+  return first
+}
+
 /** Upload a visitor's file to HubSpot Files (custom channels attach by fileId
  *  only — there is no attach-by-URL). PRIVATE: the file is for the inbox, not
  *  for the public web. */
