@@ -2,7 +2,9 @@ import crypto from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { hubspotChatEnv } from '@/lib/hubspot-chat/config'
-import { checkSignatureV3, downloadAgentAttachment, getActorFirstName } from '@/lib/hubspot-chat/client'
+import {
+  checkSignatureV3, downloadAgentAttachment, getActorFirstName, inlineImageUrls, downloadInlineImage,
+} from '@/lib/hubspot-chat/client'
 import { getConversationById, insertMessage, setHubspotThreadId } from '@/lib/chat-store'
 import { storeChatFile, type ChatAttachment } from '@/lib/chat-files'
 
@@ -116,6 +118,15 @@ export async function POST(req: NextRequest) {
         attachments.push(await storeChatFile({
           conversationId: convo.id, name: dl.name || 'attachment',
           mime: dl.mime || 'application/octet-stream', bytes: dl.bytes,
+        }))
+      }
+
+      for (const imgUrl of inlineImageUrls(msg.richText)) {
+        const dl = await downloadInlineImage(imgUrl)
+        if (!dl.ok || !dl.bytes) { errors.push(`inline image: ${dl.error}`); continue }
+        attachments.push(await storeChatFile({
+          conversationId: convo.id, name: dl.name || 'image',
+          mime: dl.mime || 'image/jpeg', bytes: dl.bytes,
         }))
       }
 

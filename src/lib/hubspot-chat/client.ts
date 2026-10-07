@@ -171,6 +171,39 @@ export async function downloadAgentAttachment(att: Record<string, unknown>): Pro
 }
 
 /**
+ * Images an agent put INTO the message with the composer's "Insert image"
+ * button. Those never appear in `attachments` — they arrive as <img> tags in
+ * richText pointing at HubSpot's file CDN (verified 2026-10-07). Only
+ * HubSpot-hosted URLs are taken, so a pasted third-party image link can't make
+ * our server fetch an arbitrary host.
+ */
+const HUBSPOT_FILE_HOST = /(^|\.)(hubspotusercontent[a-z0-9-]*\.net|hubspotusercontent\.com|hubspot\.net|hubspot\.com|hubfs\.net)$/i
+export function inlineImageUrls(richText: string | null | undefined): string[] {
+  const out: string[] = []
+  const re = /<img[^>]+src="([^"]+)"/gi
+  let m: RegExpExecArray | null
+  while ((m = re.exec(richText || '')) !== null) {
+    try {
+      const u = new URL(m[1].replace(/&amp;/g, '&'))
+      if (u.protocol === 'https:' && HUBSPOT_FILE_HOST.test(u.hostname)) out.push(u.toString())
+    } catch { /* not a URL */ }
+  }
+  return out.filter((u, i) => out.indexOf(u) === i)
+}
+
+/** Download a HubSpot-CDN inline image (public; no credential sent). */
+export async function downloadInlineImage(url: string): Promise<{
+  ok: boolean; bytes?: Buffer; name?: string; mime?: string; error?: string
+}> {
+  const res = await fetch(url, { cache: 'no-store' })
+  if (!res.ok) return { ok: false, error: `inline image HTTP ${res.status}` }
+  const bytes = Buffer.from(await res.arrayBuffer())
+  if (bytes.length > 10 * 1024 * 1024) return { ok: false, error: 'inline image over 10 MB' }
+  const name = decodeURIComponent(new URL(url).pathname.split('/').pop() || 'image')
+  return { ok: true, bytes, name, mime: res.headers.get('content-type') || 'image/jpeg' }
+}
+
+/**
  * HubSpot request signature v3: base64(HMAC-SHA256(clientSecret,
  * method + uri + body + timestamp)), timestamp within 5 minutes.
  * Returns 'absent' when HubSpot sent no signature — the custom-channel docs do
