@@ -1,0 +1,11 @@
+{
+  "uid": "steven_make_ticket_card",
+  "type": "card",
+  "config": {
+    "name": "Steven chats",
+    "description": "This contact's recent Steven chats (website + DA Platform) — turn one into a ticket.",
+    "location": "crm.record.sidebar",
+    "entrypoint": "/app/cards/MakeTicket.jsx",
+    "objectTypes": ["contacts"]
+  }
+}

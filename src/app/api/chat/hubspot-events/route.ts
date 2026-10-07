@@ -7,6 +7,7 @@ import {
 } from '@/lib/hubspot-chat/client'
 import { getConversationById, insertMessage, setHubspotThreadId, setHubspotContactId } from '@/lib/chat-store'
 import { refreshCompanyChatNote } from '@/lib/chat-crm-log'
+import { postToPlatform } from '@/lib/hubspot-chat/platform-auth'
 import { storeChatFile, type ChatAttachment } from '@/lib/chat-files'
 
 export const dynamic = 'force-dynamic'
@@ -101,9 +102,37 @@ export async function POST(req: NextRequest) {
     const conversationId = threadIds[0]
     if (!conversationId || !msg.id) { errors.push('missing thread or message id'); continue }
 
-    // In-app Steven threads are relayed by da-platform (Phase 2b, after 2a).
+    // In-app Steven threads live in da-platform (help_conversations). Files are
+    // fetched here — this app holds the HubSpot grant — and handed over inline.
     if (hubspotChatEnv.accountInApp && String(msg.channelAccountId) === hubspotChatEnv.accountInApp) {
-      errors.push('in-app thread — da-platform relay not built yet')
+      try {
+        const files: { name: string; mime: string; base64: string }[] = []
+        for (const att of msg.attachments || []) {
+          if (att?.type && att.type !== 'FILE') continue
+          const dl = await downloadAgentAttachment(att)
+          if (dl.ok && dl.bytes) files.push({ name: dl.name || 'attachment', mime: dl.mime || 'application/octet-stream', base64: dl.bytes.toString('base64') })
+          else errors.push(`attachment: ${dl.error}`)
+        }
+        for (const imgUrl of inlineImageUrls(msg.richText)) {
+          const dl = await downloadInlineImage(imgUrl)
+          if (dl.ok && dl.bytes) files.push({ name: dl.name || 'image', mime: dl.mime || 'image/jpeg', base64: dl.bytes.toString('base64') })
+          else errors.push(`inline image: ${dl.error}`)
+        }
+        const visitorActor = msg.recipients?.find(r => /^V-\d+$/.test(r.actorId || ''))?.actorId
+        const fwd = await postToPlatform('/api/help/hubspot-relay', {
+          conversationId,
+          messageId: msg.id,
+          text: (msg.text || '').trim(),
+          senderName: msg.senders?.[0]?.name || await getActorFirstName(msg.senders?.[0]?.actorId || msg.createdBy),
+          hubspotThreadId: msg.conversationsThreadId != null ? String(msg.conversationsThreadId) : null,
+          hubspotContactId: visitorActor ? visitorActor.slice(2) : null,
+          files,
+        }, 30_000)
+        if (fwd.ok) relayed = true
+        else errors.push(`platform relay HTTP ${fwd.status}: ${JSON.stringify(fwd.data).slice(0, 200)}`)
+      } catch (e) {
+        errors.push(`in-app relay: ${e instanceof Error ? e.message : String(e)}`)
+      }
       continue
     }
 

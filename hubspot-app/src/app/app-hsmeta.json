@@ -7,7 +7,9 @@
     "distribution": "private",
     "auth": {
       "type": "oauth",
-      "redirectUrls": ["https://www.dealeraddendums.com/api/hubspot-chat/oauth/callback"],
+      "redirectUrls": [
+        "https://www.dealeraddendums.com/api/hubspot-chat/oauth/callback"
+      ],
       "requiredScopes": [
         "conversations.custom_channels.read",
         "conversations.custom_channels.write",
@@ -16,13 +18,18 @@
         "crm.objects.contacts.write",
         "files.read",
         "files.write",
-        "oauth"
+        "oauth",
+        "tickets",
+        "crm.objects.companies.read"
       ],
       "optionalScopes": [],
       "conditionallyRequiredScopes": []
     },
     "permittedUrls": {
-      "fetch": ["https://api.hubapi.com"],
+      "fetch": [
+        "https://api.hubapi.com",
+        "https://www.dealeraddendums.com/api/hubspot-chat/card/"
+      ],
       "iframe": [],
       "img": []
     },
