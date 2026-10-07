@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { rateLimit } from '@/lib/rate-limit'
-import { postSlackMessage } from '@/lib/slack'
+import { relayVisitorMessage } from '@/lib/chat-handoff'
 import { getConversationById, insertMessage } from '@/lib/chat-store'
 
 export const dynamic = 'force-dynamic'
 
 /**
  * POST /api/chat/message — a visitor message while the conversation is LIVE.
- * Persists role='visitor' and relays it into the Slack thread so the agent sees
- * it. Bot-mode messages keep using the existing /api/chat streaming route.
+ * Persists role='visitor' and relays it to wherever the conversation went live
+ * (HubSpot inbox or Slack thread) so the agent sees it. Bot-mode messages keep using the existing /api/chat streaming route.
  * Body: { conversationId, body }.
  */
 export async function POST(req: NextRequest) {
@@ -37,17 +37,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'not_live', status: convo.status }, { status: 409 })
   }
 
-  await insertMessage(convo.id, 'visitor', text.slice(0, 2000))
+  const saved = await insertMessage(convo.id, 'visitor', text.slice(0, 2000))
 
-  // Relay into the Slack thread (best-effort — the message is already persisted).
-  if (convo.slack_channel && convo.slack_thread_ts) {
-    const res = await postSlackMessage({
-      channel: convo.slack_channel,
-      threadTs: convo.slack_thread_ts,
-      text: `💬 *Visitor:* ${text.slice(0, 2000)}`,
-    })
-    if (!res.ok) console.error('[chat/message] Slack relay failed:', res.error)
-  }
+  // Relay (best-effort — the message is already persisted).
+  await relayVisitorMessage(convo, { id: saved?.id || `${convo.id}:${Date.now()}`, text: text.slice(0, 2000) })
 
   return NextResponse.json({ ok: true })
 }

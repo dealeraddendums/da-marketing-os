@@ -2,9 +2,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { getAttribution } from '@/lib/attribution'
 
-// `kind` distinguishes incoming left-aligned bubbles: bot (AI), agent (a real
-// teammate replying from the Slack thread), or system (status notes).
-interface Msg { role: 'user' | 'assistant'; content: string; kind?: 'bot' | 'agent' | 'system' }
+// `kind` distinguishes incoming left-aligned bubbles: bot (Steven), agent (a
+// real teammate replying from the HubSpot inbox or Slack), or system (notes).
+interface ChatFile { name: string; mime?: string; url?: string }
+interface Msg {
+  role: 'user' | 'assistant'; content: string; kind?: 'bot' | 'agent' | 'system'
+  sender?: string | null; files?: ChatFile[]
+}
 
 const NAVY = '#2a2b3c'
 const ORANGE = '#ffa500'
@@ -12,7 +16,7 @@ const BLUE = '#1976d2'
 const PHONE = '(801) 415-9435'
 
 const GREETING =
-  "Hi! I'm the DealerAddendums assistant — ask me anything about addendums, pricing, FTC Buyers Guides, or how the trial works. Prefer a person? Tap “Talk to a human” below."
+  "Hi! I'm Steven, the DealerAddendums assistant — ask me anything about addendums, pricing, FTC Buyers Guides, or how the trial works. Prefer a person? Tap “Talk to a human” below."
 
 function getSessionId(): string {
   try {
@@ -41,6 +45,8 @@ export default function ChatWidget() {
   const seenRef = useRef<Set<string>>(new Set())               // dedupe polled ids
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
 
   useEffect(() => {
     sessionId.current = getSessionId()
@@ -93,7 +99,7 @@ export default function ChatWidget() {
           afterRef.current = data.at
           try { sessionStorage.setItem('da_chat_after', data.at) } catch { /* */ }
         }
-        const incoming: { id: string; role: string; body: string }[] = data.messages || []
+        const incoming: { id: string; role: string; body: string; sender?: string | null; attachments?: ChatFile[] }[] = data.messages || []
         if (!incoming.length) return
         const fresh = incoming.filter(m => !seenRef.current.has(m.id))
         fresh.forEach(m => seenRef.current.add(m.id))
@@ -104,6 +110,8 @@ export default function ChatWidget() {
             role: 'assistant' as const,
             content: m.body,
             kind: (m.role === 'system' ? 'system' : 'agent') as Msg['kind'],
+            sender: m.sender || null,
+            files: m.attachments || [],
           })),
         ])
       } catch { /* keep polling */ }
@@ -167,6 +175,16 @@ export default function ChatWidget() {
           attribution,
         }),
       })
+      // The server answered "a person has this now" instead of streaming Steven:
+      // a typed hand-off just went live, or this chat was already live.
+      const liveCid = res.headers.get('x-chat-conversation')
+      if (res.headers.get('x-chat-live') === '1' && liveCid) {
+        setMessages(cur => cur.slice(0, -1)) // drop the empty bot placeholder
+        setEscalated(true)
+        try { sessionStorage.setItem('da_chat_escalated', '1') } catch { /* */ }
+        if (!live) goLive(liveCid, res.headers.get('x-chat-at') || undefined)
+        return
+      }
       if (!res.body) throw new Error('no stream')
       const reader = res.body.getReader()
       const dec = new TextDecoder()
@@ -193,6 +211,35 @@ export default function ChatWidget() {
     } finally {
       setSending(false)
       setTimeout(() => inputRef.current?.focus(), 50)
+    }
+  }
+
+  // ── Live mode: send a file to the agent ───────────────────────────────────
+  const sendFile = async (file: File) => {
+    if (!live || !conversationId || uploading) return
+    if (file.size > 10 * 1024 * 1024) {
+      setMessages(cur => [...cur, { role: 'assistant', kind: 'system', content: `${file.name} is too large — files can be up to 10 MB.` }])
+      return
+    }
+    setUploading(true)
+    setMessages(cur => [...cur, { role: 'user', content: '', files: [{ name: file.name, mime: file.type }] }])
+    try {
+      const form = new FormData()
+      form.append('conversationId', conversationId)
+      form.append('file', file)
+      const res = await fetch('/api/chat/upload', { method: 'POST', body: form })
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        setMessages(cur => [...cur, {
+          role: 'assistant', kind: 'system',
+          content: data?.error || `Couldn’t send ${file.name} — please try again.`,
+        }])
+      }
+    } catch {
+      setMessages(cur => [...cur, { role: 'assistant', kind: 'system', content: `Couldn’t send ${file.name} — please try again.` }])
+    } finally {
+      setUploading(false)
+      if (fileRef.current) fileRef.current.value = ''
     }
   }
 
@@ -305,7 +352,7 @@ export default function ChatWidget() {
               return (
                 <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: isUser ? 'flex-end' : 'flex-start' }}>
                   {isAgent && (
-                    <span style={{ fontSize: 11, fontWeight: 600, color: NAVY, margin: '0 0 2px 4px' }}>DA Team</span>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: NAVY, margin: '0 0 2px 4px' }}>{m.sender || 'DA Team'}</span>
                   )}
                   <div style={{
                     maxWidth: '82%', padding: '9px 12px', borderRadius: 10, fontSize: 14, lineHeight: 1.5, whiteSpace: 'pre-wrap',
@@ -313,7 +360,19 @@ export default function ChatWidget() {
                     color: isUser ? '#fff' : '#333',
                     border: isUser ? 'none' : `1px solid ${isAgent ? NAVY : '#e0e0e0'}`,
                   }}>
-                    {m.content || (sending && i === messages.length - 1 ? '…' : '')}
+                    {m.content || (m.files?.length ? null : (sending && i === messages.length - 1 ? '…' : ''))}
+                    {m.files?.map((f, j) => (
+                      <div key={j} style={{ marginTop: m.content || j ? 6 : 0 }}>
+                        {f.url ? (
+                          <a href={f.url} target="_blank" rel="noopener noreferrer"
+                            style={{ color: isUser ? '#fff' : BLUE, textDecoration: 'underline', wordBreak: 'break-all' }}>
+                            📎 {f.name}
+                          </a>
+                        ) : (
+                          <span style={{ wordBreak: 'break-all' }}>📎 {f.name}</span>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 </div>
               )
@@ -349,6 +408,30 @@ export default function ChatWidget() {
 
           {/* Composer */}
           <div style={{ display: 'flex', gap: 8, padding: 14, background: '#fff', alignItems: 'flex-end' }}>
+            {live && (
+              <>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="image/*,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx"
+                  style={{ display: 'none' }}
+                  onChange={e => { const f = e.target.files?.[0]; if (f) void sendFile(f) }}
+                />
+                <button
+                  aria-label="Attach a file"
+                  title="Attach a file"
+                  onClick={() => fileRef.current?.click()}
+                  disabled={uploading}
+                  style={{
+                    height: 38, width: 38, flexShrink: 0, borderRadius: 6, border: '1px solid #cccccc',
+                    background: '#fff', color: NAVY, fontSize: 17, cursor: uploading ? 'default' : 'pointer',
+                    opacity: uploading ? 0.5 : 1,
+                  }}
+                >
+                  📎
+                </button>
+              </>
+            )}
             <textarea
               ref={inputRef}
               aria-label="Type your message"

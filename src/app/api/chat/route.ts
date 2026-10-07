@@ -2,10 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { sendMandrillEmail } from '@/lib/mandrill'
 import { supabase } from '@/lib/supabase'
-import { MODEL, parseJSON } from '@/lib/ai'
+import { MODEL } from '@/lib/ai'
+import { extractContact } from '@/lib/chat-contact'
 import { rateLimit } from '@/lib/rate-limit'
 import { upsertChatContact } from '@/lib/hubspot'
 import { escalateLead, wantsHuman } from '@/lib/escalate'
+import { getConversationBySession, insertMessage } from '@/lib/chat-store'
+import { relayVisitorMessage } from '@/lib/chat-handoff'
 
 export const dynamic = 'force-dynamic'
 
@@ -62,29 +65,7 @@ function captureChatLead(opts: {
       if (existing && existing.length > 0) return // never overwrite an existing lead
 
       // One non-streaming extraction pass over the transcript for the other fields.
-      let extracted: { name?: string; dealership?: string; phone?: string } | null = null
-      try {
-        const transcript = opts.messages.map(m => `${m.role}: ${m.content}`).join('\n').slice(0, 6000)
-        const msg = await client.messages.create({
-          model: 'claude-haiku-4-5',
-          max_tokens: 200,
-          system: 'Extract the contact details from this car-dealer sales chat. Respond ONLY with JSON, no markdown: {"name":"","dealership":"","phone":""}. Use an empty string for any field not clearly present.',
-          messages: [{ role: 'user', content: transcript }],
-        })
-        // Join the text blocks rather than indexing [0] — a thinking block
-        // arriving first would read as an empty extraction from a good call.
-        const text = msg.content
-          .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-          .map(b => b.text)
-          .join('')
-        extracted = parseJSON(text)
-      } catch {
-        // extraction is best-effort — still capture the email
-      }
-
-      const name = extracted?.name?.trim() || null
-      const dealership = extracted?.dealership?.trim() || null
-      const phone = extracted?.phone?.trim() || null
+      const { name, dealership, phone } = await extractContact(opts.messages)
 
       const { error } = await supabase.from('marketing_leads').insert({
         name,
@@ -139,6 +120,18 @@ function captureChatLead(opts: {
   })()
 }
 
+/** An empty reply that tells the widget the conversation is with a person now. */
+function liveSwitch(conversationId: string, at: string): Response {
+  return new Response('', {
+    headers: {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'X-Chat-Live': '1',
+      'X-Chat-Conversation': conversationId,
+      'X-Chat-At': at,
+    },
+  })
+}
+
 export async function POST(req: NextRequest) {
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
   if (!rateLimit(ip, 10, 60_000)) {
@@ -160,18 +153,39 @@ export async function POST(req: NextRequest) {
       captureChatLead({ email: emailMatch[0], messages, utmTerm, attribution })
     }
 
-    // "Talk to a real person" — server-side intent detection. Fires an instant
-    // Slack alert (deduped to one per session in escalateLead). The widget's
-    // explicit button hits /api/chat/escalate; both routes share the dedupe.
+    // ── Once a person has taken over, Steven stays quiet ─────────────────────
+    // A widget that missed the switch (older tab, typed hand-off) still posts
+    // here. Its message is relayed to the agent instead of being answered by
+    // the bot, and the X-Chat-* headers tell the widget to switch to live mode.
+    if (sessionId) {
+      const convo = await getConversationBySession(sessionId).catch(() => null)
+      if (convo?.status === 'live') {
+        const text = String(lastUserMsg).slice(0, 2000)
+        const saved = await insertMessage(convo.id, 'visitor', text)
+        await relayVisitorMessage(convo, { id: saved?.id || `${convo.id}:${Date.now()}`, text })
+        return liveSwitch(convo.id, new Date(new Date(convo.live_at || convo.created_at).getTime() - 1000).toISOString())
+      }
+    }
+
+    // "Talk to a real person" — server-side intent detection. Awaited, so a
+    // TYPED request connects the widget exactly like the button does: on a live
+    // hand-off the bot does not answer, and the widget switches to live mode
+    // and starts polling for the agent's reply. If no live path is available
+    // (notify-only fallback) Steven answers as before.
     if (wantsHuman(lastUserMsg)) {
-      void escalateLead({
+      const esc = await escalateLead({
         sessionId,
         messages,
         email: emailMatch?.[0] || null,
         page: req.headers.get('referer') || null,
-        utm: { utm_term: utmTerm || null },
+        utm: {
+          utm_source: (attribution?.utm_source as string) || null,
+          utm_campaign: (attribution?.utm_campaign as string) || null,
+          utm_term: utmTerm || null,
+        },
         trigger: 'intent',
       })
+      if (esc.live && esc.conversationId) return liveSwitch(esc.conversationId, esc.at || new Date().toISOString())
     }
 
     // Streaming response

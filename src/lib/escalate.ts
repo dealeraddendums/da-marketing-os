@@ -5,8 +5,17 @@ import {
   setConversationLive,
   type ChatConversation,
 } from '@/lib/chat-store'
+import { hubspotHandoffEnabled } from '@/lib/hubspot-chat/config'
+import { openHubspotThread } from '@/lib/chat-handoff'
+import { extractContact } from '@/lib/chat-contact'
 
-// "Talk to a real person" escalation. TWO-WAY now: the bot-token alert becomes
+// "Talk to a real person" escalation. Live hand-off goes to the HubSpot inbox
+// when CHAT_HANDOFF_PROVIDER=hubspot (lib/chat-handoff.ts — agent replies come
+// back through /api/chat/hubspot-events), otherwise to Slack as below. If the
+// HubSpot publish fails the Slack path is tried next, then the notify-only
+// fallbacks, so an escalation is never silently lost.
+//
+// Slack path: the bot-token alert becomes
 // the parent of a Slack thread; the team replies in-thread and the visitor sees
 // it live in the widget (Slack Events → /api/chat/slack-events) and replies back
 // (/api/chat/message). The conversation flips to `live` and the bot stops
@@ -29,7 +38,7 @@ export interface EscalateInput {
 
 export interface EscalateResult {
   ok: boolean
-  channel: 'slack' | 'email' | 'none'
+  channel: 'hubspot' | 'slack' | 'email' | 'none'
   deduped?: boolean
   // Present only when two-way live mode engaged (bot-token post succeeded):
   live?: boolean
@@ -138,8 +147,9 @@ async function emailFallback(input: EscalateInput): Promise<boolean> {
 export async function escalateLead(input: EscalateInput): Promise<EscalateResult> {
   const sid = input.sessionId || `anon-${Date.now()}`
 
-  // ── Two-way path: needs the bot token + alerts channel ───────────────────
-  if (slackConfigured()) {
+  // ── Two-way paths: HubSpot inbox, then Slack thread ──────────────────────
+  const hubspotOn = hubspotHandoffEnabled()
+  if (hubspotOn || slackConfigured()) {
     let convo: ChatConversation | null = null
     try {
       convo = await findOrCreateConversation(sid, {
@@ -152,24 +162,67 @@ export async function escalateLead(input: EscalateInput): Promise<EscalateResult
     if (convo) {
       // Already escalated (button after intent, or a repeat tap) — return the
       // existing thread without re-alerting. Dedupe lives in the row's status.
-      if (convo.status === 'live' && convo.slack_thread_ts) {
+      // The cursor is the moment it went live, NOT now: an agent may already
+      // have replied before this widget connected, and that reply must show.
+      if (convo.status === 'live') {
         return {
-          ok: true, channel: 'slack', deduped: true, live: true,
-          conversationId: convo.id, threadTs: convo.slack_thread_ts,
-          at: new Date().toISOString(),
+          ok: true, channel: convo.handoff_provider === 'hubspot' ? 'hubspot' : 'slack',
+          deduped: true, live: true,
+          conversationId: convo.id, threadTs: convo.slack_thread_ts || undefined,
+          at: new Date(new Date(convo.live_at || convo.created_at).getTime() - 1000).toISOString(),
         }
       }
-      const parent = await postThreadParent(input)
-      if (parent) {
-        await setConversationLive(convo.id, parent.ts, parent.channel)
-        return {
-          ok: true, channel: 'slack', live: true,
-          conversationId: convo.id, threadTs: parent.ts,
-          at: new Date().toISOString(),
+
+      // Name / dealership / phone for the agent. The widget only sends what it
+      // can regex out of the transcript (an email); the rest is extracted here,
+      // bounded so a slow model call cannot hold up a waiting visitor.
+      if (!input.name || !input.dealership || !input.phone) {
+        const found = await Promise.race([
+          extractContact(input.messages || []),
+          new Promise<null>(r => setTimeout(() => r(null), 4000)),
+        ])
+        if (found) {
+          input = {
+            ...input,
+            name: input.name || found.name,
+            dealership: input.dealership || found.dealership,
+            phone: input.phone || found.phone,
+          }
         }
       }
-      // Bot-token post failed — fall through to the legacy alert below so the
-      // team is still notified, but the widget stays in bot mode.
+
+      if (hubspotOn) {
+        const opened = await openHubspotThread(convo, input)
+        if (opened.ok) {
+          const at = await setConversationLive(convo.id, {
+            provider: 'hubspot', contactName: input.name, dealership: input.dealership,
+            email: input.email, phone: input.phone,
+          })
+          return {
+            ok: true, channel: 'hubspot', live: true, conversationId: convo.id,
+            at: new Date(new Date(at).getTime() - 1000).toISOString(),
+          }
+        }
+        // HubSpot refused — try Slack so a person still sees it.
+      }
+
+      if (slackConfigured()) {
+        const parent = await postThreadParent(input)
+        if (parent) {
+          const at = await setConversationLive(convo.id, {
+            provider: 'slack', slackThreadTs: parent.ts, slackChannel: parent.channel,
+            contactName: input.name, dealership: input.dealership,
+            email: input.email, phone: input.phone,
+          })
+          return {
+            ok: true, channel: 'slack', live: true,
+            conversationId: convo.id, threadTs: parent.ts,
+            at: new Date(new Date(at).getTime() - 1000).toISOString(),
+          }
+        }
+      }
+      // Both two-way paths failed — fall through to the legacy alert below so
+      // the team is still notified, but the widget stays in bot mode.
     }
   }
 

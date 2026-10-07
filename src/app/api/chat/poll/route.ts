@@ -21,7 +21,16 @@ export async function GET(req: NextRequest) {
     const msgs = await getMessagesAfter(conversationId, after)
     if (msgs.length) cursor = msgs[msgs.length - 1].created_at
     return NextResponse.json({
-      messages: msgs.map(m => ({ id: m.id, role: m.role, body: m.body, created_at: m.created_at })),
+      messages: msgs.map(m => ({
+        id: m.id, role: m.role, body: m.body, created_at: m.created_at,
+        sender: m.sender_name || null,
+        // Links go through /api/chat/file, which signs on demand — a signed
+        // URL minted here would expire while the chat sits open.
+        attachments: (m.attachments || []).map((a, i) => ({
+          name: a.name, mime: a.mime, size: a.size,
+          url: `/api/chat/file?conversation=${encodeURIComponent(conversationId)}&message=${encodeURIComponent(m.id)}&i=${i}`,
+        })),
+      })),
       at: cursor,
     })
   } catch (e) {
