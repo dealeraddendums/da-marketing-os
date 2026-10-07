@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase'
 import { isAdminAuthed } from '@/lib/reputation'
 import { hsFetch, ACCOUNT_IDENTIFIERS, type Surface } from '@/lib/hubspot-chat/client'
 import { ALLOWED_CHAT_MIME, MAX_CHAT_FILE_BYTES } from '@/lib/chat-files'
+import { refreshCompanyChatNote } from '@/lib/chat-crm-log'
 import {
   hubspotChatEnv, HUBSPOT_API, CHANNELS_BASE, webhookUrl, hubspotHandoffEnabled,
 } from '@/lib/hubspot-chat/config'
@@ -23,6 +24,7 @@ export const fetchCache = 'force-no-store'
  *   inboxes         list inboxes (OAuth) — to pick the inboxId
  *   connect         { inboxId, surface: 'homepage'|'inapp' } create a channel account
  *   accounts        list channel accounts
+ *   refresh-note    { conversationId } rewrite that chat's company-timeline note
  * The resulting ids go into .env.production (HUBSPOT_CHAT_CHANNEL_ID,
  * HUBSPOT_CHAT_ACCOUNT_HOMEPAGE / _INAPP) — see docs/chat-hubspot-bridge.md.
  */
@@ -108,6 +110,12 @@ export async function POST(req: NextRequest) {
           authorized: true,
         },
       }))
+    }
+    case 'refresh-note': {
+      const id = String(body.conversationId || '')
+      if (!id) return NextResponse.json({ error: 'conversationId required' }, { status: 400 })
+      refreshCompanyChatNote(id)
+      return NextResponse.json({ ok: true, queued: id })
     }
     default:
       return NextResponse.json({ error: `unknown action ${action}` }, { status: 400 })

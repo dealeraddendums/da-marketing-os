@@ -22,6 +22,10 @@ export interface ChatConversation {
   contact_name: string | null
   dealership: string | null
   live_at: string | null
+  // Migration 017 (company-timeline note).
+  handoff_summary: string | null
+  hubspot_contact_id: string | null
+  crm_note_id: string | null
 }
 
 export interface ChatMessage {
@@ -105,6 +109,7 @@ export async function setConversationLive(
     dealership?: string | null
     email?: string | null
     phone?: string | null
+    handoffSummary?: string | null
   },
 ): Promise<string> {
   const now = new Date().toISOString()
@@ -117,6 +122,7 @@ export async function setConversationLive(
   if (live.dealership) patch.dealership = live.dealership
   if (live.email) patch.contact_email = live.email
   if (live.phone) patch.contact_phone = live.phone
+  if (live.handoffSummary) patch.handoff_summary = live.handoffSummary
   await supabase.from('chat_conversations').update(patch).eq('id', id)
   return now
 }
@@ -154,6 +160,13 @@ export async function setHubspotThreadId(id: string, hubspotThreadId: string): P
     .update({ hubspot_thread_id: hubspotThreadId })
     .eq('id', id)
     .is('hubspot_thread_id', null)
+}
+
+export async function setHubspotContactId(id: string, contactId: string): Promise<void> {
+  await supabase.from('chat_conversations')
+    .update({ hubspot_contact_id: contactId })
+    .eq('id', id)
+    .is('hubspot_contact_id', null)
 }
 
 export async function getConversationBySession(sessionId: string): Promise<ChatConversation | null> {

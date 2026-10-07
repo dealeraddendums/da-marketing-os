@@ -1,4 +1,5 @@
 import { postSlackMessage } from '@/lib/slack'
+import { refreshCompanyChatNote } from '@/lib/chat-crm-log'
 import { type ChatConversation } from '@/lib/chat-store'
 import { type ChatAttachment } from '@/lib/chat-files'
 import {
@@ -96,6 +97,7 @@ export async function relayVisitorMessage(
       attachments,
     })
     if (!r.ok) console.error('[handoff] HubSpot relay failed:', r.error)
+    refreshCompanyChatNote(convo.id)
     return r
   }
 

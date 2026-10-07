@@ -6,7 +6,8 @@ import {
   type ChatConversation,
 } from '@/lib/chat-store'
 import { hubspotHandoffEnabled, hubspotBridgeReady, isBridgeTestPage } from '@/lib/hubspot-chat/config'
-import { openHubspotThread } from '@/lib/chat-handoff'
+import { openHubspotThread, handoffSummaryText } from '@/lib/chat-handoff'
+import { refreshCompanyChatNote } from '@/lib/chat-crm-log'
 import { extractContact } from '@/lib/chat-contact'
 
 // "Talk to a real person" escalation. Live hand-off goes to the HubSpot inbox
@@ -196,8 +197,9 @@ export async function escalateLead(input: EscalateInput): Promise<EscalateResult
         if (opened.ok) {
           const at = await setConversationLive(convo.id, {
             provider: 'hubspot', contactName: input.name, dealership: input.dealership,
-            email: input.email, phone: input.phone,
+            email: input.email, phone: input.phone, handoffSummary: handoffSummaryText(input),
           })
+          refreshCompanyChatNote(convo.id)
           return {
             ok: true, channel: 'hubspot', live: true, conversationId: convo.id,
             at: new Date(new Date(at).getTime() - 1000).toISOString(),

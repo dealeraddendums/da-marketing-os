@@ -5,7 +5,8 @@ import { hubspotChatEnv } from '@/lib/hubspot-chat/config'
 import {
   checkSignatureV3, downloadAgentAttachment, getActorFirstName, inlineImageUrls, downloadInlineImage,
 } from '@/lib/hubspot-chat/client'
-import { getConversationById, insertMessage, setHubspotThreadId } from '@/lib/chat-store'
+import { getConversationById, insertMessage, setHubspotThreadId, setHubspotContactId } from '@/lib/chat-store'
+import { refreshCompanyChatNote } from '@/lib/chat-crm-log'
 import { storeChatFile, type ChatAttachment } from '@/lib/chat-files'
 
 export const dynamic = 'force-dynamic'
@@ -48,6 +49,7 @@ interface HsMessage {
   richText?: string
   direction?: string
   attachments?: Record<string, unknown>[]
+  recipients?: { actorId?: string }[]
 }
 
 export async function POST(req: NextRequest) {
@@ -109,6 +111,9 @@ export async function POST(req: NextRequest) {
       const convo = await getConversationById(conversationId)
       if (!convo) { errors.push(`unknown conversation ${conversationId}`); continue }
       if (msg.conversationsThreadId != null) await setHubspotThreadId(convo.id, String(msg.conversationsThreadId))
+      // The visitor's actor id is V-<contactId> — the contact HubSpot resolved.
+      const visitorActor = msg.recipients?.find(r => /^V-\d+$/.test(r.actorId || ''))?.actorId
+      if (visitorActor) await setHubspotContactId(convo.id, visitorActor.slice(2))
 
       const attachments: ChatAttachment[] = []
       for (const att of msg.attachments || []) {
@@ -139,6 +144,7 @@ export async function POST(req: NextRequest) {
         externalId: msg.id,
       })
       relayed = true
+      refreshCompanyChatNote(convo.id)
     } catch (e) {
       errors.push(e instanceof Error ? e.message : String(e))
     }
