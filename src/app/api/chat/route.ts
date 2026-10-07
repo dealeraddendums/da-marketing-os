@@ -11,6 +11,10 @@ import { getConversationBySession, insertMessage } from '@/lib/chat-store'
 import { relayVisitorMessage } from '@/lib/chat-handoff'
 
 export const dynamic = 'force-dynamic'
+// Next 14 still caches supabase-js GETs in the Data Cache under force-dynamic: a
+// poll that once read "no new messages" kept getting that answer forever, so
+// agent replies never reached the widget. Every chat read must be live.
+export const fetchCache = 'force-no-store'
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 

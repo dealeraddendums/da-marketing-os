@@ -6,6 +6,10 @@ import { buildAuthUrl } from '@/lib/hubspot-chat/oauth'
 import { oauthConfigured, hubspotChatEnv } from '@/lib/hubspot-chat/config'
 
 export const dynamic = 'force-dynamic'
+// Next 14 still caches supabase-js GETs in the Data Cache under force-dynamic: a
+// poll that once read "no new messages" kept getting that answer forever, so
+// agent replies never reached the widget. Every chat read must be live.
+export const fetchCache = 'force-no-store'
 
 /** GET /api/hubspot-chat/oauth/start — admin-only; sends a Super Admin to the
  *  HubSpot consent screen for the Steven Chat Bridge app (portal-pinned). */
