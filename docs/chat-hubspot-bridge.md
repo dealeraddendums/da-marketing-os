@@ -48,8 +48,22 @@ on its 3-second poll. Visitor messages and files go back through `relayVisitorMe
    `{action:'connect', inboxId, surface:'homepage'}` → channel account id → env. Restart.
 4. Flip `CHAT_HANDOFF_PROVIDER=hubspot`.
 
-## Known gaps / undocumented by HubSpot (see chat_hubspot_events for evidence)
-- Whether webhooks carry `X-HubSpot-Signature-v3` — the receiver requires the URL token and verifies a
-  signature when one is present (`signature_state` records which).
-- Agent-attachment shape in the webhook — `downloadAgentAttachment()` accepts URL or Files id.
-- In-app (da-platform) surface: its channel account exists in config, but the relay waits on Phase 2a.
+## Part A findings (live test 2026-10-07, Support inbox)
+- **Latency:** agent sends → webhook in ~1.9 s → visible in the widget ~3.9 s after send (3 s poll).
+- **Signatures:** HubSpot DOES sign custom-channel webhooks (`X-HubSpot-Signature-v3`, client secret);
+  every delivery verified `valid`. The URL token stays as a second gate.
+- **Contact:** the thread auto-associates to the contact from `HS_EMAIL_ADDRESS` (recipient actor
+  `V-<contactId>`). **Company: NOT logged by HubSpot** (closed chat, all-activity filter) →
+  `lib/chat-crm-log.ts` keeps one note per chat on the contact's companies (migration 017), via the
+  existing `HUBSPOT_API_KEY` (has companies.write).
+- **Agent name:** not in the webhook — only `senders[].actorId` (A-<userId>); resolved via
+  `/conversations/v3/conversations/actors/{id}`, first name shown.
+- **Agent files:** composer "Insert image" arrives as `<img>` in `richText` (HubSpot CDN), NOT in
+  `attachments`; both paths are relayed (CDN host allowlist only).
+- **Routing:** inbox default = new chat arrives unassigned, visible to the inbox's users, assigned to
+  whoever replies first (claim-first). Automatic assignment is an inbox setting.
+- **App:** private OAuth project app (2026.09). The coarse `files` scope is retired → `files.read` +
+  `files.write`.
+
+## Test hook
+A hand-off from a page opened with `?hs_bridge_test=1` goes to HubSpot even while the switch is on Slack.
