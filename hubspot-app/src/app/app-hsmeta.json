@@ -19,8 +19,10 @@
         "files.read",
         "files.write",
         "oauth",
-        "tickets",
-        "crm.objects.companies.read"
+        "crm.objects.companies.read",
+        "crm.objects.tickets.read",
+        "crm.objects.tickets.write",
+        "crm.schemas.tickets.read"
       ],
       "optionalScopes": [],
       "conditionallyRequiredScopes": []

@@ -42,7 +42,9 @@ export const HUBSPOT_CHAT_SCOPES = [
   'files.read',
   'files.write',
   'oauth',
-  'tickets',
+  'crm.objects.tickets.read',
+  'crm.objects.tickets.write',
+  'crm.schemas.tickets.read',
   'crm.objects.companies.read',
 ]
 
