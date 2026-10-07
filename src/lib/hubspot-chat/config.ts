@@ -55,6 +55,18 @@ export function webhookUrl(): string {
   return `${hubspotChatEnv.siteUrl.replace(/\/$/, '')}/api/chat/hubspot-events?token=${encodeURIComponent(hubspotChatEnv.webhookToken)}`
 }
 
+/** The bridge is wired (app + channel + website account), whatever the switch. */
+export function hubspotBridgeReady(): boolean {
+  return oauthConfigured && !!hubspotChatEnv.channelId && !!hubspotChatEnv.accountHomepage
+}
+
+/** A hand-off from a page opened with ?hs_bridge_test=1 goes to HubSpot even
+ *  while the switch is on Slack — so the bridge can be exercised end to end
+ *  without sending real visitors to an inbox nobody is watching yet. */
+export function isBridgeTestPage(page: string | null | undefined): boolean {
+  return /[?&]hs_bridge_test=1\b/.test(page || '')
+}
+
 /** True when a NEW hand-off should go to HubSpot. The OAuth grant itself is
  *  checked at publish time; a dead grant falls back to Slack there. */
 export function hubspotHandoffEnabled(): boolean {

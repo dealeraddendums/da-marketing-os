@@ -5,7 +5,7 @@ import {
   setConversationLive,
   type ChatConversation,
 } from '@/lib/chat-store'
-import { hubspotHandoffEnabled } from '@/lib/hubspot-chat/config'
+import { hubspotHandoffEnabled, hubspotBridgeReady, isBridgeTestPage } from '@/lib/hubspot-chat/config'
 import { openHubspotThread } from '@/lib/chat-handoff'
 import { extractContact } from '@/lib/chat-contact'
 
@@ -148,7 +148,7 @@ export async function escalateLead(input: EscalateInput): Promise<EscalateResult
   const sid = input.sessionId || `anon-${Date.now()}`
 
   // ── Two-way paths: HubSpot inbox, then Slack thread ──────────────────────
-  const hubspotOn = hubspotHandoffEnabled()
+  const hubspotOn = hubspotHandoffEnabled() || (hubspotBridgeReady() && isBridgeTestPage(input.page))
   if (hubspotOn || slackConfigured()) {
     let convo: ChatConversation | null = null
     try {

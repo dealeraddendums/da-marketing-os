@@ -256,7 +256,7 @@ export default function ChatWidget() {
           sessionId: sessionId.current,
           messages: messages.map(m => ({ role: m.role, content: m.content })),
           email,
-          page: typeof location !== 'undefined' ? location.pathname : null,
+          page: typeof location !== 'undefined' ? location.pathname + location.search : null,
           utm: { utm_source: attribution.utm_source, utm_campaign: attribution.utm_campaign, utm_term: attribution.utm_term },
         }),
       })
