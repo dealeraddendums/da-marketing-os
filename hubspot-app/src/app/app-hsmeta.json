@@ -14,7 +14,9 @@
         "conversations.read",
         "crm.objects.contacts.read",
         "crm.objects.contacts.write",
-        "files"
+        "files.read",
+        "files.write",
+        "oauth"
       ],
       "optionalScopes": [],
       "conditionallyRequiredScopes": []

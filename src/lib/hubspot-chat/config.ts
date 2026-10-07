@@ -39,7 +39,9 @@ export const HUBSPOT_CHAT_SCOPES = [
   'conversations.read',
   'crm.objects.contacts.read',
   'crm.objects.contacts.write',
-  'files',
+  'files.read',
+  'files.write',
+  'oauth',
 ]
 
 export const oauthConfigured = !!(hubspotChatEnv.clientId && hubspotChatEnv.clientSecret)
