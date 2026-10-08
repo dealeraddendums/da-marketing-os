@@ -25,6 +25,7 @@ export const fetchCache = 'force-no-store'
  *   connect         { inboxId, surface: 'homepage'|'inapp' } create a channel account
  *   accounts        list channel accounts
  *   refresh-note    { conversationId } rewrite that chat's company-timeline note
+ *   recent-threads  read-only: the inbox's latest threads + their last messages (diagnostics)
  * The resulting ids go into .env.production (HUBSPOT_CHAT_CHANNEL_ID,
  * HUBSPOT_CHAT_ACCOUNT_HOMEPAGE / _INAPP) — see docs/chat-hubspot-bridge.md.
  */
@@ -116,6 +117,26 @@ export async function POST(req: NextRequest) {
       if (!id) return NextResponse.json({ error: 'conversationId required' }, { status: 400 })
       refreshCompanyChatNote(id)
       return NextResponse.json({ ok: true, queued: id })
+    }
+    case 'recent-threads': {
+      const inbox = hubspotChatEnv.channelId ? (body.inboxId ? String(body.inboxId) : '215856600') : '215856600'
+      const t = await hsFetch(`/conversations/v3/conversations/threads?inboxId=${encodeURIComponent(inbox)}&sort=-latestMessageTimestamp&limit=${Number(body.limit) || 5}`)
+      const threads = ((t.data as { results?: Record<string, unknown>[] })?.results) || []
+      const out = []
+      for (const th of threads) {
+        const m = await hsFetch(`/conversations/v3/conversations/threads/${th.id}/messages?limit=8&sort=-createdAt`)
+        out.push({
+          id: th.id, status: th.status, originalChannelId: th.originalChannelId, originalChannelAccountId: th.originalChannelAccountId,
+          latest: th.latestMessageTimestamp,
+          messages: (((m.data as { results?: Record<string, unknown>[] })?.results) || []).map((x) => ({
+            type: x.type, direction: x.direction, createdAt: x.createdAt, channelId: x.channelId, channelAccountId: x.channelAccountId,
+            text: typeof x.text === 'string' ? x.text.slice(0, 80) : null,
+            status: (x.status as { statusType?: string } | undefined)?.statusType,
+            failure: (x.status as { failureDetails?: unknown } | undefined)?.failureDetails ?? null,
+          })),
+        })
+      }
+      return NextResponse.json({ status: t.status, threads: out })
     }
     default:
       return NextResponse.json({ error: `unknown action ${action}` }, { status: 400 })
