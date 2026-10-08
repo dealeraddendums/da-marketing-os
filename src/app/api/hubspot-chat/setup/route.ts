@@ -120,7 +120,9 @@ export async function POST(req: NextRequest) {
     }
     case 'recent-threads': {
       const inbox = hubspotChatEnv.channelId ? (body.inboxId ? String(body.inboxId) : '215856600') : '215856600'
-      const t = await hsFetch(`/conversations/v3/conversations/threads?inboxId=${encodeURIComponent(inbox)}&sort=-latestMessageTimestamp&limit=${Number(body.limit) || 5}`)
+      const since = new Date(Date.now() - (Number(body.hours) || 6) * 3600_000).toISOString()
+      const t = await hsFetch(`/conversations/v3/conversations/threads?inboxId=${encodeURIComponent(inbox)}&sort=latestMessageTimestamp&latestMessageTimestampAfter=${encodeURIComponent(since)}&limit=${Number(body.limit) || 10}`)
+      if (!t.ok) return NextResponse.json({ status: t.status, error: t.data })
       const threads = ((t.data as { results?: Record<string, unknown>[] })?.results) || []
       const out = []
       for (const th of threads) {
