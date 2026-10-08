@@ -144,3 +144,13 @@ export async function ticketAssociations(ticketId: string): Promise<{ contacts: 
   const [contacts, companies] = await Promise.all([get('contacts'), get('companies')])
   return { contacts, companies }
 }
+
+/** Link an existing ticket to a company (idempotent — HubSpot PUT). Used when
+ *  a ticket an agent made in the inbox is adopted: those link the contact only. */
+export async function linkTicketToCompany(ticketId: string, companyId: string): Promise<boolean> {
+  const r = await hsFetch(
+    `/crm/v4/objects/tickets/${encodeURIComponent(ticketId)}/associations/default/companies/${encodeURIComponent(companyId)}`,
+    { method: 'PUT' },
+  )
+  return r.ok
+}
