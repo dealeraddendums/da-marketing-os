@@ -116,3 +116,31 @@ export async function contactCompanyIds(contactId: string): Promise<string[]> {
   if (!r.ok) return []
   return (((r.data as { results?: { toObjectId: number | string }[] })?.results) || []).map(x => String(x.toObjectId))
 }
+
+/**
+ * Tickets an agent made from inside the inbox ("Create ticket" on the
+ * conversation) — HubSpot links them to the conversation THREAD. Returns
+ * threadId → ticketId for the threads that have one, so a ticket made there
+ * shows in the dealer's "My support tickets" too, not only tickets made
+ * through our "Make this a ticket" flow.
+ */
+export async function ticketsForThreads(threadIds: string[]): Promise<Record<string, string>> {
+  const out: Record<string, string> = {}
+  const ids = threadIds.filter((v, i) => /^\d+$/.test(v) && threadIds.indexOf(v) === i).slice(0, 25)
+  await Promise.all(ids.map(async (id) => {
+    const r = await hsFetch(`/conversations/v3/conversations/threads/${id}?association=TICKET`)
+    const t = (r.data as { threadAssociations?: { associatedTicketId?: string | number } } | null)?.threadAssociations?.associatedTicketId
+    if (r.ok && t != null) out[id] = String(t)
+  }))
+  return out
+}
+
+/** Which contacts / companies a ticket is linked to (for verification + display). */
+export async function ticketAssociations(ticketId: string): Promise<{ contacts: string[]; companies: string[] }> {
+  const get = async (to: string) => {
+    const r = await hsFetch(`/crm/v4/objects/tickets/${encodeURIComponent(ticketId)}/associations/${to}`)
+    return r.ok ? (((r.data as { results?: { toObjectId: number | string }[] })?.results) || []).map((x) => String(x.toObjectId)) : []
+  }
+  const [contacts, companies] = await Promise.all([get('contacts'), get('companies')])
+  return { contacts, companies }
+}

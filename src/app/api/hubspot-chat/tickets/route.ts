@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { platformSecretOk } from '@/lib/hubspot-chat/platform-auth'
-import { createTicket, ticketStatuses, contactCompanyIds } from '@/lib/hubspot-chat/tickets'
+import { createTicket, ticketStatuses, contactCompanyIds, ticketsForThreads, ticketAssociations } from '@/lib/hubspot-chat/tickets'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -12,6 +12,8 @@ export const fetchCache = 'force-no-store'
  *   { action: 'create', subject, content, contactId?, companyIds? }
  *       companyIds omitted → the contact's companies are used
  *   { action: 'status', ids: [...] }   current stage of each ticket
+ *   { action: 'from-threads', threadIds: [...] }  tickets agents made in the inbox, by thread
+ *   { action: 'associations', ticketId }  the ticket's linked contacts + companies
  */
 export async function POST(req: NextRequest) {
   if (!platformSecretOk(req.headers.get('x-webhook-secret'))) {
@@ -38,6 +40,15 @@ export async function POST(req: NextRequest) {
     } catch (e) {
       return NextResponse.json({ ok: false, error: e instanceof Error ? e.message : String(e) }, { status: 502 })
     }
+  }
+
+  if (b.action === 'from-threads') {
+    const ids = Array.isArray(b.threadIds) ? (b.threadIds as unknown[]).map(String) : []
+    return NextResponse.json({ ok: true, tickets: await ticketsForThreads(ids) })
+  }
+
+  if (b.action === 'associations' && typeof b.ticketId === 'string') {
+    return NextResponse.json({ ok: true, ...(await ticketAssociations(b.ticketId)) })
   }
 
   return NextResponse.json({ error: 'unknown action' }, { status: 400 })
