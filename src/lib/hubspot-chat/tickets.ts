@@ -25,13 +25,33 @@ async function ticketPipelines(): Promise<Pipeline[]> {
   return pipelines
 }
 
-/** The support pipeline (HubSpot's default "Support Pipeline", id "0", else the
- *  first) and its first OPEN stage ("New"). */
-async function defaultPipelineAndStage(): Promise<{ pipeline: string; stage: string }> {
+/**
+ * The ONE pipeline dealer-support tickets live in: "Customer Support"
+ * (28040372). Not HubSpot's id-"0" default — on this portal that one is
+ * "Account Onboarding Support" (onboarding + "Check FreshBooks" ops tickets),
+ * which is where every Steven ticket used to land, out of sight of the support
+ * board and of the dealer's "My support tickets". Override with
+ * HUBSPOT_SUPPORT_PIPELINE_ID; if the id is gone, match the label.
+ */
+export const SUPPORT_PIPELINE_ID = process.env.HUBSPOT_SUPPORT_PIPELINE_ID || '28040372'
+const SUPPORT_PIPELINE_LABEL = 'Customer Support'
+/** HubSpot's own default pipeline id — where tickets land when nobody picked one. */
+const PORTAL_DEFAULT_PIPELINE_ID = '0'
+
+async function supportPipeline(): Promise<Pipeline> {
   const pipelines = await ticketPipelines()
-  const p = pipelines.find(x => x.id === '0') || pipelines[0]
-  if (!p) throw new Error('no ticket pipeline in the account')
-  const stage = p.stages.find(s => s.metadata?.isClosed !== 'true') || p.stages[0]
+  const p = pipelines.find(x => x.id === SUPPORT_PIPELINE_ID)
+    || pipelines.find(x => x.label.trim().toLowerCase() === SUPPORT_PIPELINE_LABEL.toLowerCase())
+  if (!p) throw new Error(`support ticket pipeline ${SUPPORT_PIPELINE_ID} / "${SUPPORT_PIPELINE_LABEL}" not found`)
+  return p
+}
+
+/** The support pipeline and its first OPEN stage ("New"). */
+async function supportPipelineAndStage(): Promise<{ pipeline: string; stage: string }> {
+  const p = await supportPipeline()
+  const open = [...p.stages].sort((a, b) => ((a as { displayOrder?: number }).displayOrder ?? 0) - ((b as { displayOrder?: number }).displayOrder ?? 0))
+    .filter(s => s.metadata?.isClosed !== 'true')
+  const stage = open.find(s => s.label.trim().toLowerCase() === 'new') || open[0] || p.stages[0]
   return { pipeline: p.id, stage: stage.id }
 }
 
@@ -43,7 +63,7 @@ export async function createTicket(opts: {
   priority?: 'LOW' | 'MEDIUM' | 'HIGH'
 }): Promise<{ ok: boolean; ticketId?: string; error?: string }> {
   try {
-    const { pipeline, stage } = await defaultPipelineAndStage()
+    const { pipeline, stage } = await supportPipelineAndStage()
     const associations = [
       ...(opts.contactId ? [{ to: { id: opts.contactId }, types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: TICKET_TO_CONTACT }] }] : []),
       ...(opts.companyIds || []).map(id => ({ to: { id }, types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: TICKET_TO_COMPANY }] })),
@@ -73,6 +93,8 @@ export interface TicketStatus {
   id: string
   subject: string | null
   status: string          // the stage label, e.g. "New", "Waiting on us", "Closed"
+  pipeline: string | null
+  support: boolean        // in the dealer-support pipeline (the only one dealers may see)
   state: 'open' | 'waiting' | 'closed'
   updatedAt: string | null
   createdAt: string | null
@@ -91,6 +113,7 @@ export async function ticketStatuses(ids: string[]): Promise<TicketStatus[]> {
   })
   if (!r.ok) throw new Error(`ticket batch read HTTP ${r.status}`)
   const pipelines = await ticketPipelines()
+  const supportId = (await supportPipeline().catch(() => null))?.id ?? SUPPORT_PIPELINE_ID
   const rows = ((r.data as { results?: { id: string; properties: Record<string, string | null> }[] })?.results) || []
   return rows.map(t => {
     const p = pipelines.find(x => x.id === t.properties.hs_pipeline)
@@ -103,6 +126,8 @@ export async function ticketStatuses(ids: string[]): Promise<TicketStatus[]> {
       id: t.id,
       subject: t.properties.subject,
       status: s?.label || 'Open',
+      pipeline: t.properties.hs_pipeline,
+      support: !!p && p.id === supportId,
       state: closed ? 'closed' : waiting ? 'waiting' : 'open',
       updatedAt: t.properties.hs_lastmodifieddate,
       createdAt: t.properties.createdate,
@@ -153,4 +178,55 @@ export async function linkTicketToCompany(ticketId: string, companyId: string): 
     { method: 'PUT' },
   )
   return r.ok
+}
+
+/**
+ * Dealer-support tickets linked to a company — the dealer's "My support
+ * tickets", independent of HOW the ticket was made (Steven, the inbox, the
+ * CRM screen, an email). Support pipeline only: the other pipelines on this
+ * portal hold internal / onboarding / billing-ops tickets a dealer must not see.
+ */
+export async function supportTicketIdsForCompany(companyId: string): Promise<string[]> {
+  if (!/^\d+$/.test(companyId)) return []
+  const p = await supportPipeline()
+  const r = await hsFetch('/crm/v3/objects/tickets/search', {
+    method: 'POST',
+    json: {
+      filterGroups: [{ filters: [
+        { propertyName: 'associations.company', operator: 'EQ', value: companyId },
+        { propertyName: 'hs_pipeline', operator: 'EQ', value: p.id },
+      ] }],
+      sorts: [{ propertyName: 'hs_lastmodifieddate', direction: 'DESCENDING' }],
+      properties: ['hs_pipeline'],
+      limit: 50,
+    },
+  })
+  if (!r.ok) throw new Error(`ticket search HTTP ${r.status}`)
+  return (((r.data as { results?: { id: string }[] })?.results) || []).map(x => String(x.id))
+}
+
+/**
+ * An inbox "Create ticket" lands in the INBOX's default pipeline. When that's
+ * the portal default (nobody chose one), move the ticket to the support
+ * pipeline's matching first stage so it shows on the support board and to the
+ * dealer. A ticket an agent deliberately put in another pipeline (e.g.
+ * Internal) or has already worked (stage moved) is left alone.
+ */
+export async function moveDefaultPipelineTicketToSupport(ticketId: string): Promise<boolean> {
+  if (!/^\d+$/.test(ticketId)) return false
+  const r = await hsFetch('/crm/v3/objects/tickets/batch/read', {
+    method: 'POST',
+    json: { properties: ['hs_pipeline', 'hs_pipeline_stage'], inputs: [{ id: ticketId }] },
+  })
+  const t = ((r.data as { results?: { properties: Record<string, string | null> }[] })?.results || [])[0]
+  if (!r.ok || !t || t.properties.hs_pipeline !== PORTAL_DEFAULT_PIPELINE_ID) return false
+  const def = (await ticketPipelines()).find(x => x.id === PORTAL_DEFAULT_PIPELINE_ID)
+  const firstOpen = def && [...def.stages].sort((a, b) => ((a as { displayOrder?: number }).displayOrder ?? 0) - ((b as { displayOrder?: number }).displayOrder ?? 0))
+    .find(s => s.metadata?.isClosed !== 'true')
+  if (!firstOpen || t.properties.hs_pipeline_stage !== firstOpen.id) return false
+  const { pipeline, stage } = await supportPipelineAndStage()
+  const u = await hsFetch(`/crm/v3/objects/tickets/${encodeURIComponent(ticketId)}`, {
+    method: 'PATCH', json: { properties: { hs_pipeline: pipeline, hs_pipeline_stage: stage } },
+  })
+  return u.ok
 }

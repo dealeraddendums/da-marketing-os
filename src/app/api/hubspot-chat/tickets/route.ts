@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { platformSecretOk } from '@/lib/hubspot-chat/platform-auth'
-import { createTicket, ticketStatuses, contactCompanyIds, ticketsForThreads, ticketAssociations, linkTicketToCompany } from '@/lib/hubspot-chat/tickets'
+import { createTicket, ticketStatuses, contactCompanyIds, ticketsForThreads, ticketAssociations, linkTicketToCompany, supportTicketIdsForCompany, moveDefaultPipelineTicketToSupport } from '@/lib/hubspot-chat/tickets'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -15,6 +15,8 @@ export const fetchCache = 'force-no-store'
  *   { action: 'from-threads', threadIds: [...] }  tickets agents made in the inbox, by thread
  *   { action: 'associations', ticketId }  the ticket's linked contacts + companies
  *   { action: 'link-company', ticketId, companyId }  add the company link (idempotent)
+ *   { action: 'for-company', companyId }  support-pipeline tickets linked to the company (+ status)
+ *   { action: 'adopt-move', ticketId }  inbox ticket left in the portal-default pipeline → support pipeline
  */
 export async function POST(req: NextRequest) {
   if (!platformSecretOk(req.headers.get('x-webhook-secret'))) {
@@ -55,6 +57,19 @@ export async function POST(req: NextRequest) {
   if (b.action === 'link-company' && typeof b.ticketId === 'string' && typeof b.companyId === 'string'
     && /^\d+$/.test(b.ticketId) && /^\d+$/.test(b.companyId)) {
     return NextResponse.json({ ok: await linkTicketToCompany(b.ticketId, b.companyId) })
+  }
+
+  if (b.action === 'for-company' && typeof b.companyId === 'string') {
+    try {
+      const ids = await supportTicketIdsForCompany(b.companyId)
+      return NextResponse.json({ ok: true, tickets: await ticketStatuses(ids) })
+    } catch (e) {
+      return NextResponse.json({ ok: false, error: e instanceof Error ? e.message : String(e) }, { status: 502 })
+    }
+  }
+
+  if (b.action === 'adopt-move' && typeof b.ticketId === 'string') {
+    return NextResponse.json({ ok: true, moved: await moveDefaultPipelineTicketToSupport(b.ticketId) })
   }
 
   return NextResponse.json({ error: 'unknown action' }, { status: 400 })
