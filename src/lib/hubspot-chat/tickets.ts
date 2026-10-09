@@ -230,3 +230,75 @@ export async function moveDefaultPipelineTicketToSupport(ticketId: string): Prom
   })
   return u.ok
 }
+
+/**
+ * The agent-written progress notes on a ticket that a DEALER may see (their
+ * "My support tickets" view, 2026-10-09). HubSpot notes are internal by
+ * nature, so this is an allowlist — every rule must pass or the note is hidden:
+ *
+ *  1. Written by a person in HubSpot (hs_object_source CRM_UI / mobile app).
+ *     Our own integration notes ("DA Help conversation …", chat transcripts)
+ *     come in as INTEGRATION and are plumbing, not updates.
+ *  2. Created after the ticket was. HubSpot copies the company's EARLIER notes
+ *     onto a new ticket (seen: a 9/30 "Had to manually add billing contact"
+ *     note on a ticket made 10/8) — those are internal history.
+ *  3. No internal marker: a note containing `[internal]` or `#internal`
+ *     anywhere is never shown. This is the agents' escape hatch.
+ *  4. Not one of our known system formats (belt and braces for rule 1).
+ *
+ * Bodies come back as PLAIN TEXT (HTML stripped) so nothing an agent pastes
+ * can render as markup in the dealer's browser. Author is not returned.
+ */
+export const INTERNAL_NOTE_MARKER = /[[#]\s*internal\b\]?/i
+const HUMAN_NOTE_SOURCES = new Set(['CRM_UI', 'MOBILE_IOS', 'MOBILE_ANDROID'])
+const SYSTEM_NOTE_PREFIXES = [/^DA Help conversation\b/i, /^Live chat \(website/i]
+
+export function noteHtmlToText(html: string): string {
+  return html
+    .replace(/<\s*br\s*\/?>/gi, '\n')
+    .replace(/<\/\s*(p|div|li|h[1-6]|tr)\s*>/gi, '\n')
+    .replace(/<li[^>]*>/gi, '• ')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+    .replace(/&amp;/g, '&')
+    .replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
+}
+
+export interface DealerVisibleNote { id: string; at: string; text: string }
+
+export async function dealerVisibleTicketNotes(ticketId: string): Promise<DealerVisibleNote[]> {
+  if (!/^\d+$/.test(ticketId)) return []
+  const t = await hsFetch(`/crm/v3/objects/tickets/${encodeURIComponent(ticketId)}?properties=createdate,hs_pipeline`)
+  if (!t.ok) throw new Error(`ticket read HTTP ${t.status}`)
+  const tp = (t.data as { properties?: Record<string, string | null> }).properties || {}
+  // Dealer-facing only for the support pipeline (the platform scopes the
+  // ticket to the dealer too; this is the second lock).
+  if (tp.hs_pipeline !== (await supportPipeline()).id) return []
+  const ticketCreated = Date.parse(tp.createdate || '')
+  if (!Number.isFinite(ticketCreated)) return []
+
+  const a = await hsFetch(`/crm/v4/objects/tickets/${encodeURIComponent(ticketId)}/associations/notes?limit=100`)
+  if (!a.ok) throw new Error(`ticket notes HTTP ${a.status}`)
+  const ids = (((a.data as { results?: { toObjectId: number | string }[] })?.results) || []).map(x => ({ id: String(x.toObjectId) }))
+  if (!ids.length) return []
+  const n = await hsFetch('/crm/v3/objects/notes/batch/read', {
+    method: 'POST',
+    json: { properties: ['hs_note_body', 'hs_createdate', 'hs_object_source', 'hs_created_by'], inputs: ids.slice(0, 100) },
+  })
+  if (!n.ok) throw new Error(`notes read HTTP ${n.status}`)
+  const rows = ((n.data as { results?: { id: string; properties: Record<string, string | null> }[] })?.results) || []
+  const out: DealerVisibleNote[] = []
+  for (const r of rows) {
+    const p = r.properties
+    if (!HUMAN_NOTE_SOURCES.has(String(p.hs_object_source || ''))) continue
+    if (!p.hs_created_by) continue
+    const created = Date.parse(p.hs_createdate || '')
+    if (!Number.isFinite(created) || created < ticketCreated) continue
+    const raw = p.hs_note_body || ''
+    if (INTERNAL_NOTE_MARKER.test(raw)) continue
+    const text = noteHtmlToText(raw)
+    if (!text || INTERNAL_NOTE_MARKER.test(text) || SYSTEM_NOTE_PREFIXES.some(re => re.test(text))) continue
+    out.push({ id: r.id, at: new Date(created).toISOString(), text: text.slice(0, 4000) })
+  }
+  return out.sort((x, y) => x.at.localeCompare(y.at))
+}

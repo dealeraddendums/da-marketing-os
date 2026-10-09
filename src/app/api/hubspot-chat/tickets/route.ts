@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { platformSecretOk } from '@/lib/hubspot-chat/platform-auth'
-import { createTicket, ticketStatuses, contactCompanyIds, ticketsForThreads, ticketAssociations, linkTicketToCompany, supportTicketIdsForCompany, moveDefaultPipelineTicketToSupport } from '@/lib/hubspot-chat/tickets'
+import { createTicket, ticketStatuses, contactCompanyIds, ticketsForThreads, ticketAssociations, linkTicketToCompany, supportTicketIdsForCompany, moveDefaultPipelineTicketToSupport, dealerVisibleTicketNotes } from '@/lib/hubspot-chat/tickets'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -17,6 +17,7 @@ export const fetchCache = 'force-no-store'
  *   { action: 'link-company', ticketId, companyId }  add the company link (idempotent)
  *   { action: 'for-company', companyId }  support-pipeline tickets linked to the company (+ status)
  *   { action: 'adopt-move', ticketId }  inbox ticket left in the portal-default pipeline → support pipeline
+ *   { action: 'dealer-notes', ticketId }  the ticket's agent progress notes a dealer may see (filtered here)
  */
 export async function POST(req: NextRequest) {
   if (!platformSecretOk(req.headers.get('x-webhook-secret'))) {
@@ -70,6 +71,14 @@ export async function POST(req: NextRequest) {
 
   if (b.action === 'adopt-move' && typeof b.ticketId === 'string') {
     return NextResponse.json({ ok: true, moved: await moveDefaultPipelineTicketToSupport(b.ticketId) })
+  }
+
+  if (b.action === 'dealer-notes' && typeof b.ticketId === 'string') {
+    try {
+      return NextResponse.json({ ok: true, notes: await dealerVisibleTicketNotes(b.ticketId) })
+    } catch (e) {
+      return NextResponse.json({ ok: false, error: e instanceof Error ? e.message : String(e) }, { status: 502 })
+    }
   }
 
   return NextResponse.json({ error: 'unknown action' }, { status: 400 })
