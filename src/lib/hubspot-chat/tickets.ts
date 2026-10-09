@@ -287,13 +287,21 @@ export async function dealerVisibleTicketNotes(ticketId: string): Promise<Dealer
   })
   if (!n.ok) throw new Error(`notes read HTTP ${n.status}`)
   const rows = ((n.data as { results?: { id: string; properties: Record<string, string | null> }[] })?.results) || []
+  return filterDealerVisibleNotes(rows, ticketCreated)
+}
+
+/** The allowlist above, as a pure function (unit-testable without HubSpot). */
+export function filterDealerVisibleNotes(
+  rows: { id: string; properties: Record<string, string | null> }[],
+  ticketCreatedMs: number,
+): DealerVisibleNote[] {
   const out: DealerVisibleNote[] = []
   for (const r of rows) {
     const p = r.properties
     if (!HUMAN_NOTE_SOURCES.has(String(p.hs_object_source || ''))) continue
     if (!p.hs_created_by) continue
     const created = Date.parse(p.hs_createdate || '')
-    if (!Number.isFinite(created) || created < ticketCreated) continue
+    if (!Number.isFinite(created) || created < ticketCreatedMs) continue
     const raw = p.hs_note_body || ''
     if (INTERNAL_NOTE_MARKER.test(raw)) continue
     const text = noteHtmlToText(raw)
