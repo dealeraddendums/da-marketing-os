@@ -8,6 +8,8 @@ interface ChatFile { name: string; mime?: string; url?: string }
 interface Msg {
   role: 'user' | 'assistant'; content: string; kind?: 'bot' | 'agent' | 'system'
   sender?: string | null; files?: ChatFile[]
+  /** The agent's staff headshot (takeover header) — public URL or null. */
+  photo?: string | null
 }
 
 const NAVY = '#2a2b3c'
@@ -15,8 +17,21 @@ const ORANGE = '#ffa500'
 const BLUE = '#1976d2'
 const PHONE = '(801) 415-9435'
 
+/** A person's circular photo, or their initials (white on the navy header) —
+ *  never a broken image. Same look as da-platform's components/Avatar.tsx. */
+function Avatar({ url, name, size = 28 }: { url: string | null; name?: string | null; size?: number }) {
+  const [broken, setBroken] = useState(false)
+  if (url && !broken) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={url} alt="" onError={() => setBroken(true)} style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', display: 'block', flexShrink: 0, border: '1px solid #fff' }} />
+  }
+  const p = (name ?? '').trim().split(/\s+/).filter(Boolean)
+  const ini = ((p[0]?.[0] ?? '') + (p.length > 1 ? p[p.length - 1][0] : '')).toUpperCase() || '?'
+  return <div style={{ width: size, height: size, borderRadius: '50%', background: '#fff', color: NAVY, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.38, fontWeight: 600 }}>{ini}</div>
+}
+
 const GREETING =
-  "Hi! I'm Steven, the DealerAddendums assistant — ask me anything about addendums, pricing, FTC Buyers Guides, or how the trial works. Prefer a person? Tap “Talk to a human” below."
+  "Hi! I'm Steven, the DealerAddendums assistant — ask me anything about addendums, pricing, FTC Buyers Guides, or how the trial works. Prefer a person? There's a “Talk to a person” link just below the box."
 
 function getSessionId(): string {
   try {
@@ -99,7 +114,7 @@ export default function ChatWidget() {
           afterRef.current = data.at
           try { sessionStorage.setItem('da_chat_after', data.at) } catch { /* */ }
         }
-        const incoming: { id: string; role: string; body: string; sender?: string | null; attachments?: ChatFile[] }[] = data.messages || []
+        const incoming: { id: string; role: string; body: string; sender?: string | null; senderPhoto?: string | null; attachments?: ChatFile[] }[] = data.messages || []
         if (!incoming.length) return
         const fresh = incoming.filter(m => !seenRef.current.has(m.id))
         fresh.forEach(m => seenRef.current.add(m.id))
@@ -111,6 +126,7 @@ export default function ChatWidget() {
             content: m.body,
             kind: (m.role === 'system' ? 'system' : 'agent') as Msg['kind'],
             sender: m.sender || null,
+            photo: m.senderPhoto || null,
             files: m.attachments || [],
           })),
         ])
@@ -284,6 +300,10 @@ export default function ChatWidget() {
     }
   }
 
+  // Once a team member has replied, the header is theirs for the rest of the chat.
+  const agent = [...messages].reverse().find(m => m.kind === 'agent' && m.sender) ?? null
+  const canSend = !sending && !!input.trim()
+
   return (
     <>
       {/* Launcher bubble */}
@@ -323,9 +343,15 @@ export default function ChatWidget() {
         >
           {/* Header */}
           <div style={{ background: NAVY, padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ background: ORANGE, color: NAVY, fontWeight: 700, fontSize: 11, padding: '3px 7px', borderRadius: 4, letterSpacing: '0.06em' }}>DA</span>
-              <span style={{ color: '#fff', fontSize: 14, fontWeight: 600 }}>DealerAddendums</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+              {agent ? (
+                <Avatar url={agent.photo ?? null} name={agent.sender} />
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src="/icon.png" alt="DealerAddendums" width={28} height={28} style={{ borderRadius: '50%', display: 'block', flexShrink: 0 }} />
+              )}
+              <span style={{ color: '#fff', fontSize: 14, fontWeight: 600 }}>{agent ? agent.sender : 'Steven'}</span>
+              <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12 }}>DealerAddendums support</span>
               {live && (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 4, color: '#aee9b8', fontSize: 12, fontWeight: 600 }}>
                   <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#4caf50', display: 'inline-block' }} />
@@ -379,9 +405,9 @@ export default function ChatWidget() {
             })}
           </div>
 
-          {/* Talk to a human / live banner */}
-          <div style={{ padding: '8px 14px 0', background: '#fff' }}>
-            {live ? (
+          {/* Live banner (status only — the "talk to a person" link sits under the composer) */}
+          {live && (
+            <div style={{ padding: '8px 14px 0', background: '#fff' }}>
               <div style={{
                 width: '100%', minHeight: 34, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
                 border: '1px solid #cfe8d2', background: '#f1faf2', color: '#2e7d32', fontSize: 13, fontWeight: 600, padding: '6px 10px',
@@ -389,25 +415,11 @@ export default function ChatWidget() {
                 <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#4caf50', display: 'inline-block' }} />
                 You're connected to our team
               </div>
-            ) : (
-              <button
-                onClick={escalate}
-                disabled={escalated || escalating}
-                style={{
-                  width: '100%', height: 34, borderRadius: 6, cursor: escalated ? 'default' : 'pointer',
-                  border: `1px solid ${escalated ? '#cfd8dc' : ORANGE}`,
-                  background: escalated ? '#f5f6f7' : '#fff7ec',
-                  color: escalated ? '#78828c' : '#b06a00', fontSize: 13, fontWeight: 600,
-                  fontFamily: "'Roboto', sans-serif",
-                }}
-              >
-                {escalated ? '✓ Team notified — we’ll reach out' : escalating ? 'Notifying our team…' : '🙋 Talk to a human'}
-              </button>
-            )}
-          </div>
+            </div>
+          )}
 
           {/* Composer */}
-          <div style={{ display: 'flex', gap: 8, padding: 14, background: '#fff', alignItems: 'flex-end' }}>
+          <div style={{ display: 'flex', gap: 8, padding: '14px 14px 6px', background: '#fff', alignItems: 'flex-end' }}>
             {live && (
               <>
                 <input
@@ -440,26 +452,41 @@ export default function ChatWidget() {
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send() } }}
               placeholder={live ? 'Message our team…' : 'Ask about addendums, pricing…'}
               rows={1}
+              onFocus={e => { e.currentTarget.style.borderColor = BLUE }}
+              onBlur={e => { e.currentTarget.style.borderColor = '#78828c' }}
               style={{
-                flex: 1, resize: 'none', maxHeight: 96, padding: '9px 11px', fontSize: 14,
-                fontFamily: "'Roboto', sans-serif", color: '#333', border: '1px solid #cccccc',
+                flex: 1, resize: 'none', maxHeight: 96, padding: '10px 12px', fontSize: 14,
+                fontFamily: "'Roboto', sans-serif", color: NAVY, background: '#fff', border: '1px solid #78828c',
                 borderRadius: 6, outline: 'none', boxSizing: 'border-box',
               }}
             />
             <button
               aria-label="Send message"
               onClick={() => void send()}
-              disabled={sending || !input.trim()}
+              disabled={!canSend}
               style={{
-                height: 38, padding: '0 16px', borderRadius: 6, border: 'none',
-                background: sending || !input.trim() ? '#9bbfe6' : BLUE, color: '#fff',
-                fontSize: 14, fontWeight: 600, cursor: sending || !input.trim() ? 'default' : 'pointer',
+                height: 40, padding: '0 16px', borderRadius: 6, border: 'none',
+                background: BLUE, opacity: canSend ? 1 : 0.55, color: '#fff',
+                fontSize: 14, fontWeight: 600, cursor: sending ? 'wait' : canSend ? 'pointer' : 'default',
                 fontFamily: "'Roboto', sans-serif",
               }}
             >
               Send
             </button>
           </div>
+          {/* Secondary: a person is the fallback, not the first thing to reach for. */}
+          {!live && (
+            <div style={{ padding: '0 14px 12px', background: '#fff' }}>
+              {escalated ? (
+                <span style={{ color: '#78828c', fontSize: 12 }}>✓ Team notified — we’ll reach out</span>
+              ) : (
+                <button onClick={escalate} disabled={escalating}
+                  style={{ background: 'none', border: 'none', padding: 0, color: BLUE, fontSize: 12, cursor: escalating ? 'default' : 'pointer', fontFamily: "'Roboto', sans-serif", textDecoration: 'underline' }}>
+                  {escalating ? 'Notifying our team…' : 'Talk to a person'}
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
     </>

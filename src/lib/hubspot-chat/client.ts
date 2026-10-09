@@ -112,15 +112,24 @@ export async function publishVisitorMessage(opts: {
  * of the process. First name only — that's how agents sign chats. Any failure
  * returns null and the widget shows "DA Team".
  */
-const actorNames = new Map<string, string | null>()
-export async function getActorFirstName(actorId: string | null | undefined): Promise<string | null> {
-  if (!actorId) return null
-  if (actorNames.has(actorId)) return actorNames.get(actorId) ?? null
+const actors = new Map<string, { first: string | null; email: string | null }>()
+async function getActor(actorId: string | null | undefined): Promise<{ first: string | null; email: string | null }> {
+  if (!actorId) return { first: null, email: null }
+  const hit = actors.get(actorId)
+  if (hit) return hit
   const r = await hsFetch(`/conversations/v3/conversations/actors/${encodeURIComponent(actorId)}`).catch(() => null)
   const d = (r?.ok ? r.data : null) as { name?: string; email?: string } | null
-  const first = (d?.name || '').trim().split(/\s+/)[0] || null
-  actorNames.set(actorId, first)
-  return first
+  const out = { first: (d?.name || '').trim().split(/\s+/)[0] || null, email: (d?.email || '').trim().toLowerCase() || null }
+  if (r?.ok) actors.set(actorId, out)
+  return out
+}
+export async function getActorFirstName(actorId: string | null | undefined): Promise<string | null> {
+  return (await getActor(actorId)).first
+}
+/** The agent's email — matched to their DA staff account for the takeover
+ *  header photo (da-platform /api/help/agent-profiles). Never sent to visitors. */
+export async function getActorEmail(actorId: string | null | undefined): Promise<string | null> {
+  return (await getActor(actorId)).email
 }
 
 /** Upload a visitor's file to HubSpot Files (custom channels attach by fileId

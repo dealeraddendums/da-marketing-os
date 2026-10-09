@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { hubspotChatEnv } from '@/lib/hubspot-chat/config'
 import {
-  checkSignatureV3, downloadAgentAttachment, getActorFirstName, inlineImageUrls, downloadInlineImage,
+  checkSignatureV3, downloadAgentAttachment, getActorFirstName, getActorEmail, inlineImageUrls, downloadInlineImage,
 } from '@/lib/hubspot-chat/client'
 import { getConversationById, insertMessage, setHubspotThreadId, setHubspotContactId } from '@/lib/chat-store'
 import { refreshCompanyChatNote } from '@/lib/chat-crm-log'
@@ -124,6 +124,7 @@ export async function POST(req: NextRequest) {
           messageId: msg.id,
           text: (msg.text || '').trim(),
           senderName: msg.senders?.[0]?.name || await getActorFirstName(msg.senders?.[0]?.actorId || msg.createdBy),
+          senderEmail: await getActorEmail(msg.senders?.[0]?.actorId || msg.createdBy),
           hubspotThreadId: msg.conversationsThreadId != null ? String(msg.conversationsThreadId) : null,
           hubspotContactId: visitorActor ? visitorActor.slice(2) : null,
           files,
@@ -170,6 +171,7 @@ export async function POST(req: NextRequest) {
         attachments,
         senderName: msg.senders?.[0]?.name
           || await getActorFirstName(msg.senders?.[0]?.actorId || msg.createdBy),
+        senderEmail: await getActorEmail(msg.senders?.[0]?.actorId || msg.createdBy),
         externalId: msg.id,
       })
       relayed = true

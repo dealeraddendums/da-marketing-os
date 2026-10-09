@@ -36,6 +36,7 @@ export interface ChatMessage {
   created_at: string
   attachments: ChatAttachment[]
   sender_name: string | null
+  sender_email?: string | null
   external_id: string | null
 }
 
@@ -131,7 +132,7 @@ export async function insertMessage(
   conversationId: string,
   role: ChatMessage['role'],
   body: string,
-  extra: { attachments?: ChatAttachment[]; senderName?: string | null; externalId?: string | null } = {},
+  extra: { attachments?: ChatAttachment[]; senderName?: string | null; senderEmail?: string | null; externalId?: string | null } = {},
 ): Promise<ChatMessage | null> {
   const now = new Date().toISOString()
   const { data, error } = await supabase
@@ -140,6 +141,7 @@ export async function insertMessage(
       conversation_id: conversationId, role, body,
       attachments: extra.attachments ?? [],
       sender_name: extra.senderName ?? null,
+      sender_email: extra.senderEmail ?? null,
       external_id: extra.externalId ?? null,
     })
     .select('*')

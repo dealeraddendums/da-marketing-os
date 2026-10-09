@@ -1,5 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getMessagesAfter } from '@/lib/chat-store'
+import { postToPlatform } from '@/lib/hubspot-chat/platform-auth'
+
+// Agent email → staff headshot URL (da-platform resolves; staff accounts only).
+// Cached a minute so a 3-second poll isn't a platform call each time.
+const photoCache = new Map<string, { at: number; url: string | null }>()
+async function agentPhotos(emails: string[]): Promise<Map<string, string | null>> {
+  const out = new Map<string, string | null>()
+  const need = Array.from(new Set(emails)).filter((e) => {
+    const c = photoCache.get(e)
+    if (c && Date.now() - c.at < 60_000) { out.set(e, c.url); return false }
+    return true
+  })
+  if (need.length) {
+    const r = await postToPlatform('/api/help/agent-profiles', { emails: need }, 5_000).catch(() => null)
+    const photos = (r?.ok ? (r.data as { photos?: Record<string, string> })?.photos : null) ?? {}
+    for (const e of need) {
+      const url = photos[e] ?? null
+      if (r?.ok) photoCache.set(e, { at: Date.now(), url })
+      out.set(e, url)
+    }
+  }
+  return out
+}
 
 export const dynamic = 'force-dynamic'
 // Next 14 still caches supabase-js GETs in the Data Cache under force-dynamic: a
@@ -24,10 +47,14 @@ export async function GET(req: NextRequest) {
   try {
     const msgs = await getMessagesAfter(conversationId, after)
     if (msgs.length) cursor = msgs[msgs.length - 1].created_at
+    const emails = msgs.map(m => (m.sender_email || '').trim().toLowerCase()).filter(Boolean)
+    const photos = emails.length ? await agentPhotos(emails) : new Map<string, string | null>()
     return NextResponse.json({
       messages: msgs.map(m => ({
         id: m.id, role: m.role, body: m.body, created_at: m.created_at,
         sender: m.sender_name || null,
+        // The agent's staff headshot for the takeover header; the email stays here.
+        senderPhoto: photos.get((m.sender_email || '').trim().toLowerCase()) ?? null,
         // Links go through /api/chat/file, which signs on demand — a signed
         // URL minted here would expire while the chat sits open.
         attachments: (m.attachments || []).map((a, i) => ({
