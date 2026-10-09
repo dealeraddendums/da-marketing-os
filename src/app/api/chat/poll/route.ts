@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getMessagesAfter } from '@/lib/chat-store'
+import { getMessagesAfter, getLatestAgent } from '@/lib/chat-store'
 import { postToPlatform } from '@/lib/hubspot-chat/platform-auth'
 
 // Agent email → staff headshot URL (da-platform resolves; staff accounts only).
@@ -47,7 +47,11 @@ export async function GET(req: NextRequest) {
   try {
     const msgs = await getMessagesAfter(conversationId, after)
     if (msgs.length) cursor = msgs[msgs.length - 1].created_at
-    const emails = msgs.map(m => (m.sender_email || '').trim().toLowerCase()).filter(Boolean)
+    // `agent` is re-resolved on EVERY poll (not only when a reply arrives), so a
+    // headshot saved after the agent first replied still shows in the header.
+    const latest = await getLatestAgent(conversationId)
+    const latestEmail = (latest?.sender_email || '').trim().toLowerCase()
+    const emails = [...msgs.map(m => (m.sender_email || '').trim().toLowerCase()), latestEmail].filter(Boolean)
     const photos = emails.length ? await agentPhotos(emails) : new Map<string, string | null>()
     return NextResponse.json({
       messages: msgs.map(m => ({
@@ -63,6 +67,7 @@ export async function GET(req: NextRequest) {
         })),
       })),
       at: cursor,
+      agent: latest ? { name: latest.sender_name, photo: photos.get(latestEmail) ?? null } : null,
     })
   } catch (e) {
     console.error('[chat/poll] failed:', e instanceof Error ? e.message : e)

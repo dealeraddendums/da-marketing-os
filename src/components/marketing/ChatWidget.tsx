@@ -49,6 +49,7 @@ function getSessionId(): string {
 export default function ChatWidget() {
   const [open, setOpen] = useState(false)
   const [messages, setMessages] = useState<Msg[]>([])
+  const [liveAgent, setLiveAgent] = useState<{ name: string | null; photo: string | null } | null>(null)
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [escalated, setEscalated] = useState(false)
@@ -110,6 +111,7 @@ export default function ChatWidget() {
         )
         const data = await res.json().catch(() => null)
         if (cancelled || !data) return
+        if (data.agent) setLiveAgent(data.agent as { name: string | null; photo: string | null })
         if (data.at) {
           afterRef.current = data.at
           try { sessionStorage.setItem('da_chat_after', data.at) } catch { /* */ }
@@ -301,7 +303,11 @@ export default function ChatWidget() {
   }
 
   // Once a team member has replied, the header is theirs for the rest of the chat.
-  const agent = [...messages].reverse().find(m => m.kind === 'agent' && m.sender) ?? null
+  const lastAgentMsg = [...messages].reverse().find(m => m.kind === 'agent' && m.sender) ?? null
+  // The poll's current view of the agent wins (fresh photo); else the last reply we saw.
+  const agent = lastAgentMsg
+    ? { sender: lastAgentMsg.sender, photo: (liveAgent && liveAgent.name === lastAgentMsg.sender ? liveAgent.photo : null) ?? lastAgentMsg.photo ?? null }
+    : null
   const canSend = !sending && !!input.trim()
 
   return (

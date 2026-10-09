@@ -181,6 +181,20 @@ export async function getConversationBySession(sessionId: string): Promise<ChatC
   return (data as ChatConversation) || null
 }
 
+/** The conversation's latest named agent reply (takeover header), or null. */
+export async function getLatestAgent(conversationId: string): Promise<{ sender_name: string; sender_email: string | null } | null> {
+  const { data } = await supabase
+    .from('chat_messages')
+    .select('sender_name, sender_email')
+    .eq('conversation_id', conversationId)
+    .eq('role', 'agent')
+    .not('sender_name', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  return (data as { sender_name: string; sender_email: string | null } | null) ?? null
+}
+
 /** Agent/system messages newer than the cursor — what the widget polls for. */
 export async function getMessagesAfter(conversationId: string, afterIso: string): Promise<ChatMessage[]> {
   const { data } = await supabase
