@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
+import { normalizeWebsiteUrl } from '@/lib/website-url'
 import {
   getAttribution, pushSignupEvent, getGaIds, sendFormStartOncePerSession,
 } from '@/lib/attribution'
@@ -13,6 +14,7 @@ interface FormState {
   dealership: string
   phone: string
   zip: string
+  website: string
 }
 
 interface Props {
@@ -21,7 +23,7 @@ interface Props {
 }
 
 export default function CTASection({ tracking }: Props) {
-  const [form, setForm] = useState<FormState>({ name: '', email: '', dealership: '', phone: '', zip: '' })
+  const [form, setForm] = useState<FormState>({ name: '', email: '', dealership: '', phone: '', zip: '', website: '' })
   const [accountKind, setAccountKind] = useState<'single' | 'group'>('single')
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [errorMsg, setErrorMsg] = useState('')
@@ -97,8 +99,15 @@ export default function CTASection({ tracking }: Props) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!form.name || !form.email || !form.dealership || !form.zip) {
+    if (!form.name || !form.email || !form.dealership || !form.zip || !form.website.trim()) {
       setErrorMsg('Please fill in all required fields.')
+      return
+    }
+    // Same rules the server applies (src/lib/website-url.ts): forgiving on
+    // input ("yourdealer.com" is fine), http(s) only, must look like a domain.
+    const site = normalizeWebsiteUrl(form.website)
+    if (!site.ok) {
+      setErrorMsg(site.error)
       return
     }
     setStatus('loading')
@@ -109,6 +118,7 @@ export default function CTASection({ tracking }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...form,
+          website: site.url,
           ...getAttribution(),
           // GA4 identity from THIS session, stored on the lead so the
           // trial_signup conversion sent at email-confirmation time (a
@@ -465,6 +475,25 @@ export default function CTASection({ tracking }: Props) {
                       value={form.dealership}
                       onChange={handleChange}
                       placeholder={accountKind === 'group' ? 'Acme Auto Group' : 'Smith Ford Lincoln'}
+                      style={inputStyle}
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="website" style={{ ...labelStyle, color: '#55595c' }}>
+                      {accountKind === 'group' ? 'Group Website' : 'Dealership Website'} <span style={{ color: '#ff5252' }}>*</span>
+                    </label>
+                    <input
+                      id="website"
+                      name="website"
+                      type="text"
+                      inputMode="url"
+                      autoComplete="url"
+                      maxLength={500}
+                      value={form.website}
+                      onChange={handleChange}
+                      placeholder="yourdealership.com"
                       style={inputStyle}
                       required
                     />

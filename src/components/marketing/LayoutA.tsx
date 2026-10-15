@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import { normalizeWebsiteUrl } from '@/lib/website-url'
 import Image from 'next/image'
 import type { PersonalizationContext } from '@/lib/personalization'
 import { getAttribution, pushSignupEvent, getGaIds } from '@/lib/attribution'
@@ -105,6 +106,7 @@ type DealerTab = 'dealer' | 'group'
 interface FormState {
   name: string
   dealership: string
+  website: string
   email: string
   phone: string
   state: string
@@ -116,7 +118,7 @@ interface FormState {
 export default function LayoutA({ personalization }: Props) {
   const [activeTab, setActiveTab] = useState<DealerTab>('dealer')
   const [form, setForm] = useState<FormState>({
-    name: '', dealership: '', email: '', phone: '',
+    name: '', dealership: '', website: '', email: '', phone: '',
     state: '', dealerType: 'both', groupSize: '', heardFrom: '',
   })
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
@@ -130,8 +132,14 @@ export default function LayoutA({ personalization }: Props) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!form.name || !form.email || !form.dealership) {
+    if (!form.name || !form.email || !form.dealership || !form.website.trim()) {
       setErrorMsg('Please fill in all required fields.')
+      return
+    }
+    // Same rules as the server (src/lib/website-url.ts).
+    const site = normalizeWebsiteUrl(form.website)
+    if (!site.ok) {
+      setErrorMsg(site.error)
       return
     }
     setStatus('loading')
@@ -142,6 +150,7 @@ export default function LayoutA({ personalization }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...form,
+          website: site.url,
           ...getAttribution(),
           ...getGaIds(),
           accountType: activeTab,
@@ -673,6 +682,24 @@ export default function LayoutA({ personalization }: Props) {
                   value={form.dealership}
                   onChange={handleChange}
                   placeholder={activeTab === 'group' ? 'Acme Auto Group' : 'Smith Ford Lincoln'}
+                  style={inputStyle}
+                  required
+                />
+              </div>
+
+              <div>
+                <label style={labelStyle}>
+                  {activeTab === 'group' ? 'Group Website' : 'Dealership Website'} <span style={{ color: '#e53935' }}>*</span>
+                </label>
+                <input
+                  name="website"
+                  type="text"
+                  inputMode="url"
+                  autoComplete="url"
+                  maxLength={500}
+                  value={form.website}
+                  onChange={handleChange}
+                  placeholder="yourdealership.com"
                   style={inputStyle}
                   required
                 />

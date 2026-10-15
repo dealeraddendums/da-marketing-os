@@ -6,6 +6,7 @@ import { rateLimit } from '@/lib/rate-limit'
 import { trackServerEvent } from '@/lib/analytics'
 import { verifyTurnstile } from '@/lib/turnstile'
 import { newConfirmToken, sendConfirmationEmail } from '@/lib/lead-confirm'
+import { normalizeWebsiteUrl } from '@/lib/website-url'
 
 const ATTR_FIELDS = [
   'utm_source', 'utm_medium', 'utm_campaign', 'utm_term',
@@ -75,6 +76,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Please enter a valid email address.' }, { status: 400 })
   }
 
+  // Required: trial auto-onboarding reads a sample vehicle from the dealer's
+  // site. Format check + normalize only (https:// added when missing) — the
+  // site is never fetched here.
+  const website = normalizeWebsiteUrl(body.website)
+  if (!website.ok) {
+    return NextResponse.json({ error: website.error }, { status: 400 })
+  }
+
   const accountKind: 'single' | 'group' = body.accountKind === 'group' ? 'group' : 'single'
   const groupName = (body.groupName as string | undefined)?.trim() || (accountKind === 'group' ? dealership : undefined)
 
@@ -120,6 +129,7 @@ Based on the dealership name and email domain, provide a brief intelligence summ
     dealership,
     phone: phone || null,
     zip: zip || null,
+    website_url: website.url,
     source: 'website',
     account_kind: accountKind,
     ...attribution,
@@ -180,6 +190,18 @@ Based on the dealership name and email domain, provide a brief intelligence summ
       .single())
   }
 
+  // marketing_leads.website_url is migration 020 — until it's applied, save the
+  // lead without it rather than lose the signup.
+  if (dbError && /website_url/i.test(dbError.message)) {
+    console.warn('[leads] website_url rejected — migration 020 not applied yet; saving without it')
+    delete leadPayload.website_url
+    ;({ data: lead, error: dbError } = await supabase
+      .from('marketing_leads')
+      .insert(leadPayload)
+      .select()
+      .single())
+  }
+
   if (dbError) {
     console.error('Supabase insert error:', dbError)
     return NextResponse.json({ error: 'Failed to save lead — please try again.' }, { status: 500 })
@@ -231,6 +253,7 @@ Based on the dealership name and email domain, provide a brief intelligence summ
             <tr><td style="padding:6px 0;font-weight:500;color:#55595c;">${accountKind === 'group' ? 'Group' : 'Dealership'}</td><td style="padding:6px 0;">${dealership}</td></tr>
             ${phone ? `<tr><td style="padding:6px 0;font-weight:500;color:#55595c;">Phone</td><td style="padding:6px 0;">${phone}</td></tr>` : ''}
             ${zip ? `<tr><td style="padding:6px 0;font-weight:500;color:#55595c;">Zip</td><td style="padding:6px 0;">${zip}</td></tr>` : ''}
+            <tr><td style="padding:6px 0;font-weight:500;color:#55595c;">Website</td><td style="padding:6px 0;">${website.url}</td></tr>
             <tr><td style="padding:6px 0;font-weight:500;color:#55595c;">Account</td><td style="padding:6px 0;">${accountKind} · provisioning: ${provision.status}</td></tr>
           </table>
           ${aiEnrichment ? `
