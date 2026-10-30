@@ -12,6 +12,7 @@ interface FormState {
   name: string
   email: string
   dealership: string
+  brand: string
   phone: string
   zip: string
   website: string
@@ -23,7 +24,11 @@ interface Props {
 }
 
 export default function CTASection({ tracking }: Props) {
-  const [form, setForm] = useState<FormState>({ name: '', email: '', dealership: '', phone: '', zip: '', website: '' })
+  const [form, setForm] = useState<FormState>({ name: '', email: '', dealership: '', brand: '', phone: '', zip: '', website: '' })
+  // Brand list (Phase 6c): makes first, Reseller/Upfitter/Other grouped at the bottom.
+  const [brandOptions, setBrandOptions] = useState<{ brand: string; kind: 'make' | 'generic' }[]>([])
+  // Pre-fill stops the moment the visitor picks a brand themselves.
+  const brandTouched = useRef(false)
   const [accountKind, setAccountKind] = useState<'single' | 'group'>('single')
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [errorMsg, setErrorMsg] = useState('')
@@ -97,9 +102,33 @@ export default function CTASection({ tracking }: Props) {
     return () => { clearTimeout(timer); ctrl.abort() }
   }, [form.email])
 
+  useEffect(() => {
+    fetch('/api/brands').then((r) => (r.ok ? r.json() : null))
+      .then((j) => setBrandOptions(j?.brands ?? [])).catch(() => {})
+  }, [])
+
+  // Pre-fill the brand from the dealership name ("Wyatt Johnson Ford" -> Ford),
+  // via the platform's logo-franchises inference. Editable; stops once touched.
+  useEffect(() => {
+    if (accountKind !== 'single' || brandTouched.current || form.dealership.trim().length < 4) return
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => {
+      fetch(`/api/brands?infer=${encodeURIComponent(form.dealership.trim())}`, { signal: ctrl.signal })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => {
+          if (!ctrl.signal.aborted && j?.inferred && !brandTouched.current) {
+            setForm((f) => ({ ...f, brand: j.inferred }))
+          }
+        })
+        .catch(() => {})
+    }, 600)
+    return () => { clearTimeout(timer); ctrl.abort() }
+  }, [form.dealership, accountKind])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!form.name || !form.email || !form.dealership || !form.zip || !form.website.trim()) {
+    if (!form.name || !form.email || !form.dealership || !form.zip || !form.website.trim()
+      || (accountKind === 'single' && !form.brand)) {
       setErrorMsg('Please fill in all required fields.')
       return
     }
@@ -118,6 +147,7 @@ export default function CTASection({ tracking }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...form,
+          brand: accountKind === 'single' ? form.brand : undefined,
           website: site.url,
           ...getAttribution(),
           // GA4 identity from THIS session, stored on the lead so the
@@ -479,6 +509,34 @@ export default function CTASection({ tracking }: Props) {
                       required
                     />
                   </div>
+
+                  {accountKind === 'single' && (
+                    <div>
+                      <label htmlFor="brand" style={{ ...labelStyle, color: '#55595c' }}>
+                        Brand <span style={{ color: '#ff5252' }}>*</span>
+                      </label>
+                      <select
+                        id="brand"
+                        name="brand"
+                        value={form.brand}
+                        onChange={(e) => { brandTouched.current = true; setForm((f) => ({ ...f, brand: e.target.value })) }}
+                        style={{ ...inputStyle, appearance: 'auto' as const }}
+                        required
+                      >
+                        <option value="">Select your brand…</option>
+                        <optgroup label="Makes">
+                          {brandOptions.filter((b) => b.kind === 'make').map((b) => (
+                            <option key={b.brand} value={b.brand}>{b.brand}</option>
+                          ))}
+                        </optgroup>
+                        <optgroup label="Not a franchise dealer?">
+                          {brandOptions.filter((b) => b.kind === 'generic').map((b) => (
+                            <option key={b.brand} value={b.brand}>{b.brand}</option>
+                          ))}
+                        </optgroup>
+                      </select>
+                    </div>
+                  )}
 
                   <div>
                     <label htmlFor="website" style={{ ...labelStyle, color: '#55595c' }}>

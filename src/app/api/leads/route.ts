@@ -50,6 +50,9 @@ export async function POST(req: NextRequest) {
   const body = await req.json()
   const { name, email, dealership, phone } = body
   const zip = (body.zip as string)?.trim() || null
+  // Phase 6c: the chosen brand (single-dealer signups). The platform validates it
+  // against its selectable-brands list at confirmation time; stored as given here.
+  const brand = typeof body.brand === 'string' ? body.brand.trim().slice(0, 40) || null : null
   const attribution = resolveAttribution(body, req)
 
   // Cloudflare Turnstile — verify BEFORE any insert or provisioning. Skipped
@@ -129,6 +132,7 @@ Based on the dealership name and email domain, provide a brief intelligence summ
     dealership,
     phone: phone || null,
     zip: zip || null,
+    brand,
     website_url: website.url,
     source: 'website',
     account_kind: accountKind,
@@ -166,6 +170,14 @@ Based on the dealership name and email domain, provide a brief intelligence summ
   // marketing_leads.zip may not exist yet (pending the ALTER TABLE) — if the
   // insert fails on the unknown column, drop zip and retry so the signup still
   // saves rather than failing the whole submission.
+  if (dbError && /brand/i.test(dbError.message)) {
+    delete leadPayload.brand
+    ;({ data: lead, error: dbError } = await supabase
+      .from('marketing_leads')
+      .insert(leadPayload)
+      .select()
+      .single())
+  }
   if (dbError && /zip/i.test(dbError.message)) {
     delete leadPayload.zip
     ;({ data: lead, error: dbError } = await supabase

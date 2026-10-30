@@ -79,6 +79,7 @@ export async function provisionInDaPlatform(payload: {
   attribution: Record<string, string | null>
   sourceIp?: string | null
   websiteUrl?: string | null
+  brand?: string | null
 }): Promise<ProvisionOutcome> {
   const base = process.env.DA_PLATFORM_URL
   const key = process.env.SELF_SERVE_API_KEY
@@ -137,6 +138,7 @@ export interface LeadRow {
   phone: string | null
   zip: string | null
   website_url?: string | null // migration 020; absent on older leads
+  brand?: string | null // Phase 6c; absent on older leads
   account_kind: string | null
   source_ip: string | null
   confirmed_at: string | null
@@ -231,6 +233,7 @@ export async function confirmAndProvision(token: string): Promise<
     groupName: accountKind === 'group' ? lead.dealership : undefined,
     attribution, sourceIp: lead.source_ip,
     websiteUrl: lead.website_url ?? null,
+    brand: lead.brand ?? null,
   })
 
   await supabase
