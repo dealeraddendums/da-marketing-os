@@ -88,6 +88,7 @@ export const BENEFIT_OPTIONS: string[] = [
   'Rules-based product assignment',
   'Magic Button for your VDP',
   'Combo Addendum — Required & Suggested',
+  'Required vs. Suggested clearly separated',
   'FTC Buyers Guides in English & Spanish',
   'CPO & pre-owned info sheets',
   'Custom logo, branding & watermarks',

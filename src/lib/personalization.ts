@@ -281,8 +281,8 @@ export const DEALERTYPE_COPY: Record<string, PersonalizationVariant> = {
 // ── Generic (control) copy ──────────────────────────────────
 // Used when abVariant === 'generic'. No UTM influence at all.
 export const GENERIC_COPY: PersonalizationVariant = {
-  headline: 'The #1 Addendum Platform for Car Dealers',
-  subheadline: 'Easily print customized vehicle addendums, buyers guides, and info sheets from any device. 1,600+ dealerships trust DealerAddendums.',
+  headline: 'Transparent Addendums. Required Products in the Price. Suggested Products Clearly Optional.',
+  subheadline: "One addendum that tells the buyer exactly what's included in the vehicle's price and what isn't — printed from your inventory in seconds.",
   cta: 'Start Free Trial',
   socialProof: 'Trusted by 1,600+ dealerships since 2014',
 }

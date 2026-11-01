@@ -70,7 +70,7 @@ export function killSwitchOn(): boolean {
 }
 
 const DEFAULT_BENEFITS = [
-  'Automatic inventory import',
+  'Required vs. Suggested clearly separated',
   'FTC Buyers Guides in English & Spanish',
   'Month-to-month — no contracts',
 ]

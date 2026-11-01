@@ -71,18 +71,48 @@ a {
   align-items: center;
 }
 .hero-visual {
-  width: 400px;
-  transform: rotate(-2deg);
-  filter: drop-shadow(0 18px 32px rgba(0, 0, 0, 0.45));
+  width: 470px;
+}
+.hero-visual-pair {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+}
+.hero-visual-item {
+  flex: 1;
+  min-width: 0;
 }
 @media (max-width: 860px) {
   .hero-grid { grid-template-columns: 1fr; gap: 40px; }
-  .hero-visual { width: 250px; margin: 0 auto; transform: rotate(-1.5deg); }
+  .hero-visual { width: 260px; margin: 0 auto; }
+  .hero-visual-pair { flex-direction: column; gap: 28px; }
 }
 
 /* ── Responsive section grids (≤768px = phone/tablet) ────────────────────
    These replace hardcoded inline `gridTemplateColumns` so sections stack
    cleanly on mobile. Desktop values match the originals exactly. */
+
+/* Product types — Required vs Suggested cards + 4-point handling row */
+.product-types-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+  align-items: stretch;
+}
+.product-points-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 24px;
+}
+@media (max-width: 900px) {
+  .product-points-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 768px) {
+  .product-types-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  .product-points-grid { grid-template-columns: 1fr; }
+}
 
 /* Pricing — 3 plan cards → single full-width stack */
 .pricing-grid {

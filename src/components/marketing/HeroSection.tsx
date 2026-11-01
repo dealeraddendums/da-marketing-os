@@ -310,18 +310,68 @@ export default function HeroSection({ hero, tracking, warm }: Props) {
             </p>
           </div>
 
-          {/* Right: the real product — actual printed addendums (LCP element:
-              priority + explicit dimensions = fast paint, zero layout shift) */}
+          {/* Right: the real product — one real addendum of each kind (LCP
+              elements: priority + explicit dimensions = fast paint, zero
+              layout shift) */}
           <div className="hero-visual">
-            <Image
-              src="/images/hero-addendums.webp"
-              alt="Real vehicle addendums printed with DealerAddendums, including a QR Scan-for-Info sticker"
-              width={420}
-              height={519}
-              priority
-              sizes="(max-width: 860px) 260px, 420px"
-              style={{ width: '100%', height: 'auto', display: 'block', borderRadius: 6 }}
-            />
+            <div className="hero-visual-pair">
+              <figure className="hero-visual-item" style={{ margin: 0 }}>
+                <figcaption style={{
+                  display: 'block',
+                  background: 'rgba(255,165,0,0.15)',
+                  border: '1px solid rgba(255,165,0,0.4)',
+                  borderRadius: 4,
+                  padding: '6px 10px',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: '#ffa500',
+                  letterSpacing: '0.03em',
+                  textTransform: 'uppercase' as const,
+                  textAlign: 'center' as const,
+                  lineHeight: 1.4,
+                  marginBottom: 10,
+                }}>
+                  Required (Fixed) Products — added to MSRP
+                </figcaption>
+                <Image
+                  src="/images/addendum-required.webp"
+                  alt="Real printed addendum with required fees and products added to MSRP, showing a Price with Fees & Additions total and a separate Optional Additions section"
+                  width={760}
+                  height={1968}
+                  priority
+                  sizes="(max-width: 860px) 260px, 220px"
+                  style={{ width: '100%', height: 'auto', display: 'block', borderRadius: 6, background: '#ffffff' }}
+                />
+              </figure>
+              <figure className="hero-visual-item" style={{ margin: 0 }}>
+                <figcaption style={{
+                  display: 'block',
+                  background: 'rgba(25,118,210,0.22)',
+                  border: '1px solid rgba(100,166,227,0.55)',
+                  borderRadius: 4,
+                  padding: '6px 10px',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: '#9ec8f0',
+                  letterSpacing: '0.03em',
+                  textTransform: 'uppercase' as const,
+                  textAlign: 'center' as const,
+                  lineHeight: 1.4,
+                  marginBottom: 10,
+                }}>
+                  Suggested Products — optional, not required
+                </figcaption>
+                <Image
+                  src="/images/addendum-suggested.webp"
+                  alt="Real printed addendum presenting an optional dealer installed package in its own clearly labeled section on top of MSRP"
+                  width={760}
+                  height={1968}
+                  priority
+                  sizes="(max-width: 860px) 260px, 220px"
+                  style={{ width: '100%', height: 'auto', display: 'block', borderRadius: 6, background: '#ffffff' }}
+                />
+              </figure>
+            </div>
           </div>
         </div>
       </div>
