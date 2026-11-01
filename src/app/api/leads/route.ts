@@ -5,7 +5,7 @@ import { generateText, parseJSON } from '@/lib/ai'
 import { rateLimit } from '@/lib/rate-limit'
 import { trackServerEvent } from '@/lib/analytics'
 import { verifyTurnstile } from '@/lib/turnstile'
-import { newConfirmToken, sendConfirmationEmail } from '@/lib/lead-confirm'
+import { provisionInDaPlatform, type ProvisionOutcome } from '@/lib/lead-confirm'
 import { normalizeWebsiteUrl } from '@/lib/website-url'
 
 const ATTR_FIELDS = [
@@ -124,8 +124,6 @@ Based on the dealership name and email domain, provide a brief intelligence summ
   const contextKey  = (body.contextKey as string) || null
   const variationId = (body.variationId as string) || null
 
-  const confirmToken = newConfirmToken()
-
   const leadPayload: Record<string, unknown> = {
     name,
     email,
@@ -143,18 +141,19 @@ Based on the dealership name and email domain, provide a brief intelligence summ
     variation_id: variationId,
     ab_variant: (body.abVariant as string) || null,
     headline_seen: (body.headlineSeen as string) || null,
-    // Layer 0: nothing is provisioned until this token comes back.
-    confirm_token: confirmToken,
-    confirm_sent_at: new Date().toISOString(),
-    provision_status: 'awaiting_confirmation',
-    // The real browser IP — forwarded to the platform's rate-limit ledger at
-    // confirmation time, since this box is the only hop that sees it.
+    // One-email flow (2026-11-01): no confirmation link anymore. The platform
+    // gate runs below, at THIS submit, and sends the single setup-code email;
+    // nothing is provisioned until the applicant enters that code. 'submitted'
+    // is replaced by the gate outcome a moment later.
+    provision_status: 'submitted',
+    // The real browser IP — forwarded to the platform's rate-limit ledger,
+    // since this box is the only hop that sees it.
     source_ip: ip === 'unknown' ? null : ip,
     // GA4 identity from the session that actually produced this lead. The
-    // trial_signup conversion is sent at confirmation — a different session,
-    // arriving from an email client — so without these the conversion would
-    // land attributed to Direct and cost-per-trial-by-channel would be
-    // meaningless. Non-identifying: random first-party cookie values.
+    // trial_signup conversion is sent when the setup code is verified — a
+    // different session, arriving from an email client — so without these the
+    // conversion would land attributed to Direct and cost-per-trial-by-channel
+    // would be meaningless. Non-identifying: random first-party cookie values.
     ga_client_id: (body.ga_client_id as string) || null,
     ga_session_id: (body.ga_session_id as string) || null,
   }
@@ -219,16 +218,36 @@ Based on the dealership name and email domain, provide a brief intelligence summ
     return NextResponse.json({ error: 'Failed to save lead — please try again.' }, { status: 500 })
   }
 
-  // Layer 0 — send the confirmation email. DA Platform is NOT called yet: the
-  // account is provisioned only once the applicant clicks the link, which is
-  // what a fake or unmonitored address can never do. See lib/lead-confirm.ts.
-  try {
-    await sendConfirmationEmail({ email, name, dealership, token: confirmToken })
-  } catch (err) {
-    console.error('[leads] confirmation email failed:', err instanceof Error ? err.message : err)
-    // The lead is saved; support can re-send. Don't fail the submission.
+  // One-email flow — the platform gate (per-IP rate limit, domain/MX checks,
+  // business hours, AI legitimacy) runs NOW, before any email goes out. Pass →
+  // the platform sends the ONE setup-code email. Nothing is provisioned until
+  // the applicant types that code into the platform (a human POST), which is
+  // what a fake or unmonitored address can never do — the same property the
+  // old Layer-0 confirm link enforced, with one email instead of two.
+  const provision: ProvisionOutcome = await provisionInDaPlatform({
+    name, email, dealership,
+    phone: phone || null, zip,
+    accountKind,
+    groupName: accountKind === 'group' ? groupName : undefined,
+    attribution,
+    sourceIp: ip === 'unknown' ? null : ip,
+    websiteUrl: website.url,
+    brand,
+    leadId: (lead?.id as string | undefined) ?? null,
+  })
+
+  // Stamp the gate outcome on the lead. 'failed'/'skipped' (platform down or
+  // unconfigured) becomes intake_failed — the applicant is told to retry, and
+  // the internal notification below carries the status so staff see it.
+  const leadStatus =
+    provision.status === 'failed' || provision.status === 'skipped' ? 'intake_failed' : provision.status
+  if (lead?.id) {
+    const { error: stampErr } = await supabase
+      .from('marketing_leads')
+      .update({ provision_status: leadStatus })
+      .eq('id', lead.id)
+    if (stampErr) console.error('[leads] status stamp failed:', stampErr.message)
   }
-  const provision = { status: 'awaiting_confirmation' as const }
 
   // Server-side analytics with attribution (non-blocking)
   trackServerEvent('signup', {
@@ -250,7 +269,7 @@ Based on the dealership name and email domain, provide a brief intelligence summ
     // the sibling notifications are "New Trial — Account Created" (da-platform
     // provisioning, once the dealer confirms) and "New Trial — Needs Review"
     // (the AI gate). Do not reword the leading phrase.
-    subject: `New Trial — Form Submitted (awaiting confirmation): ${dealership}`,
+    subject: `New Trial — Form Submitted (${leadStatus === 'code_sent' ? 'code sent, awaiting entry' : leadStatus.replace(/_/g, ' ')}): ${dealership}`,
     html: `
       <div style="font-family: Roboto, sans-serif; font-size: 14px; color: #333; max-width: 600px;">
         <div style="background: #2a2b3c; padding: 16px 24px; border-radius: 6px 6px 0 0;">
@@ -258,7 +277,7 @@ Based on the dealership name and email domain, provide a brief intelligence summ
           <span style="color:#fff;font-size:14px;margin-left:10px;">New Trial — Form Submitted</span>
         </div>
         <div style="border:1px solid #e0e0e0;border-top:none;padding:24px;border-radius:0 0 6px 6px;">
-          <p style="margin:0 0 16px;font-size:14px;color:#333;"><strong>A trial form was submitted and is awaiting email confirmation.</strong> The account is not provisioned yet — that happens when the dealer clicks the confirmation link.</p>
+          <p style="margin:0 0 16px;font-size:14px;color:#333;"><strong>A trial form was submitted — gate outcome: ${leadStatus.replace(/_/g, ' ')}.</strong> The account is not provisioned yet — that happens when the dealer enters the 8-digit setup code we emailed them.</p>
           <table style="width:100%;border-collapse:collapse;">
             <tr><td style="padding:6px 0;font-weight:500;color:#55595c;width:120px;">Name</td><td style="padding:6px 0;">${name}</td></tr>
             <tr><td style="padding:6px 0;font-weight:500;color:#55595c;">Email</td><td style="padding:6px 0;"><a href="mailto:${email}">${email}</a></td></tr>
@@ -280,13 +299,31 @@ Based on the dealership name and email domain, provide a brief intelligence summ
     `,
   }).catch(() => {})
 
-  // needsConfirm tells the form to say "check your email" instead of
-  // "you're all set" — nothing exists yet at this point.
-  return NextResponse.json({
-    ok: true,
-    id: lead?.id,
-    kind: accountKind,
-    needsConfirm: true,
-    existing: false,
-  })
+  // Browser-facing outcome. code_sent and pending_review answer IDENTICALLY
+  // ("check your email for your code") so the form never reveals the AI
+  // verdict; gate blocks surface as errors the applicant can act on.
+  switch (provision.status) {
+    case 'code_sent':
+    case 'pending_review':
+      return NextResponse.json({ ok: true, id: lead?.id, kind: accountKind, needsConfirm: true, existing: false })
+    case 'existing':
+      return NextResponse.json({ ok: true, id: lead?.id, kind: accountKind, needsConfirm: false, existing: true })
+    case 'after_hours':
+      return NextResponse.json(
+        { error: provision.message || 'Sign-ups are open 5 AM–9 PM Pacific — please try again during business hours.' },
+        { status: 403 },
+      )
+    case 'rejected':
+      return NextResponse.json(
+        { error: provision.message || 'We could not complete this signup — please check your details, or email support@dealeraddendums.com.' },
+        { status: 400 },
+      )
+    default:
+      // failed / skipped — the lead is saved (intake_failed); a retry re-runs
+      // the gate cleanly.
+      return NextResponse.json(
+        { error: "We couldn't finish your signup just now — please try again in a few minutes, or email support@dealeraddendums.com." },
+        { status: 503 },
+      )
+  }
 }

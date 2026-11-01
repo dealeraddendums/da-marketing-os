@@ -651,7 +651,9 @@ export default function LayoutA({ personalization }: Props) {
                 {existing ? (
                   <>It looks like an account already exists for this email. <a href="https://app.dealeraddendums.com" style={{ color: '#1976d2' }}>Log in here</a>.</>
                 ) : (
-                  <>We just emailed you a secure link to finish setting up your account. Click it to activate your free trial.</>
+                  <>We just emailed you an <strong>8-digit setup code</strong> — enter it at{' '}
+                  <a href="https://app.dealeraddendums.com/onboard" style={{ color: '#1976d2' }}>app.dealeraddendums.com/onboard</a>{' '}
+                  (or tap the button in the email) to open your free trial.</>
                 )}
               </p>
             </div>

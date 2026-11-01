@@ -28,6 +28,10 @@ export async function POST(req: NextRequest) {
 
   const { outcome } = result
   switch (outcome.status) {
+    // One-email flow: the platform just emailed the 8-digit setup code —
+    // entering it is what creates the account now.
+    case 'code_sent':
+      return NextResponse.json({ ok: true, status: 'code_sent', message: "Thanks — check your inbox for an 8-digit setup code, and enter it at app.dealeraddendums.com/onboard to open your account." })
     case 'provisioned':
       return NextResponse.json({ ok: true, status: 'provisioned', message: "You're all set — check your inbox for your account setup email." })
     case 'existing':

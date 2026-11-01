@@ -17,6 +17,9 @@ import { sendGa4Event } from '@/lib/ga4-mp'
 
 export interface ProvisionOutcome {
   status: 'provisioned' | 'existing' | 'pending_review' | 'after_hours' | 'rejected' | 'failed' | 'skipped'
+    // One-email flow (2026-11-01): the platform gate passed and emailed the
+    // 8-digit setup code — nothing is provisioned until the applicant enters it.
+    | 'code_sent'
   dealer_id?: string | null
   group_id?: string | null
   message?: string
@@ -80,6 +83,8 @@ export async function provisionInDaPlatform(payload: {
   sourceIp?: string | null
   websiteUrl?: string | null
   brand?: string | null
+  /** marketing_leads.id — the platform echoes it back on /api/leads/code-verified. */
+  leadId?: string | null
 }): Promise<ProvisionOutcome> {
   const base = process.env.DA_PLATFORM_URL
   const key = process.env.SELF_SERVE_API_KEY
@@ -103,10 +108,14 @@ export async function provisionInDaPlatform(payload: {
       signal: controller.signal,
     })
     const data = (await res.json().catch(() => ({}))) as {
-      existing?: boolean; pending?: boolean; afterHours?: boolean
+      existing?: boolean; pending?: boolean; afterHours?: boolean; codeSent?: boolean
       dealer_id?: string; group_id?: string; message?: string; error?: string
     }
     if (res.status === 202 || data.pending) {
+      // Held for human review. The platform still emailed the setup code
+      // (entering it proves address ownership for the reviewer), so the
+      // browser-facing copy is identical to code_sent — a probe can't read the
+      // AI verdict off the form.
       return { status: 'pending_review', message: data.message }
     }
     if (res.status === 403 && data.afterHours) {
@@ -121,6 +130,9 @@ export async function provisionInDaPlatform(payload: {
       return { status: 'failed' }
     }
     if (data.existing) return { status: 'existing' }
+    // One-email flow: gate passed → the setup-code email went out; the account
+    // is created when the applicant enters the code on the platform.
+    if (data.codeSent) return { status: 'code_sent' }
     return { status: 'provisioned', dealer_id: data.dealer_id ?? null, group_id: data.group_id ?? null }
   } catch (err) {
     console.error('[leads] provisioning call failed:', err instanceof Error ? err.message : err)
@@ -170,6 +182,10 @@ export interface LeadRow {
  * NO PII: GA4 receives a truncated hash of the lead id, never the email,
  * name or dealership.
  */
+export async function fireTrialSignupForLead(lead: LeadRow, outcome: ProvisionOutcome): Promise<void> {
+  return fireTrialSignup(lead, outcome)
+}
+
 async function fireTrialSignup(lead: LeadRow, outcome: ProvisionOutcome): Promise<void> {
   const leadHash = createHash('sha256').update(lead.id).digest('hex').slice(0, 16)
   const res = await sendGa4Event({
@@ -234,6 +250,7 @@ export async function confirmAndProvision(token: string): Promise<
     attribution, sourceIp: lead.source_ip,
     websiteUrl: lead.website_url ?? null,
     brand: lead.brand ?? null,
+    leadId: lead.id,
   })
 
   await supabase
@@ -250,10 +267,12 @@ export async function confirmAndProvision(token: string): Promise<
   // successful signup into a failed one.
   //
   // Sent for every outcome that means "a real person proved they own this
-  // address": provisioned, existing, and pending_review (held for a human, but
-  // the signup itself is genuine). NOT sent for after_hours or rejected, which
-  // did not produce a trial.
-  if (['provisioned', 'existing', 'pending_review'].includes(outcome.status)) {
+  // address": provisioned, existing, pending_review (held for a human, but the
+  // signup itself is genuine), and code_sent (this legacy shim path proved
+  // ownership via the old confirm link; confirmed_at is stamped above, so the
+  // /api/leads/code-verified webhook will NOT double-fire later). NOT sent for
+  // after_hours or rejected, which did not produce a trial.
+  if (['provisioned', 'existing', 'pending_review', 'code_sent'].includes(outcome.status)) {
     try {
       await fireTrialSignup(lead, outcome)
     } catch (err) {
@@ -311,6 +330,29 @@ export async function resendConfirmation(rawEmail: string): Promise<ResendOutcom
   }
   const lead = data?.[0]
   if (!lead) return 'unknown'
+
+  // One-email flow: the setup code lives on the platform, so a code-flow lead's
+  // resend proxies there (the platform re-issues + re-mails it, with its own
+  // DB cooldown). pending_review included — their code still confirms ownership.
+  if (lead.provision_status === 'code_sent' || lead.provision_status === 'pending_review') {
+    const base = process.env.DA_PLATFORM_URL
+    const key = process.env.SELF_SERVE_API_KEY
+    if (!base || !key) return 'error'
+    try {
+      const res = await fetch(`${base.replace(/\/$/, '')}/api/self-serve/resend-code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': key },
+        body: JSON.stringify({ email: lead.email }),
+        signal: AbortSignal.timeout(8000),
+      })
+      if (!res.ok) return 'error'
+      const data = (await res.json().catch(() => ({}))) as { outcome?: string }
+      return data.outcome === 'throttled' ? 'throttled' : 'sent'
+    } catch (err) {
+      console.error('[resend-confirmation] platform code resend failed:', err instanceof Error ? err.message : err)
+      return 'error'
+    }
+  }
 
   // Only signups actually waiting on confirmation. Anything already confirmed,
   // provisioned, queued for review or rejected must not trigger a new email.
