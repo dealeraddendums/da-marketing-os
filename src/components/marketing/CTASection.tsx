@@ -369,9 +369,19 @@ export default function CTASection({ tracking }: Props) {
                   {existing ? (
                     <>It looks like an account already exists for this email. <a href="https://app.dealeraddendums.com" style={{ color: '#1976d2' }}>Log in here</a>.</>
                   ) : (
-                    <>We just emailed you a link to confirm your address. Click it and we&apos;ll activate your free trial — your account is created once you confirm.</>
+                    <>We just emailed you an <strong>8-digit setup code</strong>. Enter it on the next screen (or tap the button in the email) and your free trial opens right away — your account is created the moment you enter it.</>
                   )}
                 </p>
+                {!existing && (
+                  <p style={{ fontSize: 14, margin: '14px 0 0' }}>
+                    <a
+                      href={`https://app.dealeraddendums.com/onboard?email=${encodeURIComponent(form.email.trim())}`}
+                      style={{ color: '#1976d2', fontWeight: 600 }}
+                    >
+                      I have my code — enter it now →
+                    </a>
+                  </p>
+                )}
                 {!existing && (
                   <div style={{ marginTop: 18 }}>
                     {resendState === 'sent' ? (
@@ -397,7 +407,7 @@ export default function CTASection({ tracking }: Props) {
                             textDecoration: 'underline',
                           }}
                         >
-                          {resendState === 'sending' ? 'Sending…' : 'Resend the confirmation email'}
+                          {resendState === 'sending' ? 'Sending…' : 'Resend the code'}
                         </button>
                         {resendMsg && (
                           <p style={{ fontSize: 12, color: '#c62828', margin: '8px 0 0' }}>{resendMsg}</p>
