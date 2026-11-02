@@ -5,6 +5,7 @@ import { resolveHero, type HeroTracking } from '@/lib/hero-engine'
 import type { PersonalizationContext } from '@/lib/personalization'
 import HeroSection, { type WarmPayload } from '@/components/marketing/HeroSection'
 import FeaturesSection from '@/components/marketing/FeaturesSection'
+import ProductTypesSection from '@/components/marketing/ProductTypesSection'
 import PricingSection from '@/components/marketing/PricingSection'
 import TestimonialsSection from '@/components/marketing/TestimonialsSection'
 import CTASection from '@/components/marketing/CTASection'
@@ -112,6 +113,7 @@ export default async function HomePage({ searchParams }: PageProps) {
       <Suspense fallback={<HeroSkeleton />}>
         <HeroSection hero={resolved.hero} tracking={tracking} warm={warm} />
       </Suspense>
+      <ProductTypesSection />
       <FeaturesSection />
       <AppSection />
       <PricingSection tracking={tracking} />

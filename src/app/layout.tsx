@@ -17,20 +17,22 @@ const roboto = Roboto({
 })
 
 export const metadata: Metadata = {
-  title: 'DealerAddendums — Vehicle Addendum Software for Car Dealers',
-  description: 'Print customized vehicle addendums, buyers guides, and info sheets in seconds. Used by 1,600+ dealerships since 2014. Month-to-month, no contracts.',
+  title: 'DealerAddendums — Transparent, Compliance-Ready Vehicle Addendums',
+  description: 'Print addendums that clearly separate required products in the vehicle price from suggested, optional add-ons. FTC Buyers Guides in English & Spanish. 1,600+ dealerships. Month-to-month, no contracts.',
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || 'https://dealeraddendums.com'),
   openGraph: {
-    title: 'DealerAddendums — The #1 Addendum Platform for Car Dealers',
-    description: 'Stop printing addendums by hand. 1,600+ dealers automate it with DealerAddendums.',
+    title: 'DealerAddendums — Transparent, Compliance-Ready Vehicle Addendums',
+    description: 'Print addendums that clearly separate required products in the vehicle price from suggested, optional add-ons. FTC Buyers Guides in English & Spanish. 1,600+ dealerships. Month-to-month, no contracts.',
     url: 'https://dealeraddendums.com',
     siteName: 'DealerAddendums',
     type: 'website',
+    images: [{ url: '/images/og-home.png', width: 1200, height: 630, alt: 'Two DealerAddendums vehicle addendums — required products added to MSRP, suggested products clearly optional' }],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'DealerAddendums — The #1 Addendum Platform for Car Dealers',
-    description: 'Stop printing addendums by hand. 1,600+ dealers automate it.',
+    title: 'DealerAddendums — Transparent, Compliance-Ready Vehicle Addendums',
+    description: 'Print addendums that clearly separate required products in the vehicle price from suggested, optional add-ons. FTC Buyers Guides in English & Spanish. 1,600+ dealerships.',
+    images: ['/images/og-home.png'],
   },
 }
 
