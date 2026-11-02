@@ -4,6 +4,7 @@ import Image from 'next/image'
 import posthog from 'posthog-js'
 import type { HeroContent, HeroTracking } from '@/lib/hero-engine'
 import LoginMenu from './LoginMenu'
+import HeroSlider, { type HeroSliderSlide } from './HeroSlider'
 
 // Signals the client echoes back to /api/personalize to warm the hero cache
 // for this context (server recomputes the context key — never trusts ours).
@@ -17,6 +18,8 @@ interface Props {
   hero: HeroContent
   tracking: HeroTracking
   warm: WarmPayload | null
+  /** Active hero slider slides (admin-managed). Empty → static image pair. */
+  slides?: HeroSliderSlide[]
 }
 
 const NAV_LINKS = ['Features', 'Pricing', 'Testimonials']
@@ -70,7 +73,7 @@ export function abTrackOnce(guardKey: string, event: string, t?: Partial<HeroTra
   }).catch(() => {})
 }
 
-export default function HeroSection({ hero, tracking, warm }: Props) {
+export default function HeroSection({ hero, tracking, warm, slides = [] }: Props) {
   const fired = useRef(false)
 
   useEffect(() => {
@@ -119,6 +122,12 @@ export default function HeroSection({ hero, tracking, warm }: Props) {
     ? ''
     : ' · No credit card required · Cancel anytime'
 
+  // A headline may carry an explicit line break ('\n'); the second line
+  // renders in brand orange (the static default: "Create · Manage · Print
+  // Addendums.\nCompliant by Design."). Personalized single-line headlines
+  // render exactly as before.
+  const headlineLines = hero.headline.split('\n')
+
   return (
     <section style={{ fontFamily: "'Roboto', sans-serif" }}>
 
@@ -137,6 +146,7 @@ export default function HeroSection({ hero, tracking, warm }: Props) {
         <div style={{ display: 'flex', alignItems: 'center' }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
+            className="hero-nav-logo"
             src="/images/logo-light.svg"
             alt="DealerAddendums"
             width={195}
@@ -186,6 +196,7 @@ export default function HeroSection({ hero, tracking, warm }: Props) {
               cursor: 'pointer',
               display: 'inline-block',
               textDecoration: 'none',
+              whiteSpace: 'nowrap',
             }}
           >
             Free Trial
@@ -221,7 +232,7 @@ export default function HeroSection({ hero, tracking, warm }: Props) {
             }}>
               {(tracking.heroSource === 'cache' || tracking.heroSource === 'static-term') && tracking.keyword
                 ? `Personalized for ${tracking.keyword}`
-                : '1,600+ Dealerships · $800M+ in Addendums'}
+                : '2,100+ Dealerships · $800M+ in Addendums'}
             </div>
 
             <h1
@@ -236,7 +247,14 @@ export default function HeroSection({ hero, tracking, warm }: Props) {
                 margin: '0 0 20px',
               }}
             >
-              {hero.headline}
+              {headlineLines.map((line, i) => (
+                <span
+                  key={i}
+                  style={{ display: 'block', color: i > 0 ? '#ffa500' : '#ffffff' }}
+                >
+                  {line}
+                </span>
+              ))}
             </h1>
 
             <p style={{
@@ -310,10 +328,14 @@ export default function HeroSection({ hero, tracking, warm }: Props) {
             </p>
           </div>
 
-          {/* Right: the real product — one real addendum of each kind (LCP
-              elements: priority + explicit dimensions = fast paint, zero
-              layout shift) */}
-          <div className="hero-visual">
+          {/* Right: the real product. Admin-managed slider when active slides
+              exist (one addendum at a time, title + description beside it);
+              falls back to the original static pair when the table is empty
+              or unreachable. Both paths paint in fixed-size frames: zero CLS. */}
+          <div className={slides.length > 0 ? 'hero-visual hero-visual--slider' : 'hero-visual'}>
+            {slides.length > 0 ? (
+              <HeroSlider slides={slides} />
+            ) : (
             <div className="hero-visual-pair">
               <figure className="hero-visual-item" style={{ margin: 0 }}>
                 <figcaption style={{
@@ -372,6 +394,7 @@ export default function HeroSection({ hero, tracking, warm }: Props) {
                 />
               </figure>
             </div>
+            )}
           </div>
         </div>
       </div>

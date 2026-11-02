@@ -88,6 +88,33 @@ a {
   .hero-visual-pair { flex-direction: column; gap: 28px; }
 }
 
+/* ── Hero slider — one addendum at a time, image left / text right.
+   The frame keeps a fixed aspect ratio (the 760×1968 addendum scans) so
+   slide changes never shift layout. Stacks image-above-text on mobile. */
+.hero-visual--slider { width: 520px; }
+.hero-slider {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+  width: 100%;
+}
+.hero-slider-frame {
+  position: relative;
+  width: 260px;
+  flex: none;
+  aspect-ratio: 760 / 1968;
+  border-radius: 6px;
+}
+.hero-slider-text { flex: 1; min-width: 0; }
+.hero-slider-controls { justify-content: flex-start; }
+@media (max-width: 860px) {
+  .hero-visual--slider { width: 100%; max-width: 340px; }
+  .hero-slider { flex-direction: column; align-items: center; gap: 20px; }
+  .hero-slider-frame { width: 250px; }
+  .hero-slider-text { width: 100%; text-align: center; min-height: 150px; }
+  .hero-slider-controls { justify-content: center; }
+}
+
 /* ── Responsive section grids (≤768px = phone/tablet) ────────────────────
    These replace hardcoded inline `gridTemplateColumns` so sections stack
    cleanly on mobile. Desktop values match the originals exactly. */
@@ -187,6 +214,10 @@ a {
    fit (they overflowed at 375px, clipping the logo and Free Trial). */
 @media (max-width: 768px) {
   .hero-nav-links { display: none !important; }
+}
+/* Keep the logo + Log In + Free Trial on one row at phone widths */
+@media (max-width: 480px) {
+  .hero-nav-logo { width: 148px; height: auto; }
 }
 
 /* ── Chat widget panel: floating card on desktop, full-screen on phones ───── */

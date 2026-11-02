@@ -72,7 +72,7 @@ export function killSwitchOn(): boolean {
 const DEFAULT_BENEFITS = [
   'Required vs. Suggested clearly separated',
   'FTC Buyers Guides in English & Spanish',
-  'Month-to-month — no contracts',
+  'Print straight from inventory — no retyping',
 ]
 
 export function getStaticHero(): HeroContent {

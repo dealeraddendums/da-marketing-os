@@ -367,7 +367,7 @@ export default function LayoutA({ personalization }: Props) {
             gap: 20,
           }}>
             {[
-              { value: '1,600+', label: 'Number of Dealers' },
+              { value: '2,100+', label: 'Number of Dealers' },
               { value: '3.6M+', label: 'Addendums Printed' },
               { value: '$800M+', label: 'Total Addendum Value' },
               { value: '2014', label: 'Serving Dealers Since' },

@@ -143,7 +143,7 @@ export default function TestimonialsSection({ dealerType = 'general' }: Props) {
           textAlign: 'center',
         }}>
           {[
-            { value: '1,600+', label: 'Active Dealerships' },
+            { value: '2,100+', label: 'Active Dealerships' },
             { value: '3.6M+', label: 'Addendums Printed' },
             { value: '$800M+', label: 'Addendum Value Tracked' },
             { value: '32,000+', label: 'Platform Updates' },

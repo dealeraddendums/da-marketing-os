@@ -149,7 +149,7 @@ export default function ProductTypesSection() {
               textDecoration: 'none',
             }}
           >
-            See a Combo Addendum
+            Real Addendum Examples
           </a>
         </div>
       </div>
