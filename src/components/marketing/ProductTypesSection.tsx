@@ -14,19 +14,19 @@ const CARDS = [
 const POINTS = [
   {
     title: 'Combo template',
-    desc: 'One addendum visually separates Required from Suggested — each section with its own clearly labeled total.',
+    desc: 'One addendum visually separates the two product types — each section with its own distinct, clearly labeled total.',
   },
   {
     title: 'Rules-based products',
-    desc: 'Rules put the right products on the right vehicles automatically — by make, model, trim, year, mileage, or price.',
+    desc: 'Rules put the right fees and products on the right units automatically — new inventory is addended the moment it lands.',
   },
   {
-    title: 'Totals that add up',
-    desc: 'MSRP, required additions, and the as-equipped price are calculated on every print — no hand math, no stale stickers.',
+    title: 'Group-standardized disclosures',
+    desc: 'Standardized legal language and disclaimers appear on every store’s addendum, consistent across the whole group.',
   },
   {
-    title: 'Same addendum online',
-    desc: 'The Magic Button shows shoppers the exact printed addendum on your website, so the lot and the listing always match.',
+    title: 'Magic Button on the VDP',
+    desc: 'The Magic Button shows the same PDF on your vehicle detail pages — the website and the windshield match.',
   },
 ]
 
@@ -78,7 +78,7 @@ export default function ProductTypesSection() {
               <div style={{
                 fontSize: 13,
                 fontWeight: 700,
-                color: card.accent === '#ffa500' ? '#b87700' : card.accent,
+                color: card.accent === '#ffa500' ? '#9a6400' : card.accent,
                 letterSpacing: '0.08em',
                 textTransform: 'uppercase',
                 marginBottom: 12,
@@ -100,7 +100,7 @@ export default function ProductTypesSection() {
         <p style={{
           fontSize: 12,
           fontWeight: 700,
-          color: '#78828c',
+          color: '#6b7280',
           letterSpacing: '0.1em',
           textTransform: 'uppercase',
           textAlign: 'center',
@@ -133,6 +133,24 @@ export default function ProductTypesSection() {
               </div>
             </div>
           ))}
+        </div>
+
+        <div style={{ textAlign: 'center', marginTop: 40 }}>
+          <a
+            href="#gallery"
+            style={{
+              display: 'inline-block',
+              background: '#1976d2',
+              color: '#ffffff',
+              fontSize: 15,
+              fontWeight: 600,
+              padding: '12px 28px',
+              borderRadius: 6,
+              textDecoration: 'none',
+            }}
+          >
+            See a Combo Addendum
+          </a>
         </div>
       </div>
     </section>
