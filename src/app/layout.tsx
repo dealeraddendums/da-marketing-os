@@ -17,12 +17,12 @@ const roboto = Roboto({
 })
 
 export const metadata: Metadata = {
-  title: 'DealerAddendums — Transparent, Compliance-Ready Vehicle Addendums',
-  description: 'Print addendums that clearly separate required products in the vehicle price from suggested, optional add-ons. FTC Buyers Guides in English & Spanish. 1,600+ dealerships. Month-to-month, no contracts.',
+  title: 'DealerAddendums — Create · Manage · Print Addendums. Compliant by Design.',
+  description: "One addendum that shows the buyer what's in the price and what's optional — required products added to MSRP, suggested products clearly marked, printed from your inventory in seconds. FTC Buyers Guides in English & Spanish. 2,100+ dealerships.",
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || 'https://dealeraddendums.com'),
   openGraph: {
-    title: 'DealerAddendums — Transparent, Compliance-Ready Vehicle Addendums',
-    description: 'Print addendums that clearly separate required products in the vehicle price from suggested, optional add-ons. FTC Buyers Guides in English & Spanish. 1,600+ dealerships. Month-to-month, no contracts.',
+    title: 'DealerAddendums — Create · Manage · Print Addendums. Compliant by Design.',
+    description: "One addendum that shows the buyer what's in the price and what's optional — required products added to MSRP, suggested products clearly marked, printed from your inventory in seconds. FTC Buyers Guides in English & Spanish. 2,100+ dealerships.",
     url: 'https://dealeraddendums.com',
     siteName: 'DealerAddendums',
     type: 'website',
@@ -30,8 +30,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'DealerAddendums — Transparent, Compliance-Ready Vehicle Addendums',
-    description: 'Print addendums that clearly separate required products in the vehicle price from suggested, optional add-ons. FTC Buyers Guides in English & Spanish. 1,600+ dealerships.',
+    title: 'DealerAddendums — Create · Manage · Print Addendums. Compliant by Design.',
+    description: "One addendum that shows the buyer what's in the price and what's optional — required products added to MSRP, suggested products clearly marked. FTC Buyers Guides in English & Spanish. 2,100+ dealerships.",
     images: ['/images/og-home.png'],
   },
 }

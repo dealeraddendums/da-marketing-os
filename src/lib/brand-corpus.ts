@@ -7,7 +7,7 @@
 //   generator MAY state this length.
 // - Big stats are stated ROUNDED with a "+" so copy never goes stale:
 //   3.6 million+ addendums (actual 3,596,230), $800 million+ value (actual
-//   $800,832,000), 1,600+ dealerships. Precise frozen figures removed.
+//   $800,832,000), 2,100+ dealerships. Precise frozen figures removed.
 // - "526 addendums printed today" removed — live daily counter, not a fact.
 // - Label pricing confirmed by Allan 2026-06-12: 22–30¢ each by quantity. The
 //   corpus carries ONLY the floor ("as low as $0.22 — volume pricing") so the
@@ -37,7 +37,7 @@
 // - No numbers that do not appear in this file
 // ============================================================================
 
-export const CORPUS_VERSION = '2026-06-14.1' // bump when facts change
+export const CORPUS_VERSION = '2026-11-02.1' // bump when facts change
 export const CORPUS_REVIEWED_BY: string | null = 'allan' // reviewed 2026-06-12
 
 // Free-form facts the generator may draw on for headlines/subheadlines.
@@ -60,7 +60,7 @@ export const FACTS: string[] = [
   'Custom branding: dealership logo, pricing, and watermarks on every document; hard-add and soft-add templates available.',
   'Brand-specific addendum templates (e.g. Kia, Ford, Toyota, Honda, Chevrolet, Nissan) with the dealer\'s own logo, products, and pricing.',
   // Stats / trust (rounded with "+" per Allan 2026-06-12 so copy never goes stale)
-  'Trusted by 1,600+ active dealerships.',
+  'Trusted by 2,100+ active dealerships.',
   'In business since 2014.',
   '3.6 million+ addendums printed.',
   '$800 million+ in addendum value printed.',
@@ -124,7 +124,7 @@ export const CTA_OPTIONS: string[] = [
 
 // proofLine must be one of these, verbatim.
 export const PROOF_OPTIONS: string[] = [
-  'Trusted by 1,600+ dealerships since 2014',
+  'Trusted by 2,100+ dealerships since 2014',
   '3.6M+ addendums printed',
   '$800M+ in addendum value printed',
   '30-day free trial — no credit card required',

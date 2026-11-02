@@ -5,7 +5,7 @@ import { isAdminAuthed } from '@/lib/reputation'
 export const dynamic = 'force-dynamic'
 
 // Active Dealers — live count from DA Platform (the marketing Supabase holds
-// no dealer records). Cached ~1h; falls back to a static "1,600+" so the
+// no dealer records). Cached ~1h; falls back to a static "2,100+" so the
 // dashboard never breaks on a platform hiccup.
 const DEALER_COUNT_TTL_MS = 60 * 60 * 1000
 let dealerCountCache: { value: string; fetchedAt: number } | null = null
@@ -37,7 +37,7 @@ async function getActiveDealerCount(): Promise<string> {
       // fall through to static fallback
     }
   }
-  return '1,600+'
+  return '2,100+'
 }
 
 export async function GET() {

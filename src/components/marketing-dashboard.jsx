@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import HeroSlidesAdmin from "@/components/admin/HeroSlidesAdmin";
 
 // ── DA Design System — exact values from DADesignGuidelines.md ────────────────
 const C = {
@@ -3226,6 +3227,7 @@ const TABS = [
   { id: "ab",        label: "A/B Tests"    },
   { id: "copy",      label: "AI Copy"      },
   { id: "blog",      label: "Blog & Social"},
+  { id: "hero",      label: "Hero Slides"  },
   { id: "leads",     label: "Leads"        },
   { id: "analyst",   label: "Analyst"      },
   { id: "approvals", label: "Approvals"    },
@@ -3380,6 +3382,7 @@ export default function App() {
         {tab === "seo"       && <SeoPanel />}
         {tab === "analyst"   && <AnalystPanel />}
         {tab === "approvals" && <ApprovalsPanel />}
+        {tab === "hero"      && <HeroSlidesAdmin />}
 
         {tab === "ab" && (
           <div style={{ display: "grid", gap: 20 }}>

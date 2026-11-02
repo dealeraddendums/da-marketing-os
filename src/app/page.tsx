@@ -2,6 +2,7 @@ import { cookies, headers } from 'next/headers'
 import { Suspense } from 'react'
 import { CTX_HEADERS, buildSignals, type Device } from '@/lib/context-key'
 import { resolveHero, type HeroTracking } from '@/lib/hero-engine'
+import { getActiveHeroSlides } from '@/lib/hero-slides'
 import type { PersonalizationContext } from '@/lib/personalization'
 import HeroSection, { type WarmPayload } from '@/components/marketing/HeroSection'
 import FeaturesSection from '@/components/marketing/FeaturesSection'
@@ -61,6 +62,10 @@ export default async function HomePage({ searchParams }: PageProps) {
 
   const resolved = await resolveHero(signals, abVariant)
 
+  // Admin-managed hero slider slides — cached 60s (unstable_cache) + tag-
+  // revalidated on every admin write; [] falls back to the static image pair.
+  const heroSlides = await getActiveHeroSlides()
+
   const tracking: HeroTracking = {
     contextKey: signals.contextKey,
     variationId: resolved.variationId,
@@ -111,7 +116,7 @@ export default async function HomePage({ searchParams }: PageProps) {
   return (
     <main>
       <Suspense fallback={<HeroSkeleton />}>
-        <HeroSection hero={resolved.hero} tracking={tracking} warm={warm} />
+        <HeroSection hero={resolved.hero} tracking={tracking} warm={warm} slides={heroSlides} />
       </Suspense>
       <ProductTypesSection />
       <FeaturesSection />

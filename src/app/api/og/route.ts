@@ -95,7 +95,7 @@ export async function GET(req: NextRequest) {
           },
         },
         ...[
-          { value: '1,600+', label: 'Active Dealers' },
+          { value: '2,100+', label: 'Active Dealers' },
           { value: '3.6M+', label: 'Addendums Printed' },
           { value: 'Since 2014', label: 'In Business' },
         ].map(s =>

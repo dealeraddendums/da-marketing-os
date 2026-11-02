@@ -79,6 +79,7 @@ export default function LoginMenu({
           display: 'inline-flex',
           alignItems: 'center',
           gap: 5,
+          whiteSpace: 'nowrap',
           ...triggerStyle,
         }}
         onMouseEnter={e => (e.currentTarget.style.color = triggerHover)}
