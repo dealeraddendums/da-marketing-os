@@ -45,6 +45,24 @@ interface FormState {
 
 const emptyForm: FormState = { id: null, title: '', description: '', image_path: '', is_active: true }
 
+// Parse an API response that should be JSON. A failure upstream of the app
+// (nginx 413/502, an auth redirect) returns an HTML page, and calling
+// res.json() on it throws the opaque `Unexpected token '<'` instead of the
+// real problem — so read text first and fall back to a message built from the
+// HTTP status.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function readJson(res: Response): Promise<any> {
+  const text = await res.text()
+  try {
+    return JSON.parse(text)
+  } catch {
+    if (res.status === 413) {
+      return { error: 'Image rejected by the server as too large (413) — max 15 MB upload' }
+    }
+    return { error: `Server returned ${res.status}${res.statusText ? ` ${res.statusText}` : ''} with a non-JSON response` }
+  }
+}
+
 const inputStyle: React.CSSProperties = {
   width: '100%',
   border: `1px solid ${C.border}`,
@@ -98,7 +116,7 @@ export default function HeroSlidesAdmin() {
     setError('')
     try {
       const res = await fetch('/api/hero-slides')
-      const data = await res.json()
+      const data = await readJson(res)
       if (!res.ok) throw new Error(data.error || 'Failed to load slides')
       setSlides(data.slides)
     } catch (e) {
@@ -133,7 +151,7 @@ export default function HeroSlidesAdmin() {
           is_active: form.is_active,
         }),
       })
-      const data = await res.json()
+      const data = await readJson(res)
       if (!res.ok) throw new Error(data.error || 'Save failed')
       setForm(null)
       await load()
@@ -151,7 +169,7 @@ export default function HeroSlidesAdmin() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ is_active: !s.is_active }),
     })
-    const data = await res.json()
+    const data = await readJson(res)
     if (!res.ok) { setError(data.error || 'Update failed'); return }
     await load()
     flash(!s.is_active ? 'Slide activated.' : 'Slide deactivated.')
@@ -160,7 +178,7 @@ export default function HeroSlidesAdmin() {
   const deleteSlide = async (id: string) => {
     setError('')
     const res = await fetch(`/api/hero-slides/${id}`, { method: 'DELETE' })
-    const data = await res.json()
+    const data = await readJson(res)
     if (!res.ok) { setError(data.error || 'Delete failed'); return }
     setConfirmDeleteId(null)
     await load()
@@ -175,7 +193,7 @@ export default function HeroSlidesAdmin() {
       body: JSON.stringify({ ids: ordered.map(s => s.id) }),
     })
     if (!res.ok) {
-      const data = await res.json().catch(() => ({}))
+      const data = await readJson(res)
       setError(data.error || 'Reorder failed')
       await load()
     } else {
@@ -201,7 +219,7 @@ export default function HeroSlidesAdmin() {
       const fd = new FormData()
       fd.append('file', file)
       const res = await fetch('/api/hero-slides/upload', { method: 'POST', body: fd })
-      const data = await res.json()
+      const data = await readJson(res)
       if (!res.ok) throw new Error(data.error || 'Upload failed')
       setForm(f => (f ? { ...f, image_path: data.path } : f))
       flash(`Image uploaded (${Math.round(data.bytes / 1024)} KB WebP).`)
