@@ -209,6 +209,21 @@ a {
 @media (max-width: 768px) {
   .signup-grid { grid-template-columns: 1fr; gap: 36px; }
 }
+/* The signup form's own fields: two columns (the form got tall), with
+   .sf-full items spanning both; one column on phones. min-width:0 for the
+   same Turnstile-width reason as .signup-grid above. */
+.signup-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  align-items: start;
+}
+.signup-fields > * { min-width: 0; }
+.signup-fields .sf-full,
+.signup-fields > .sf-full { grid-column: 1 / -1; }
+@media (max-width: 600px) {
+  .signup-fields { grid-template-columns: 1fr; }
+}
 
 /* Hero nav: drop the section anchors on mobile so logo + Log In + Free Trial
    fit (they overflowed at 375px, clipping the logo and Free Trial). */

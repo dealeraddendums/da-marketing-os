@@ -50,6 +50,11 @@ export async function POST(req: NextRequest) {
   const body = await req.json()
   const { name, email, dealership, phone } = body
   const zip = (body.zip as string)?.trim() || null
+  // Enrichment-confirmed address fields (optional — the form fills them from
+  // the name+ZIP business lookup; the visitor can edit or clear them).
+  const address = typeof body.address === 'string' ? body.address.trim().slice(0, 160) || null : null
+  const city = typeof body.city === 'string' ? body.city.trim().slice(0, 80) || null : null
+  const state = typeof body.state === 'string' ? body.state.trim().slice(0, 40) || null : null
   // Phase 6c: the chosen brand (single-dealer signups). The platform validates it
   // against its selectable-brands list at confirmation time; stored as given here.
   const brand = typeof body.brand === 'string' ? body.brand.trim().slice(0, 40) || null : null
@@ -87,8 +92,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: website.error }, { status: 400 })
   }
 
-  const accountKind: 'single' | 'group' = body.accountKind === 'group' ? 'group' : 'single'
-  const groupName = (body.groupName as string | undefined)?.trim() || (accountKind === 'group' ? dealership : undefined)
+  // 'partner' (Partner / Reseller tab) provisions a restyler group + the
+  // partner's own first rooftop on the platform side.
+  const accountKind: 'single' | 'group' | 'partner' =
+    body.accountKind === 'group' ? 'group' : body.accountKind === 'partner' ? 'partner' : 'single'
+  const groupName = (body.groupName as string | undefined)?.trim() || (accountKind !== 'single' ? dealership : undefined)
 
   const [firstName, ...rest] = name.trim().split(' ')
   const lastName = rest.join(' ')
@@ -130,6 +138,9 @@ Based on the dealership name and email domain, provide a brief intelligence summ
     dealership,
     phone: phone || null,
     zip: zip || null,
+    address,
+    city,
+    state,
     brand,
     website_url: website.url,
     source: 'website',
@@ -185,6 +196,19 @@ Based on the dealership name and email domain, provide a brief intelligence summ
       .select()
       .single())
   }
+  // marketing_leads address/city/state are migration 022 — until it's applied,
+  // save the lead without them rather than lose the signup.
+  if (dbError && /\b(address|city|state)\b/i.test(dbError.message)) {
+    console.warn('[leads] address/city/state rejected — migration 022 not applied yet; saving without them')
+    delete leadPayload.address
+    delete leadPayload.city
+    delete leadPayload.state
+    ;({ data: lead, error: dbError } = await supabase
+      .from('marketing_leads')
+      .insert(leadPayload)
+      .select()
+      .single())
+  }
 
   // Same guard for the GA4 identity columns (migration 013). Analytics
   // attribution is worth a lot less than a signup, so if the migration has not
@@ -227,8 +251,9 @@ Based on the dealership name and email domain, provide a brief intelligence summ
   const provision: ProvisionOutcome = await provisionInDaPlatform({
     name, email, dealership,
     phone: phone || null, zip,
+    address, city, state,
     accountKind,
-    groupName: accountKind === 'group' ? groupName : undefined,
+    groupName: accountKind !== 'single' ? groupName : undefined,
     attribution,
     sourceIp: ip === 'unknown' ? null : ip,
     websiteUrl: website.url,
@@ -281,8 +306,9 @@ Based on the dealership name and email domain, provide a brief intelligence summ
           <table style="width:100%;border-collapse:collapse;">
             <tr><td style="padding:6px 0;font-weight:500;color:#55595c;width:120px;">Name</td><td style="padding:6px 0;">${name}</td></tr>
             <tr><td style="padding:6px 0;font-weight:500;color:#55595c;">Email</td><td style="padding:6px 0;"><a href="mailto:${email}">${email}</a></td></tr>
-            <tr><td style="padding:6px 0;font-weight:500;color:#55595c;">${accountKind === 'group' ? 'Group' : 'Dealership'}</td><td style="padding:6px 0;">${dealership}</td></tr>
+            <tr><td style="padding:6px 0;font-weight:500;color:#55595c;">${accountKind === 'group' ? 'Group' : accountKind === 'partner' ? 'Partner company' : 'Dealership'}</td><td style="padding:6px 0;">${dealership}</td></tr>
             ${phone ? `<tr><td style="padding:6px 0;font-weight:500;color:#55595c;">Phone</td><td style="padding:6px 0;">${phone}</td></tr>` : ''}
+            ${address || city || state ? `<tr><td style="padding:6px 0;font-weight:500;color:#55595c;">Address</td><td style="padding:6px 0;">${[address, city, state].filter(Boolean).join(', ')}</td></tr>` : ''}
             ${zip ? `<tr><td style="padding:6px 0;font-weight:500;color:#55595c;">Zip</td><td style="padding:6px 0;">${zip}</td></tr>` : ''}
             <tr><td style="padding:6px 0;font-weight:500;color:#55595c;">Website</td><td style="padding:6px 0;">${website.url}</td></tr>
             <tr><td style="padding:6px 0;font-weight:500;color:#55595c;">Account</td><td style="padding:6px 0;">${accountKind} · provisioning: ${provision.status}</td></tr>

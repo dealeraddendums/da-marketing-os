@@ -77,7 +77,12 @@ export async function provisionInDaPlatform(payload: {
   dealership: string
   phone: string | null
   zip: string | null
-  accountKind: 'single' | 'group'
+  /** Enrichment-confirmed address fields (optional). */
+  address?: string | null
+  city?: string | null
+  state?: string | null
+  /** 'partner' = Partner/Reseller tab → restyler group + first rooftop. */
+  accountKind: 'single' | 'group' | 'partner'
   groupName?: string
   attribution: Record<string, string | null>
   sourceIp?: string | null
@@ -149,6 +154,9 @@ export interface LeadRow {
   dealership: string
   phone: string | null
   zip: string | null
+  address?: string | null // migration 022; absent on older leads
+  city?: string | null
+  state?: string | null
   website_url?: string | null // migration 020; absent on older leads
   brand?: string | null // Phase 6c; absent on older leads
   account_kind: string | null
@@ -241,12 +249,15 @@ export async function confirmAndProvision(token: string): Promise<
     utm_term: lead.utm_term, utm_content: lead.utm_content, gclid: lead.gclid,
     referrer: lead.referrer, landing_page: lead.landing_page,
   }
-  const accountKind: 'single' | 'group' = lead.account_kind === 'group' ? 'group' : 'single'
+  const accountKind: 'single' | 'group' | 'partner' =
+    lead.account_kind === 'group' ? 'group' : lead.account_kind === 'partner' ? 'partner' : 'single'
 
   const outcome = await provisionInDaPlatform({
     name: lead.name, email: lead.email, dealership: lead.dealership,
-    phone: lead.phone, zip: lead.zip, accountKind,
-    groupName: accountKind === 'group' ? lead.dealership : undefined,
+    phone: lead.phone, zip: lead.zip,
+    address: lead.address ?? null, city: lead.city ?? null, state: lead.state ?? null,
+    accountKind,
+    groupName: accountKind !== 'single' ? lead.dealership : undefined,
     attribution, sourceIp: lead.source_ip,
     websiteUrl: lead.website_url ?? null,
     brand: lead.brand ?? null,

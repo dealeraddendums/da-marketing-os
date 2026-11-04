@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
 import { normalizeWebsiteUrl } from '@/lib/website-url'
+import { formatUsPhone } from '@/lib/phone-format'
 import {
   getAttribution, pushSignupEvent, getGaIds, sendFormStartOncePerSession,
 } from '@/lib/attribution'
@@ -16,6 +17,19 @@ interface FormState {
   phone: string
   zip: string
   website: string
+  // Filled by the name+ZIP business lookup (/api/enrich-business); editable.
+  address: string
+  city: string
+  state: string
+}
+
+type AccountKind = 'single' | 'group' | 'partner'
+
+// Per-tab wording for the business-name/website fields and placeholders.
+const KIND_COPY: Record<AccountKind, { entity: string; entityPh: string; site: string; sitePh: string }> = {
+  single: { entity: 'Dealership Name', entityPh: 'Smith Ford Lincoln', site: 'Dealership Website', sitePh: 'yourdealership.com' },
+  group: { entity: 'Group Name', entityPh: 'Acme Auto Group', site: 'Group Website', sitePh: 'yourgroup.com' },
+  partner: { entity: 'Company Name', entityPh: 'Elite Auto Styling', site: 'Company Website', sitePh: 'yourcompany.com' },
 }
 
 interface Props {
@@ -24,12 +38,19 @@ interface Props {
 }
 
 export default function CTASection({ tracking }: Props) {
-  const [form, setForm] = useState<FormState>({ name: '', email: '', dealership: '', brand: '', phone: '', zip: '', website: '' })
+  const [form, setForm] = useState<FormState>({ name: '', email: '', dealership: '', brand: '', phone: '', zip: '', website: '', address: '', city: '', state: '' })
   // Brand list (Phase 6c): makes first, Reseller/Upfitter/Other grouped at the bottom.
   const [brandOptions, setBrandOptions] = useState<{ brand: string; kind: 'make' | 'generic' }[]>([])
   // Pre-fill stops the moment the visitor picks a brand themselves.
   const brandTouched = useRef(false)
-  const [accountKind, setAccountKind] = useState<'single' | 'group'>('single')
+  const [accountKind, setAccountKind] = useState<AccountKind>('single')
+  // Business lookup (name + ZIP → corrected name, address, city/state, phone).
+  const [enrich, setEnrich] = useState<'idle' | 'looking' | 'places' | 'fallback'>('idle')
+  const [enrichMsg, setEnrichMsg] = useState('')
+  // Once the visitor edits an address field themselves, the lookup stops
+  // overwriting those fields (the name correction still applies).
+  const addrTouched = useRef(false)
+  const lookupDone = useRef<Set<string>>(new Set())
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [errorMsg, setErrorMsg] = useState('')
   const [turnstileToken, setTurnstileToken] = useState('')
@@ -56,12 +77,11 @@ export default function CTASection({ tracking }: Props) {
   }, [])
   const formStarted = useRef(false)
 
-  // Deep-linkable tab: /?signup=group#signup preselects the Dealer group tab
+  // Deep-linkable tab: /?signup=group#signup (or signup=partner) preselects it
   // (set post-mount to avoid a hydration mismatch).
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get('signup') === 'group') {
-      setAccountKind('group')
-    }
+    const want = new URLSearchParams(window.location.search).get('signup')
+    if (want === 'group' || want === 'partner') setAccountKind(want)
   }, [])
 
   const handleFormStart = () => {
@@ -78,6 +98,67 @@ export default function CTASection({ tracking }: Props) {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm(f => ({ ...f, [e.target.name]: e.target.value }))
   }
+
+  // Address fields: same, but remember the visitor took over.
+  const handleAddrChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    addrTouched.current = true
+    setForm(f => ({ ...f, [e.target.name]: e.target.value }))
+  }
+
+  // Phone formats as typed: "9416003300" → "(941) 600-3300".
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = formatUsPhone(e.target.value)
+    setForm(f => ({ ...f, phone: value }))
+  }
+
+  // Business lookup — debounced on the two driving fields (name + ZIP). The
+  // server route proxies DA Platform's Google Places search (key stays
+  // server-side) and falls back to smart title-case + a free ZIP→city/state
+  // lookup. Everything it fills stays editable; one lookup per distinct
+  // name+ZIP (the corrected name is marked done too, so applying a result
+  // doesn't trigger a second search).
+  useEffect(() => {
+    const name = form.dealership.trim()
+    const zip = form.zip.trim().match(/^(\d{5})(-\d{4})?$/)?.[1]
+    if (name.length < 3 || !zip) return
+    const kind = accountKind === 'partner' ? 'partner' : 'dealer'
+    const key = `${name.toLowerCase()}|${zip}|${kind}`
+    if (lookupDone.current.has(key)) return
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => {
+      setEnrich('looking')
+      fetch('/api/enrich-business', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, zip, kind }),
+        signal: ctrl.signal,
+      })
+        .then(r => (r.ok ? r.json() : null))
+        .then((d: { source?: string; name?: string; street?: string | null; city?: string | null; state?: string | null; phone?: string | null } | null) => {
+          if (ctrl.signal.aborted) return
+          lookupDone.current.add(key)
+          if (!d) { setEnrich('idle'); return }
+          if (d.name) lookupDone.current.add(`${d.name.trim().toLowerCase()}|${zip}|${kind}`)
+          setForm(f => ({
+            ...f,
+            dealership: d.name || f.dealership,
+            address: !addrTouched.current && d.street ? d.street : f.address,
+            city: !addrTouched.current && d.city ? d.city : f.city,
+            state: !addrTouched.current && d.state ? d.state : f.state,
+            phone: f.phone || (d.phone ? formatUsPhone(d.phone) : ''),
+          }))
+          if (d.source === 'places') {
+            setEnrich('places')
+            setEnrichMsg(`Found “${d.name}” — we filled in the address. Adjust anything that looks off.`)
+          } else {
+            setEnrich('fallback')
+            setEnrichMsg(d.city ? 'We tidied up the name and filled in your city and state.' : '')
+          }
+        })
+        .catch(() => { if (!ctrl.signal.aborted) setEnrich('idle') })
+    }, 900)
+    return () => { clearTimeout(timer); ctrl.abort() }
+  }, [form.dealership, form.zip, accountKind])
 
   // Debounced availability check (same-origin proxy → DA Platform; the API
   // key stays server-side). Fail-open: errors return to idle and never block
@@ -149,13 +230,17 @@ export default function CTASection({ tracking }: Props) {
           ...form,
           brand: accountKind === 'single' ? form.brand : undefined,
           website: site.url,
+          address: form.address.trim() || undefined,
+          city: form.city.trim() || undefined,
+          state: form.state.trim() || undefined,
           ...getAttribution(),
           // GA4 identity from THIS session, stored on the lead so the
           // trial_signup conversion sent at email-confirmation time (a
           // different session) still attributes to the channel that earned it.
           ...getGaIds(),
           accountKind,
-          groupName: accountKind === 'group' ? form.dealership : undefined,
+          // Group AND partner signups provision a group named after the business.
+          groupName: accountKind !== 'single' ? form.dealership : undefined,
           turnstileToken,
           contextKey: tracking?.contextKey,
           variationId: tracking?.variationId,
@@ -238,7 +323,7 @@ export default function CTASection({ tracking }: Props) {
         fontFamily: "'Roboto', sans-serif",
       }}
     >
-      <div style={{ maxWidth: 900, margin: '0 auto' }}>
+      <div style={{ maxWidth: 1000, margin: '0 auto' }}>
         <div className="signup-grid">
 
           {/* Left: copy — swaps when the Dealer group tab is selected */}
@@ -290,6 +375,80 @@ export default function CTASection({ tracking }: Props) {
                   sign up on the Single store tab
                 </button>
                 . Your group&apos;s head office can add you to a Group account later.
+              </p>
+            </div>
+          ) : accountKind === 'partner' ? (
+            <div>
+              <h2 style={{
+                fontSize: 28,
+                fontWeight: 600,
+                color: '#ffffff',
+                margin: '0 0 16px',
+                lineHeight: 1.3,
+              }}>
+                Service dealerships? Partner with us.
+              </h2>
+              <p style={{
+                fontSize: 15,
+                color: 'rgba(255,255,255,0.75)',
+                lineHeight: 1.7,
+                margin: '0 0 24px',
+              }}>
+                A Partner account is built for resellers and service providers — window tint
+                and paint-protection installers, dent &amp; ding teams, restylers and upfitters,
+                and companies selling protection products across multiple rooftops. One master
+                login, a store for every dealership you service, professional addendums with
+                your work itemized on every window.
+              </p>
+              <div style={{ display: 'grid', gap: 14, marginBottom: 24 }}>
+                {[
+                  'One account covering every dealership you service',
+                  'Unlimited templates — set up each store once, print daily',
+                  'Present your products and pricing right on the window sticker',
+                  'US-based support team, real people',
+                ].map(item => (
+                  <div key={item} style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                    <span style={{
+                      background: '#4caf50',
+                      color: '#ffffff',
+                      width: 18,
+                      height: 18,
+                      borderRadius: '50%',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 11,
+                      fontWeight: 700,
+                      flexShrink: 0,
+                    }}>✓</span>
+                    <span style={{ fontSize: 14, color: 'rgba(255,255,255,0.8)' }}>{item}</span>
+                  </div>
+                ))}
+              </div>
+              <p style={{
+                fontSize: 15,
+                color: 'rgba(255,255,255,0.75)',
+                lineHeight: 1.7,
+                margin: 0,
+              }}>
+                Running a dealership instead?{' '}
+                <button
+                  type="button"
+                  onClick={() => setAccountKind('single')}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: 0,
+                    font: 'inherit',
+                    color: '#ffa500',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    textDecoration: 'underline',
+                  }}
+                >
+                  sign up on the Single store tab
+                </button>
+                .
               </p>
             </div>
           ) : (
@@ -430,37 +589,147 @@ export default function CTASection({ tracking }: Props) {
                   Start Your Free Trial
                 </h3>
 
-                {/* Single store / Dealer group choice */}
+                {/* Single store / Dealer group / Partner choice */}
                 <div style={{
                   display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
+                  gridTemplateColumns: '1fr 1fr 1fr',
                   border: '1px solid #cccccc',
                   borderRadius: 6,
                   overflow: 'hidden',
                   marginBottom: 16,
                 }}>
-                  {(['single', 'group'] as const).map(kind => (
+                  {(['single', 'group', 'partner'] as const).map(kind => (
                     <button
                       key={kind}
                       type="button"
                       onClick={() => setAccountKind(kind)}
                       style={{
-                        height: 40,
+                        minHeight: 40,
+                        padding: '4px 2px',
                         border: 'none',
                         background: accountKind === kind ? '#1976d2' : '#ffffff',
                         color: accountKind === kind ? '#ffffff' : '#555555',
-                        fontSize: 13,
+                        fontSize: 12.5,
                         fontWeight: 600,
                         cursor: 'pointer',
                         fontFamily: "'Roboto', sans-serif",
+                        lineHeight: 1.25,
                       }}
                     >
-                      {kind === 'single' ? 'Single store' : 'Dealer group'}
+                      {kind === 'single' ? 'Single store' : kind === 'group' ? 'Dealer group' : 'Partner / Reseller'}
                     </button>
                   ))}
                 </div>
 
-                <div style={{ display: 'grid', gap: 16 }}>
+                <div className="signup-fields">
+                  {/* 1 — the business name + ZIP drive the lookup, so they lead. */}
+                  <div className="sf-full">
+                    <label htmlFor="dealership" style={{ ...labelStyle, color: '#55595c' }}>
+                      {KIND_COPY[accountKind].entity} <span style={{ color: '#ff5252' }}>*</span>
+                    </label>
+                    <input
+                      id="dealership"
+                      name="dealership"
+                      type="text"
+                      value={form.dealership}
+                      onChange={handleChange}
+                      placeholder={KIND_COPY[accountKind].entityPh}
+                      style={inputStyle}
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="zip" style={{ ...labelStyle, color: '#55595c' }}>
+                      Zip Code <span style={{ color: '#ff5252' }}>*</span>
+                    </label>
+                    <input
+                      id="zip"
+                      name="zip"
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={10}
+                      value={form.zip}
+                      onChange={handleChange}
+                      placeholder="12345"
+                      style={inputStyle}
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="phone" style={{ ...labelStyle, color: '#55595c' }}>
+                      Phone <span style={{ fontSize: 12, fontWeight: 400, color: '#78828c' }}>(optional)</span>
+                    </label>
+                    <input
+                      id="phone"
+                      name="phone"
+                      type="tel"
+                      value={form.phone}
+                      onChange={handlePhoneChange}
+                      placeholder="(555) 000-0000"
+                      style={inputStyle}
+                    />
+                  </div>
+
+                  {enrich === 'looking' && (
+                    <p className="sf-full" style={{ margin: 0, fontSize: 12, color: '#78828c' }}>
+                      Looking up your business…
+                    </p>
+                  )}
+                  {enrich !== 'looking' && enrichMsg && (
+                    <p className="sf-full" style={{ margin: 0, fontSize: 12, color: '#2e7d32' }}>
+                      ✓ {enrichMsg}
+                    </p>
+                  )}
+
+                  {/* Street address appears only once the lookup (or the
+                      visitor) has one — no blank manual address box. */}
+                  {form.address.trim() !== '' && (
+                    <div className="sf-full">
+                      <label htmlFor="address" style={{ ...labelStyle, color: '#55595c' }}>
+                        Street Address
+                      </label>
+                      <input
+                        id="address"
+                        name="address"
+                        type="text"
+                        maxLength={160}
+                        value={form.address}
+                        onChange={handleAddrChange}
+                        style={inputStyle}
+                      />
+                    </div>
+                  )}
+                  {(form.city.trim() !== '' || form.state.trim() !== '') && (
+                    <>
+                      <div>
+                        <label htmlFor="city" style={{ ...labelStyle, color: '#55595c' }}>City</label>
+                        <input
+                          id="city"
+                          name="city"
+                          type="text"
+                          maxLength={80}
+                          value={form.city}
+                          onChange={handleAddrChange}
+                          style={inputStyle}
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="state" style={{ ...labelStyle, color: '#55595c' }}>State</label>
+                        <input
+                          id="state"
+                          name="state"
+                          type="text"
+                          maxLength={40}
+                          value={form.state}
+                          onChange={handleAddrChange}
+                          style={inputStyle}
+                        />
+                      </div>
+                    </>
+                  )}
+
                   <div>
                     <label htmlFor="name" style={{ ...labelStyle, color: '#55595c' }}>
                       Full Name <span style={{ color: '#ff5252' }}>*</span>
@@ -504,22 +773,6 @@ export default function CTASection({ tracking }: Props) {
                     )}
                   </div>
 
-                  <div>
-                    <label htmlFor="dealership" style={{ ...labelStyle, color: '#55595c' }}>
-                      {accountKind === 'group' ? 'Group Name' : 'Dealership Name'} <span style={{ color: '#ff5252' }}>*</span>
-                    </label>
-                    <input
-                      id="dealership"
-                      name="dealership"
-                      type="text"
-                      value={form.dealership}
-                      onChange={handleChange}
-                      placeholder={accountKind === 'group' ? 'Acme Auto Group' : 'Smith Ford Lincoln'}
-                      style={inputStyle}
-                      required
-                    />
-                  </div>
-
                   {accountKind === 'single' && (
                     <div>
                       <label htmlFor="brand" style={{ ...labelStyle, color: '#55595c' }}>
@@ -548,9 +801,9 @@ export default function CTASection({ tracking }: Props) {
                     </div>
                   )}
 
-                  <div>
+                  <div className={accountKind === 'single' ? undefined : 'sf-full'}>
                     <label htmlFor="website" style={{ ...labelStyle, color: '#55595c' }}>
-                      {accountKind === 'group' ? 'Group Website' : 'Dealership Website'} <span style={{ color: '#ff5252' }}>*</span>
+                      {KIND_COPY[accountKind].site} <span style={{ color: '#ff5252' }}>*</span>
                     </label>
                     <input
                       id="website"
@@ -561,51 +814,18 @@ export default function CTASection({ tracking }: Props) {
                       maxLength={500}
                       value={form.website}
                       onChange={handleChange}
-                      placeholder="yourdealership.com"
+                      placeholder={KIND_COPY[accountKind].sitePh}
                       style={inputStyle}
                       required
-                    />
-                  </div>
-
-                  <div>
-                    <label htmlFor="zip" style={{ ...labelStyle, color: '#55595c' }}>
-                      Zip Code <span style={{ color: '#ff5252' }}>*</span>
-                    </label>
-                    <input
-                      id="zip"
-                      name="zip"
-                      type="text"
-                      inputMode="numeric"
-                      maxLength={10}
-                      value={form.zip}
-                      onChange={handleChange}
-                      placeholder="12345"
-                      style={inputStyle}
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label htmlFor="phone" style={{ ...labelStyle, color: '#55595c' }}>
-                      Phone <span style={{ fontSize: 12, fontWeight: 400, color: '#78828c' }}>(optional)</span>
-                    </label>
-                    <input
-                      id="phone"
-                      name="phone"
-                      type="tel"
-                      value={form.phone}
-                      onChange={handleChange}
-                      placeholder="(555) 000-0000"
-                      style={inputStyle}
                     />
                   </div>
 
                   {errorMsg && (
-                    <p style={{ margin: 0, fontSize: 12, color: '#ff5252' }}>{errorMsg}</p>
+                    <p className="sf-full" style={{ margin: 0, fontSize: 12, color: '#ff5252' }}>{errorMsg}</p>
                   )}
 
                   {afterHours && (
-                    <p style={{
+                    <p className="sf-full" style={{
                       margin: 0, fontSize: 12, lineHeight: 1.5,
                       background: '#fff8e1', border: '1px solid #ffe082', color: '#7a5c00',
                       padding: '8px 10px', borderRadius: 4,
@@ -616,9 +836,12 @@ export default function CTASection({ tracking }: Props) {
                     </p>
                   )}
 
-                  <Turnstile onVerify={setTurnstileToken} />
+                  <div className="sf-full">
+                    <Turnstile onVerify={setTurnstileToken} />
+                  </div>
 
                   <button
+                    className="sf-full"
                     type="submit"
                     disabled={afterHours || status === 'loading' || emailStatus === 'checking' || emailStatus === 'taken'}
                     style={{
@@ -638,7 +861,7 @@ export default function CTASection({ tracking }: Props) {
                     {status === 'loading' ? 'Submitting…' : afterHours ? 'Sign-ups reopen at 5 AM Pacific' : 'Start Free Trial — No Credit Card'}
                   </button>
 
-                  <p style={{
+                  <p className="sf-full" style={{
                     fontSize: 12,
                     color: '#78828c',
                     textAlign: 'center',
@@ -647,7 +870,7 @@ export default function CTASection({ tracking }: Props) {
                     30-day free trial · Month-to-month · Cancel anytime
                   </p>
 
-                  <p style={{ fontSize: 12, color: '#78828c', textAlign: 'center', margin: 0 }}>
+                  <p className="sf-full" style={{ fontSize: 12, color: '#78828c', textAlign: 'center', margin: 0 }}>
                     By signing up, you agree to our{' '}
                     <a href="/terms" style={{ color: '#1976d2', textDecoration: 'none' }}>Terms of Use</a>{' '}
                     and{' '}
