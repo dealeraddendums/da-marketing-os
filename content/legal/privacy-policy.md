@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Last updated: June 5, 2026**
+**Last updated: November 5, 2026**
 
 DealerAddendums LLC ("us", "we", or "our") operates the DealerAddendums platform at **app.dealeraddendums.com** and the **dealeraddendums.com** website (together, the "Service"). This page explains what information we collect, how we use it, and the choices you have. Terms used here have the same meaning as in our Terms of Use.
 
@@ -33,6 +33,14 @@ The information we handle is limited to your vehicle inventory and pricing data,
 ## How we use your information
 
 We use the information we collect to provide and improve the Service; to authenticate you and keep your account secure (including passwordless sign-in); to communicate with you and respond to requests; to process subscriptions, orders, and label shipments; to provide customer support; to detect, prevent, and address fraud, abuse, and security issues; and to comply with our legal obligations.
+
+## SMS/Text Messaging
+
+If you contact DealerAddendums by text message or agree to receive text messages from our support team, we use your mobile phone number only to respond to your support requests and communicate about your DealerAddendums account.
+
+No mobile information will be shared with third parties or affiliates for marketing or promotional purposes. All categories of information described in this policy exclude text messaging originator opt-in data and consent; this information will not be shared with any third parties, except as necessary to deliver messages through our SMS service provider.
+
+You can opt out of text messages at any time by replying STOP. Reply HELP for assistance, or contact us at support@dealeraddendums.com or 801-415-9435. Message and data rates may apply. Message frequency varies.
 
 ## Do Not Track
 
