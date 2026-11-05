@@ -38,7 +38,7 @@ We use the information we collect to provide and improve the Service; to authent
 
 If you contact DealerAddendums by text message or agree to receive text messages from our support team, we use your mobile phone number only to respond to your support requests and communicate about your DealerAddendums account.
 
-No mobile information will be shared with third parties or affiliates for marketing or promotional purposes. All categories of information described in this policy exclude text messaging originator opt-in data and consent; this information will not be shared with any third parties, except as necessary to deliver messages through our SMS service provider.
+No mobile information will be shared with third parties or affiliates for marketing or promotional purposes. All the above categories exclude text messaging originator opt-in data and consent; this information will not be shared with any third parties.
 
 You can opt out of text messages at any time by replying STOP. Reply HELP for assistance, or contact us at support@dealeraddendums.com or 801-415-9435. Message and data rates may apply. Message frequency varies.
 
