@@ -1,6 +1,6 @@
 # Terms of Use
 
-**Last updated: June 5, 2026**
+**Last updated: November 5, 2026**
 
 Please read these Terms of Use ("Terms") carefully before using the DealerAddendums platform at **app.dealeraddendums.com** and the **dealeraddendums.com** website (together, the "Service"), operated by DealerAddendums LLC ("us", "we", or "our").
 
@@ -29,6 +29,17 @@ The Service provides tools and templates to help you create vehicle addendums, b
 ## Communications
 
 By creating an account, you agree to receive service-related communications and, where permitted, newsletters and marketing or promotional materials. You may opt out of non-essential communications at any time by following the unsubscribe link or instructions in any such email. We may still send you transactional and account messages (for example, billing, security, and service notices) that are necessary to operate the Service.
+
+## SMS Terms & Conditions
+
+**DealerAddendums** offers SMS/text messaging for customer support and account-related communications. If you contact us by text message or agree to receive text messages from our support team, you may receive messages such as responses to your support requests, account notifications, and service updates related to your DealerAddendums account. We do not send marketing or promotional text messages.
+
+- **Message frequency varies** depending on your support requests and account activity.
+- **Message and data rates may apply.** Charges are billed by your mobile carrier.
+- **Opt out at any time by replying STOP.** After you send STOP, we will confirm your unsubscribe status and you will no longer receive text messages from us unless you opt back in.
+- **Reply HELP for assistance**, or contact us at support@dealeraddendums.com or +1 (801) 415-9435.
+
+For information about how we handle your mobile phone number and opt-in data, see the SMS/Text Messaging section of our Privacy Policy. No mobile information will be shared with third parties or affiliates for marketing or promotional purposes.
 
 ## Acceptable use
 
