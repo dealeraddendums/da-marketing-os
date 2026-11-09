@@ -52,6 +52,16 @@ export async function writeRevision(args: {
   if (error) console.error('[blog-revisions] insert failed:', error.message)
 }
 
+/** On a slug rename, move the post's history to the new slug (the slug is the
+ *  post's identity, so the trail must follow it). Logged, never throws. */
+export async function rekeyRevisions(oldSlug: string, newSlug: string): Promise<void> {
+  const { error } = await supabase
+    .from('blog_post_revisions')
+    .update({ slug: newSlug })
+    .eq('slug', oldSlug)
+  if (error) console.error('[blog-revisions] rekey failed:', error.message)
+}
+
 export async function listRevisions(slug: string, limit = 50): Promise<BlogRevision[]> {
   const { data, error } = await supabase
     .from('blog_post_revisions')

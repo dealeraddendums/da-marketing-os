@@ -5,7 +5,7 @@ import matter from 'gray-matter'
 import { revalidatePath } from 'next/cache'
 import { isAdminRequest } from '@/lib/admin-auth'
 import { getPost, postFilePath, safeSlug, POSTS_DIR, type BlogFrontmatter } from '@/lib/blog'
-import { writeRevision, type RevisionEvent } from '@/lib/blog-revisions'
+import { writeRevision, rekeyRevisions, type RevisionEvent } from '@/lib/blog-revisions'
 import { submitUrlForIndexing, notifyUrlDeleted, type IndexingResult } from '@/lib/google/indexing'
 
 export const dynamic = 'force-dynamic'
@@ -136,6 +136,9 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Revision log ──
+  // On a rename, re-key the existing history to the new slug first so the
+  // post's whole revision trail follows it (the slug IS the post's identity).
+  if (renamed) await rekeyRevisions(slug, finalSlug)
   let event: RevisionEvent | null = null
   if (publishing) event = 'publish'
   else if (wasPublished) event = renamed ? 'slug_change' : 'save'
