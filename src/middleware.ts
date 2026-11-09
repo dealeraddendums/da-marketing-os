@@ -46,17 +46,24 @@ let blogMapCache: { map: BlogRouteMap; at: number } | null = null
 
 async function blogRouteMap(request: NextRequest): Promise<BlogRouteMap | null> {
   if (blogMapCache && Date.now() - blogMapCache.at < 60_000) return blogMapCache.map
-  try {
-    const res = await fetch(new URL('/api/blog-archive-map', request.url), {
-      headers: { 'x-middleware-fetch': '1' },
-    })
-    if (!res.ok) return blogMapCache?.map ?? null
-    const map = (await res.json()) as BlogRouteMap
-    blogMapCache = { map, at: Date.now() }
-    return map
-  } catch {
-    return blogMapCache?.map ?? null
+  // Fetch from the local server, not the public origin: the box cannot
+  // reliably reach its own public https URL from inside middleware (verified
+  // live 2026-11-09 — the public-origin fetch failed while localhost worked),
+  // and middleware runs in the same `next start` process as the route anyway.
+  const origins = [
+    `http://127.0.0.1:${process.env.PORT || '3020'}/api/blog-archive-map`,
+    new URL('/api/blog-archive-map', request.url).toString(),
+  ]
+  for (const origin of origins) {
+    try {
+      const res = await fetch(origin, { headers: { 'x-middleware-fetch': '1' } })
+      if (!res.ok) continue
+      const map = (await res.json()) as BlogRouteMap
+      blogMapCache = { map, at: Date.now() }
+      return map
+    } catch { /* try the next origin */ }
   }
+  return blogMapCache?.map ?? null
 }
 
 async function handleBlogPath(request: NextRequest): Promise<NextResponse | null> {
