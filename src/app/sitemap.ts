@@ -13,9 +13,10 @@ export const revalidate = 3600
 
 function getPostDates(): Record<string, string> {
   const dates: Record<string, string> = {}
-  // Drafts are excluded — getAllPosts() only returns published posts.
+  // Drafts and archived posts are excluded — getAllPosts() returns published
+  // only. lastmod = updatedAt (stamped on every published save) when present.
   for (const p of getAllPosts()) {
-    dates[p.slug] = p.frontmatter.date || new Date().toISOString()
+    dates[p.slug] = p.frontmatter.updatedAt || p.frontmatter.date || new Date().toISOString()
   }
   return dates
 }

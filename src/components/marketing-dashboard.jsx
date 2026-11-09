@@ -899,17 +899,316 @@ function AnalystBriefCard({ onGoToAnalyst }) {
   );
 }
 
-// ── Blog Queue ────────────────────────────────────────────────────────────────
-// Lists every post on the site (drafts included) from /api/blog-list.
-// Draft rows get a Preview link (the post renders at its URL with noindex)
-// and a Publish button: /api/blog-publish flips the frontmatter to
-// published, stamps today's date, revalidates blog/sitemap/homepage, and
-// submits the URL to the Google Indexing API.
+// ── Blog Queue + Editor + Archive ─────────────────────────────────────────────
+// Full lifecycle: draft → published → (unpublish → draft | archive → 410/301),
+// with revisions on every published save / publish, a review-by watchlist,
+// and slug-rename 301s. Posts are MDX files; revisions live in Supabase
+// (blog_post_revisions, migration 023).
+const charCount = (s, max) => {
+  const n = (s || "").length;
+  return <span style={{ fontSize: 11, color: n > max ? C.error : C.textMuted }}>{n}/{max}</span>;
+};
+
+const fieldStyle = {
+  width: "100%", boxSizing: "border-box", border: `1px solid ${C.border}`,
+  borderRadius: 4, padding: "7px 10px", fontSize: 13, fontFamily: "Roboto, sans-serif",
+  color: C.textPrimary, background: "#fff",
+};
+
+function FieldLabel({ children, right }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", margin: "10px 0 4px" }}>
+      <span style={{ fontSize: 12, fontWeight: 600, color: C.textSecondary }}>{children}</span>
+      {right || null}
+    </div>
+  );
+}
+
+function BlogEditor({ slug, onClose, onSaved }) {
+  const [post, setPost]       = useState(null);     // { slug, status, frontmatter, body }
+  const [revisions, setRevisions] = useState([]);
+  const [showRevisions, setShowRevisions] = useState(false);
+  const [busy, setBusy]       = useState(false);
+  const [msg, setMsg]         = useState(null);
+  const [err, setErr]         = useState(null);
+
+  // form fields
+  const [f, setF] = useState(null);
+  const set = (k, v) => setF(prev => ({ ...prev, [k]: v }));
+
+  useEffect(() => {
+    fetch(`/api/blog-get?slug=${encodeURIComponent(slug)}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.error) { setErr(data.error); return; }
+        setPost(data);
+        const fm = data.frontmatter || {};
+        setF({
+          title: fm.title || "", slug: data.slug,
+          metaTitle: fm.metaTitle || "", metaDescription: fm.metaDescription || "",
+          excerpt: fm.excerpt || "", featured: !!fm.featured,
+          updateNotice: fm.updateNotice || "", editorNote: fm.editorNote || "",
+          reviewBy: fm.reviewBy || "", body: data.body || "", changeSummary: "",
+        });
+      })
+      .catch(e => setErr(String(e)));
+    fetch(`/api/blog-revisions?slug=${encodeURIComponent(slug)}`)
+      .then(r => r.json()).then(d => setRevisions(d.revisions || [])).catch(() => {});
+  }, [slug]);
+
+  const slugChanged = f && f.slug !== slug;
+  const isPublished = post?.status === "published";
+
+  const save = async (action) => {
+    setBusy(true); setMsg(null); setErr(null);
+    try {
+      const res = await fetch("/api/blog-update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          slug, action,
+          newSlug: slugChanged ? f.slug : undefined,
+          title: f.title, metaTitle: f.metaTitle, metaDescription: f.metaDescription,
+          excerpt: f.excerpt, featured: f.featured, body: f.body,
+          updateNotice: f.updateNotice, editorNote: f.editorNote, reviewBy: f.reviewBy,
+          changeSummary: f.changeSummary,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+      const parts = [`Saved${data.status === "published" ? " (live)" : " as draft"}.`];
+      if (data.renamedFrom) parts.push(`Slug changed — /blog/${data.renamedFrom} now 301s to /blog/${data.slug}.`);
+      if (data.indexing) parts.push(data.indexing.ok ? "Re-submitted to Google." : `Indexing submit failed (${data.indexing.detail || "see logs"}).`);
+      setMsg(parts.join(" "));
+      onSaved(data.slug);
+    } catch (e) { setErr(`Save failed — ${e.message}`); }
+    setBusy(false);
+  };
+
+  const unpublish = async () => {
+    if (!window.confirm("Unpublish this post? It goes back to draft (noindex preview), leaves the blog index + sitemap, and Google is told the URL was removed.")) return;
+    setBusy(true); setErr(null);
+    try {
+      const res = await fetch("/api/blog-unpublish", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+      setMsg("Unpublished — the post is a draft again.");
+      onSaved(slug);
+      setPost(p => ({ ...p, status: "draft" }));
+    } catch (e) { setErr(`Unpublish failed — ${e.message}`); }
+    setBusy(false);
+  };
+
+  const restoreRevision = (rev) => {
+    const fm = rev.frontmatter || {};
+    setF(prev => ({
+      ...prev,
+      title: rev.title ?? fm.title ?? prev.title,
+      metaTitle: rev.meta_title ?? fm.metaTitle ?? "",
+      metaDescription: rev.meta_description ?? fm.metaDescription ?? "",
+      excerpt: fm.excerpt ?? prev.excerpt,
+      updateNotice: fm.updateNotice ?? "",
+      editorNote: fm.editorNote ?? "",
+      reviewBy: fm.reviewBy ?? "",
+      featured: !!fm.featured,
+      body: rev.body || prev.body,
+      changeSummary: `Restored revision from ${new Date(rev.saved_at).toLocaleString()}`,
+    }));
+    setShowRevisions(false);
+    setMsg(`Loaded revision from ${new Date(rev.saved_at).toLocaleString()} into the editor — review, then save. Nothing is published until you do.`);
+  };
+
+  if (err && !f) return (
+    <Card><SectionTitle action={<SmallButton onClick={onClose}>Close</SmallButton>}>Edit post</SectionTitle>
+      <div style={{ fontSize: 13, color: C.error, padding: 12 }}>{err}</div></Card>
+  );
+  if (!f) return (
+    <Card><SectionTitle>Edit post</SectionTitle>
+      <div style={{ fontSize: 13, color: C.textMuted, padding: 12 }}>Loading…</div></Card>
+  );
+
+  return (
+    <Card>
+      <SectionTitle action={
+        <div style={{ display: "flex", gap: 8 }}>
+          <Badge variant={isPublished ? "success" : "warning"}>{isPublished ? "Published" : "Draft"}</Badge>
+          <SmallButton onClick={() => window.open(`/blog/${slug}`, "_blank")}>Preview</SmallButton>
+          <SmallButton onClick={onClose}>Close</SmallButton>
+        </div>
+      }>Edit: {f.title || slug}</SectionTitle>
+
+      {msg && <div style={{ fontSize: 12, color: C.success, padding: "4px 0" }}>{msg}</div>}
+      {err && <div style={{ fontSize: 12, color: C.error, padding: "4px 0" }}>{err}</div>}
+
+      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10 }}>
+        <div>
+          <FieldLabel>Title</FieldLabel>
+          <input style={fieldStyle} value={f.title} onChange={e => set("title", e.target.value)} />
+        </div>
+        <div>
+          <FieldLabel right={slugChanged && isPublished
+            ? <span style={{ fontSize: 11, color: C.warning, fontWeight: 600 }}>old URL will 301 →</span>
+            : null}>Slug</FieldLabel>
+          <input style={{ ...fieldStyle, fontFamily: "monospace", fontSize: 12 }} value={f.slug}
+            onChange={e => set("slug", e.target.value)} />
+          {slugChanged && (
+            <div style={{ fontSize: 11, color: isPublished ? C.warning : C.textMuted, marginTop: 3 }}>
+              {isPublished
+                ? `Changing a published slug: /blog/${slug} will permanently redirect to the new URL, and Google is told the old URL is gone.`
+                : "Draft slug change — the file is renamed, no redirect needed."}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <div>
+          <FieldLabel right={charCount(f.metaTitle, 60)}>Meta title (optional — overrides title in &lt;title&gt;)</FieldLabel>
+          <input style={fieldStyle} value={f.metaTitle} onChange={e => set("metaTitle", e.target.value)} />
+        </div>
+        <div>
+          <FieldLabel right={charCount(f.metaDescription, 155)}>Meta description</FieldLabel>
+          <input style={fieldStyle} value={f.metaDescription} onChange={e => set("metaDescription", e.target.value)} />
+        </div>
+      </div>
+
+      <FieldLabel>Update notice <span style={{ fontWeight: 400, color: C.textMuted }}>(public — banner at the top of the post when set)</span></FieldLabel>
+      <textarea style={{ ...fieldStyle, minHeight: 44 }} value={f.updateNotice}
+        placeholder={'e.g. "Updated Nov 2026: the FTC CARS Rule was vacated in January 2025; this post has been revised."'}
+        onChange={e => set("updateNotice", e.target.value)} />
+
+      <FieldLabel>Body (MDX — same format the generator produces)</FieldLabel>
+      <textarea style={{ ...fieldStyle, minHeight: 320, fontFamily: "monospace", fontSize: 12, lineHeight: 1.5 }}
+        value={f.body} onChange={e => set("body", e.target.value)} />
+
+      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 10 }}>
+        <div>
+          <FieldLabel>Editor note <span style={{ fontWeight: 400, color: C.textMuted }}>(internal, never rendered)</span></FieldLabel>
+          <input style={fieldStyle} value={f.editorNote} onChange={e => set("editorNote", e.target.value)} />
+        </div>
+        <div>
+          <FieldLabel>Review by <span style={{ fontWeight: 400, color: C.textMuted }}>(internal)</span></FieldLabel>
+          <input type="date" style={fieldStyle} value={f.reviewBy} onChange={e => set("reviewBy", e.target.value)} />
+        </div>
+        <div>
+          <FieldLabel>Featured (footer)</FieldLabel>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: C.textPrimary, paddingTop: 6 }}>
+            <input type="checkbox" checked={f.featured} onChange={e => set("featured", e.target.checked)} />
+            Show in homepage footer
+          </label>
+        </div>
+      </div>
+
+      {isPublished && (
+        <div>
+          <FieldLabel>Change summary <span style={{ fontWeight: 400, color: C.textMuted }}>(stored on the revision)</span></FieldLabel>
+          <input style={fieldStyle} value={f.changeSummary}
+            placeholder='e.g. "Removed CARS Rule claim — rule vacated 5th Cir. Jan 2025"'
+            onChange={e => set("changeSummary", e.target.value)} />
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap", alignItems: "center" }}>
+        {!isPublished && <>
+          <SmallButton variant="secondary" disabled={busy} onClick={() => save("save")}>Save Draft</SmallButton>
+          <SmallButton variant="primary" disabled={busy} onClick={() => {
+            if (window.confirm("Save & publish this post live?")) save("publish");
+          }}>Save &amp; Publish</SmallButton>
+        </>}
+        {isPublished && <>
+          <SmallButton variant="primary" disabled={busy} onClick={() => save("save")}>Save Changes</SmallButton>
+          <SmallButton variant="secondary" disabled={busy} onClick={unpublish}>Unpublish</SmallButton>
+        </>}
+        <SmallButton variant="secondary" onClick={() => setShowRevisions(s => !s)}>
+          {showRevisions ? "Hide revisions" : `Revisions (${revisions.length})`}
+        </SmallButton>
+        {busy && <span style={{ fontSize: 12, color: C.textMuted }}>Working…</span>}
+      </div>
+
+      {showRevisions && (
+        <div style={{ marginTop: 12, border: `1px solid ${C.border}`, borderRadius: 4, padding: 10 }}>
+          {revisions.length === 0 && (
+            <div style={{ fontSize: 12, color: C.textMuted }}>
+              No revisions yet. Revisions are written on publish and on every save of a published post.
+            </div>
+          )}
+          {revisions.map(rev => (
+            <div key={rev.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: `1px solid ${C.border}` }}>
+              <div style={{ fontSize: 12, color: C.textPrimary }}>
+                <strong>{rev.event}</strong> · {new Date(rev.saved_at).toLocaleString()} · {rev.saved_by || "admin"}
+                {rev.change_summary && <span style={{ color: C.textMuted }}> — {rev.change_summary}</span>}
+              </div>
+              <SmallButton onClick={() => restoreRevision(rev)}>Restore</SmallButton>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function ArchiveModal({ post, publishedPosts, onClose, onDone }) {
+  const [reason, setReason] = useState("");
+  const [redirect, setRedirect] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+
+  const archive = async () => {
+    if (!reason.trim()) { setErr("A reason is required."); return; }
+    setBusy(true); setErr(null);
+    try {
+      const res = await fetch("/api/blog-archive", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug: post.slug, reason, redirectSlug: redirect || undefined }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+      onDone(data);
+    } catch (e) { setErr(`Archive failed — ${e.message}`); setBusy(false); }
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(42,43,60,0.5)", zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ background: "#fff", borderRadius: 6, padding: 24, width: 520, maxWidth: "92vw" }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: C.textPrimary, marginBottom: 6 }}>
+          Archive “{post.title}”
+        </div>
+        <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12 }}>
+          Removes it from the blog index, related posts, footer, and sitemap, and tells Google the URL is gone.
+          {" "}With a redirect target the old URL 301s there; without one it returns 410 Gone with a retired-article page.
+        </div>
+        <FieldLabel>Reason (required)</FieldLabel>
+        <textarea style={{ ...fieldStyle, minHeight: 56 }} value={reason}
+          placeholder='e.g. "CARS Rule vacated 5th Cir. Jan 2025 — superseded by the post-CARS disclosure post"'
+          onChange={e => setReason(e.target.value)} />
+        <FieldLabel>Redirect old URL to (optional)</FieldLabel>
+        <select style={fieldStyle} value={redirect} onChange={e => setRedirect(e.target.value)}>
+          <option value="">No redirect — return 410 Gone</option>
+          {publishedPosts.filter(p => p.slug !== post.slug).map(p => (
+            <option key={p.slug} value={p.slug}>{p.title}</option>
+          ))}
+        </select>
+        {err && <div style={{ fontSize: 12, color: C.error, marginTop: 8 }}>{err}</div>}
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 16 }}>
+          <SmallButton onClick={onClose}>Cancel</SmallButton>
+          <SmallButton variant="danger" disabled={busy} onClick={archive}>{busy ? "Archiving…" : "Archive post"}</SmallButton>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function BlogQueue() {
   const [posts, setPosts] = useState(null);
   const [loading, setLoading] = useState(true);
   const [publishing, setPublishing] = useState(null); // slug in flight
   const [msg, setMsg] = useState(null);
+  const [editing, setEditing] = useState(null);       // slug in the editor
+  const [archiving, setArchiving] = useState(null);   // post in the archive modal
+  const [showArchived, setShowArchived] = useState(false);
 
   const load = () => {
     fetch("/api/blog-list")
@@ -941,59 +1240,135 @@ function BlogQueue() {
     setPublishing(null);
   };
 
+  const restore = async (post) => {
+    if (!window.confirm(`Restore "${post.title}" to DRAFT? It must be re-reviewed and re-published before going live again.`)) return;
+    setMsg(null);
+    try {
+      const res = await fetch("/api/blog-restore", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug: post.slug }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+      setMsg(`Restored "${post.title}" to draft.`);
+      load();
+    } catch (e) { setMsg(`Restore failed — ${e.message}`); }
+  };
+
+  if (editing) {
+    return <BlogEditor slug={editing} onClose={() => { setEditing(null); load(); }}
+      onSaved={(newSlug) => { if (newSlug !== editing) setEditing(newSlug); load(); }} />;
+  }
+
   const list = posts || [];
-  const drafts = list.filter(p => p.status === "draft").length;
+  const active = list.filter(p => p.status !== "archived");
+  const overdue = active.filter(p => p.reviewOverdue);
+  const archived = list.filter(p => p.status === "archived");
+  const publishedPosts = list.filter(p => p.status === "published");
+  const drafts = active.filter(p => p.status === "draft").length;
+
+  const row = (post, i, last, extra) => (
+    <div key={post.slug} style={{
+      display: "flex", alignItems: "center", justifyContent: "space-between",
+      padding: "10px 0", borderBottom: !last ? `1px solid ${C.border}` : "none",
+    }}>
+      <div style={{ flex: 1, minWidth: 0, paddingRight: 12 }}>
+        <a href={post.url} target="_blank" rel="noreferrer" style={{
+          fontSize: 14, color: C.textPrimary, textDecoration: "none", display: "block",
+          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+        }}>
+          {post.title || post.slug}
+        </a>
+        <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>
+          {post.date}
+          {post.updatedAt ? ` · updated ${post.updatedAt}` : ""}
+          {post.featured ? " · featured" : ""}
+          {post.updateNotice ? " · has update notice" : ""}
+          {post.reviewBy && !post.reviewOverdue ? ` · review by ${post.reviewBy}` : ""}
+          {post.status === "archived" && post.archivedReason
+            ? ` · archived ${post.archivedAt}: ${post.archivedReason}${post.archiveRedirectSlug ? ` → /blog/${post.archiveRedirectSlug}` : " (410)"}`
+            : ""}
+        </div>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+        {post.reviewOverdue && <Badge variant="warning">Review overdue</Badge>}
+        <Badge variant={post.status === "published" ? "success" : post.status === "draft" ? "warning" : "neutral"}>
+          {post.status === "published" ? "Published" : post.status === "draft" ? "Draft" : "Archived"}
+        </Badge>
+        {extra}
+      </div>
+    </div>
+  );
+
+  const activeButtons = (post) => (
+    <>
+      <SmallButton onClick={() => setEditing(post.slug)}>Edit</SmallButton>
+      <SmallButton onClick={() => window.open(post.url, "_blank")}>Preview</SmallButton>
+      {post.status === "draft" && (
+        <SmallButton variant="primary" disabled={publishing === post.slug} onClick={() => publish(post)}>
+          {publishing === post.slug ? "Publishing…" : "Publish"}
+        </SmallButton>
+      )}
+      <SmallButton variant="danger" onClick={() => setArchiving(post)}>Archive</SmallButton>
+    </>
+  );
+
   return (
     <Card>
       <SectionTitle
-        action={<Badge variant="neutral">{loading ? "Loading…" : `${list.length} posts · ${drafts} drafts`}</Badge>}
+        action={<Badge variant="neutral">{loading ? "Loading…" : `${active.length} posts · ${drafts} drafts · ${archived.length} archived`}</Badge>}
       >Blog Queue</SectionTitle>
       {msg && (
-        <div style={{ fontSize: 12, color: msg.startsWith("Publish failed") ? C.error : C.success, padding: "4px 0 8px" }}>
+        <div style={{ fontSize: 12, color: /failed/.test(msg) ? C.error : C.success, padding: "4px 0 8px" }}>
           {msg}
         </div>
       )}
-      {!loading && list.length === 0 && (
+
+      {overdue.length > 0 && (
+        <div style={{ background: "#fff3e0", border: "1px solid #ffb74d", borderRadius: 4, padding: "8px 12px", marginBottom: 10 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#e65100", marginBottom: 4 }}>
+            ⚠ {overdue.length} post{overdue.length > 1 ? "s" : ""} past the review-by date — re-verify cited laws/rules/cases
+          </div>
+          {overdue.map((p, i) => row(p, i, i === overdue.length - 1, activeButtons(p)))}
+        </div>
+      )}
+
+      {!loading && active.length === 0 && (
         <div style={{ fontSize: 13, color: C.textMuted, padding: "16px 0", textAlign: "center" }}>
           No posts yet. Author one in the Blog Generator above.
         </div>
       )}
-      <div style={{ display: "grid", gap: 8 }}>
-        {list.map((post, i) => (
-          <div key={post.slug} style={{
-            display: "flex", alignItems: "center", justifyContent: "space-between",
-            padding: "10px 0",
-            borderBottom: i < list.length - 1 ? `1px solid ${C.border}` : "none",
-          }}>
-            <div style={{ flex: 1, minWidth: 0, paddingRight: 12 }}>
-              <a href={post.url} target="_blank" rel="noreferrer" style={{
-                fontSize: 14, color: C.textPrimary, textDecoration: "none", display: "block",
-                whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-              }}>
-                {post.title || post.slug}
-              </a>
-              <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>
-                {post.date}{post.featured ? " · featured" : ""}
-              </div>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-              <Badge variant={post.status === "draft" ? "warning" : "success"}>
-                {post.status === "draft" ? "Draft" : "Published"}
-              </Badge>
-              <SmallButton onClick={() => window.open(post.url, "_blank")}>Preview</SmallButton>
-              {post.status === "draft" && (
-                <SmallButton
-                  variant="primary"
-                  disabled={publishing === post.slug}
-                  onClick={() => publish(post)}
-                >
-                  {publishing === post.slug ? "Publishing…" : "Publish"}
-                </SmallButton>
-              )}
-            </div>
-          </div>
-        ))}
+      <div style={{ display: "grid", gap: 0 }}>
+        {active.filter(p => !p.reviewOverdue).map((post, i, arr) => row(post, i, i === arr.length - 1, activeButtons(post)))}
       </div>
+
+      {archived.length > 0 && (
+        <div style={{ marginTop: 14 }}>
+          <button onClick={() => setShowArchived(s => !s)} style={{
+            background: "none", border: "none", cursor: "pointer", padding: 0,
+            fontSize: 12, fontWeight: 700, color: C.textSecondary,
+          }}>
+            {showArchived ? "▾" : "▸"} Archived ({archived.length})
+          </button>
+          {showArchived && (
+            <div style={{ marginTop: 6, opacity: 0.85 }}>
+              {archived.map((post, i) => row(post, i, i === archived.length - 1,
+                <SmallButton onClick={() => restore(post)}>Restore</SmallButton>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {archiving && (
+        <ArchiveModal post={archiving} publishedPosts={publishedPosts}
+          onClose={() => setArchiving(null)}
+          onDone={(data) => {
+            setArchiving(null);
+            setMsg(`Archived — old URL now ${data.redirect ? `301s to /blog/${data.redirect}` : "returns 410 Gone"}; Google notified (URL_DELETED${data.indexing?.ok ? "" : " submit failed — see logs"}).`);
+            load();
+          }} />
+      )}
     </Card>
   );
 }

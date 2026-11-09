@@ -23,7 +23,17 @@ export interface IndexingResult {
   detail?: string
 }
 
+/** URL_DELETED notification — used on archive / unpublish / slug change so
+ *  Google drops the old URL promptly instead of waiting for the 410/301. */
+export async function notifyUrlDeleted(url: string): Promise<IndexingResult> {
+  return notify(url, 'URL_DELETED')
+}
+
 export async function submitUrlForIndexing(url: string): Promise<IndexingResult> {
+  return notify(url, 'URL_UPDATED')
+}
+
+async function notify(url: string, type: 'URL_UPDATED' | 'URL_DELETED'): Promise<IndexingResult> {
   let token: string
   try {
     token = await getAccessToken()
@@ -39,12 +49,12 @@ export async function submitUrlForIndexing(url: string): Promise<IndexingResult>
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ url, type: 'URL_UPDATED' }),
+    body: JSON.stringify({ url, type }),
   })
 
   const text = await res.text()
   if (!res.ok) {
-    console.error(`[google-indexing] publish failed for ${url}: HTTP ${res.status} — ${text}`)
+    console.error(`[google-indexing] ${type} failed for ${url}: HTTP ${res.status} — ${text}`)
     let detail = text
     try {
       const parsed = JSON.parse(text)
@@ -53,6 +63,6 @@ export async function submitUrlForIndexing(url: string): Promise<IndexingResult>
     return { ok: false, url, status: res.status, detail }
   }
 
-  console.log(`[google-indexing] submitted ${url} (HTTP ${res.status})`)
+  console.log(`[google-indexing] ${type} ${url} (HTTP ${res.status})`)
   return { ok: true, url, status: res.status }
 }

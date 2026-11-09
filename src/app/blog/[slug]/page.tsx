@@ -1,9 +1,9 @@
-import { notFound } from 'next/navigation'
+import { notFound, permanentRedirect } from 'next/navigation'
 import { MDXRemote } from 'next-mdx-remote/rsc'
 import type { Metadata } from 'next'
 import LoginMenu from '@/components/marketing/LoginMenu'
 import PostBoilerplate from '@/components/blog/PostBoilerplate'
-import { getPost, getAllPosts, getRelatedPosts } from '@/lib/blog'
+import { getPost, getAllPosts, getRelatedPosts, getBlogRouteMap } from '@/lib/blog'
 
 interface PageProps {
   params: { slug: string }
@@ -21,14 +21,14 @@ export async function generateStaticParams() {
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const post = getPost(params.slug)
-  if (!post) return {}
+  if (!post || post.status === 'archived') return {}
   const { frontmatter: fm } = post
   const description = fm.metaDescription || fm.excerpt || ''
   const url = `${SITE_URL}/blog/${params.slug}`
   const ogImage = `${SITE_URL}/api/og?title=${encodeURIComponent(fm.title)}&type=blog`
 
   return {
-    title: `${fm.title} | DealerAddendums Blog`,
+    title: `${fm.metaTitle || fm.title} | DealerAddendums Blog`,
     description,
     ...(post.draft ? { robots: { index: false, follow: false } } : {}),
     openGraph: {
@@ -54,7 +54,21 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function BlogPost({ params }: PageProps) {
   const post = getPost(params.slug)
-  if (!post) notFound()
+
+  // Fallbacks for renamed / archived posts. The middleware normally answers
+  // these with a true 301 / 410 before the page runs; this covers a cold
+  // archive-map cache or a direct render.
+  if (!post) {
+    const { moved } = getBlogRouteMap()
+    if (moved[params.slug]) permanentRedirect(`/blog/${moved[params.slug]}`)
+    notFound()
+  }
+  if (post.status === 'archived') {
+    const target = post.frontmatter.archiveRedirectSlug
+    const targetPost = target ? getPost(target) : null
+    if (targetPost && targetPost.status === 'published') permanentRedirect(`/blog/${target}`)
+    notFound()
+  }
 
   const { frontmatter: fm, content, readingTime: readTime } = post
   const related = getRelatedPosts(params.slug, 3)
@@ -75,7 +89,7 @@ export default async function BlogPost({ params }: PageProps) {
     headline: fm.title,
     description: fm.metaDescription || fm.excerpt || '',
     datePublished: fm.date,
-    dateModified: fm.date,
+    dateModified: fm.updatedAt || fm.date,
     author: { '@type': 'Person', name: fm.author || 'DealerAddendums' },
     publisher: {
       '@type': 'Organization',
@@ -198,6 +212,11 @@ export default async function BlogPost({ params }: PageProps) {
                 {new Date(fm.date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
               </span>
             )}
+            {fm.updatedAt && fm.updatedAt !== fm.date && (
+              <span style={{ fontSize: 13, color: '#78828c' }}>
+                · Updated {new Date(fm.updatedAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+              </span>
+            )}
             <span style={{
               fontSize: 11,
               fontWeight: 700,
@@ -223,6 +242,20 @@ export default async function BlogPost({ params }: PageProps) {
           lineHeight: 1.8,
           color: '#333333',
         }}>
+          {fm.updateNotice && (
+            <div style={{
+              background: '#e3f2fd',
+              border: '1px solid #90caf9',
+              borderRadius: 6,
+              padding: '14px 18px',
+              marginBottom: 28,
+              fontSize: 14,
+              lineHeight: 1.6,
+              color: '#0d47a1',
+            }}>
+              <strong style={{ fontWeight: 700 }}>Update: </strong>{fm.updateNotice}
+            </div>
+          )}
           <MDXRemote source={content} />
           <PostBoilerplate />
         </div>

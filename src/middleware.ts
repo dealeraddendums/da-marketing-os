@@ -30,7 +30,57 @@ function weightedPick(options: string[], weights: number[]): string {
 // appears on the second pageview of the same session.
 const SESSION_WINDOW_MS = 30 * 60 * 1000
 
-export function middleware(request: NextRequest) {
+// ── Blog archive / rename routing ────────────────────────────────────────────
+// Middleware can't read content/posts (edge runtime, no fs), so it consults
+// /api/blog-archive-map and caches the result in module scope for 60s.
+//   moved[old] = new slug                → 301 (renamed published post)
+//   archived[slug] = replacement | null  → 301 to replacement, or REWRITE to
+//     /api/blog-retired/<slug> which answers a true 410 Gone.
+// On any fetch failure the request passes through — the /blog/[slug] page has
+// a same-shaped fallback (redirect / notFound), so nothing breaks.
+interface BlogRouteMap {
+  moved: Record<string, string>
+  archived: Record<string, string | null>
+}
+let blogMapCache: { map: BlogRouteMap; at: number } | null = null
+
+async function blogRouteMap(request: NextRequest): Promise<BlogRouteMap | null> {
+  if (blogMapCache && Date.now() - blogMapCache.at < 60_000) return blogMapCache.map
+  try {
+    const res = await fetch(new URL('/api/blog-archive-map', request.url), {
+      headers: { 'x-middleware-fetch': '1' },
+    })
+    if (!res.ok) return blogMapCache?.map ?? null
+    const map = (await res.json()) as BlogRouteMap
+    blogMapCache = { map, at: Date.now() }
+    return map
+  } catch {
+    return blogMapCache?.map ?? null
+  }
+}
+
+async function handleBlogPath(request: NextRequest): Promise<NextResponse | null> {
+  const slug = request.nextUrl.pathname.replace(/^\/blog\//, '').replace(/\/$/, '')
+  if (!slug || slug.includes('/')) return null
+  const map = await blogRouteMap(request)
+  if (!map) return null
+  if (map.moved[slug]) {
+    return NextResponse.redirect(new URL(`/blog/${map.moved[slug]}`, request.url), 301)
+  }
+  if (slug in map.archived) {
+    const target = map.archived[slug]
+    if (target) return NextResponse.redirect(new URL(`/blog/${target}`, request.url), 301)
+    return NextResponse.rewrite(new URL(`/api/blog-retired/${slug}`, request.url))
+  }
+  return null
+}
+
+export async function middleware(request: NextRequest) {
+  // Blog posts: only archive/rename routing, none of the landing-page
+  // attribution logic below (which was always scoped to / and /lp).
+  if (request.nextUrl.pathname.startsWith('/blog/')) {
+    return (await handleBlogPath(request)) ?? NextResponse.next()
+  }
   const { searchParams } = new URL(request.url)
 
   const utmTerm     = searchParams.get('utm_term')     || ''
@@ -144,5 +194,7 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/', '/lp/:path*'],
+  // /blog/:path* is ONLY for archive/rename routing (301/410) — the function
+  // returns before any attribution/AB logic runs on blog paths.
+  matcher: ['/', '/lp/:path*', '/blog/:path*'],
 }

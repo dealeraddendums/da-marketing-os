@@ -1062,3 +1062,68 @@ pm2 logs da-marketing --lines 200 --nostream | grep -E '\[ai\]|\[chat\]|\[reputa
 `lib/ai.ts` logs the **entire** Anthropic error body on failure. Anthropic's
 error JSON names the exact cause (`"model: claude-sonnet-4-20250514"`), which
 is the difference between a one-line fix and another quarter of silence.
+
+---
+
+## Blog lifecycle (draft → published → archived) — 2026-11-09
+
+**Posts are MDX files in `content/posts/`, NOT database rows.** All lifecycle
+state lives in frontmatter; the only DB object is the revision log
+(`blog_post_revisions`, **migration 023** — RLS on, zero policies, service-role
+only, the house default-deny pattern). `src/lib/blog.ts` is the single reader
+every consumer goes through (blog index, `[slug]` page, sitemap, homepage
+footer, middleware archive map, admin routes).
+
+### Frontmatter fields
+
+| Field | Meaning |
+|---|---|
+| `status` | `draft` \| `published` \| `archived` — **absent = published** (legacy posts) |
+| `date` | published_at — stamped at publish |
+| `updatedAt` | stamped on every save of a published post; JSON-LD `dateModified` + sitemap lastmod |
+| `archivedAt` / `archivedReason` | set by Archive (reason is required) |
+| `archiveRedirectSlug` | optional published replacement → old URL 301s there |
+| `previousSlugs[]` | old slugs after a rename of a published post → 301 sources |
+| `editorNote` | internal, never rendered |
+| `updateNotice` | public banner at the top of the post |
+| `metaTitle` | optional `<title>` override (≤60 in the editor) |
+| `reviewBy` | internal review-due date; overdue = amber badge at the top of the Blog Queue + a `contentReview` block in the Analyst snapshot. Posts citing a law/rule/court case get ~6 months. |
+| `faq` / `related` / `featured` | FAQPage JSON-LD · curated related posts · homepage footer Resources row |
+
+### Status behavior
+
+- **draft** — renders at its URL as a noindex/nofollow preview with a DRAFT
+  banner; excluded from index, sitemap, footer, related-fallback.
+- **published** — normal. Saves stamp `updatedAt`, write a revision, re-submit
+  the URL to the Indexing API, revalidate blog + sitemap + home.
+- **archived** — gone from everything. Old URL: **301** to
+  `archiveRedirectSlug` when set, else a branded **410 Gone** (never a
+  noindex-but-200 page). Served by `src/middleware.ts` (matcher now includes
+  `/blog/:path*`; blog paths ONLY get archive/rename routing — no attribution
+  logic), which consults `/api/blog-archive-map` with a 60 s module cache and
+  rewrites 410s to `/api/blog-retired/[slug]`. The `[slug]` page has a
+  same-shaped fallback (redirect / 404) for a cold cache. `URL_DELETED` is sent
+  to the Indexing API on archive, unpublish, and published-slug rename
+  (`notifyUrlDeleted` in `lib/google/indexing.ts`).
+
+### Revisions (`blog_post_revisions`)
+
+Written on: every save of a published post (`save` / `slug_change`), publish
+(`publish`), unpublish, archive, restore. Draft saves are NOT logged (publish
+only). Rows snapshot full frontmatter + body; the editor's Restore loads a
+revision into the form — it never auto-publishes. A failed revision write is
+logged and never blocks the editor action.
+
+### Admin routes (all `isAdminRequest`-gated except the public archive map)
+
+`GET /api/blog-get` · `GET /api/blog-list` · `GET /api/blog-revisions` ·
+`POST /api/blog-update` (editor save; `action: save|publish`; `newSlug`
+renames + auto-301) · `POST /api/blog-publish` · `POST /api/blog-unpublish`
+(published → draft) · `POST /api/blog-archive` (reason required; optional
+published redirect target) · `POST /api/blog-restore` (archived → **draft**,
+re-review before re-publish) · `GET /api/blog-archive-map` (public, tiny).
+
+UI: Admin → Blog & Social → Blog Queue (overdue-review section on top,
+Edit/Preview/Publish/Archive per row, collapsible Archived section with
+Restore) + the inline editor (meta counts, update notice, editor note,
+review-by, change summary, revision history).

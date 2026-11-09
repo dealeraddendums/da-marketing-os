@@ -3,7 +3,8 @@ import { readFileSync, writeFileSync } from 'fs'
 import matter from 'gray-matter'
 import { revalidatePath } from 'next/cache'
 import { isAdminRequest } from '@/lib/admin-auth'
-import { postFilePath, isDraft, type BlogFrontmatter } from '@/lib/blog'
+import { postFilePath, postStatus, type BlogFrontmatter } from '@/lib/blog'
+import { writeRevision } from '@/lib/blog-revisions'
 import { submitUrlForIndexing } from '@/lib/google/indexing'
 
 export const dynamic = 'force-dynamic'
@@ -33,12 +34,26 @@ export async function POST(req: NextRequest) {
   const raw = readFileSync(filePath, 'utf-8')
   const parsed = matter(raw)
   const fm = parsed.data as BlogFrontmatter
-  const wasDraft = isDraft(fm)
+  const status = postStatus(fm)
+  if (status === 'archived') {
+    return NextResponse.json(
+      { error: 'Post is archived — restore it to draft and re-review before publishing' },
+      { status: 409 }
+    )
+  }
+  const wasDraft = status === 'draft'
 
   if (wasDraft) {
     fm.status = 'published'
     fm.date = new Date().toISOString().split('T')[0] // published_at = today
     writeFileSync(filePath, matter.stringify(parsed.content, fm), 'utf-8')
+    await writeRevision({
+      slug,
+      event: 'publish',
+      frontmatter: fm,
+      body: parsed.content,
+      changeSummary: 'Published from the Blog Queue',
+    })
   }
 
   // The index page, the post itself and the sitemap are all ISR — make the

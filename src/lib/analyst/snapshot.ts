@@ -100,6 +100,15 @@ export interface AnalystSnapshot {
     adsConversionsZeroAccounts: string[]
     gscPropertyIsDomainLevel: boolean
   }
+  /**
+   * Blog posts past their internal review-by date (posts citing laws, rules
+   * or court cases are set to re-verify every ~6 months). Read from the MDX
+   * frontmatter via lib/blog — not a Google source. Stale legal content is a
+   * content-quality risk the brief should surface.
+   */
+  contentReview?: {
+    overdue: { slug: string; title: string; reviewBy: string; status: string }[]
+  }
 }
 
 function roughTokens(value: unknown): number {
@@ -257,6 +266,28 @@ export async function buildSnapshot(days = 30): Promise<AnalystSnapshot> {
       'marketing site alone.',
     )
   }
+  // ── Blog content review (local fs, not a Google source) ──────────────────
+  let contentReview: AnalystSnapshot['contentReview']
+  try {
+    const { getOverdueReviews } = await import('../blog')
+    const overdue = getOverdueReviews().slice(0, 10).map(p => ({
+      slug: p.slug,
+      title: p.frontmatter.title,
+      reviewBy: p.frontmatter.reviewBy || '',
+      status: p.status,
+    }))
+    if (overdue.length) {
+      contentReview = { overdue }
+      notes.push(
+        `${overdue.length} blog post(s) are past their internal review-by date ` +
+        '(set on posts citing laws, rules or court cases). Their legal claims may ' +
+        'be stale; recommend re-verification, not traffic tactics, for these.',
+      )
+    }
+  } catch (e) {
+    errors.push({ source: 'content-review', error: msg(e) })
+  }
+
   if (errors.length) {
     notes.push(
       `Some sources failed and are absent from this snapshot: ` +
@@ -295,6 +326,7 @@ export async function buildSnapshot(days = 30): Promise<AnalystSnapshot> {
       adsConversionsZeroAccounts,
       gscPropertyIsDomainLevel,
     },
+    ...(contentReview ? { contentReview } : {}),
   }
 
   snapshot.meta.approxTokens = roughTokens(snapshot)
