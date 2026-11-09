@@ -11,8 +11,21 @@
 // A revision snapshots the full frontmatter + body so Restore can reproduce
 // the post exactly. Failures are logged and never fail the editor action —
 // losing one history row is better than blocking a save.
-import { supabase } from './supabase'
+import { createClient } from '@supabase/supabase-js'
 import type { BlogFrontmatter } from './blog'
+
+// ⚠️ Own client with cache:'no-store' on every request. Next 14 patches
+// global fetch with its file-backed Data Cache, and supabase-js SELECTs are
+// GETs keyed on the PostgREST URL — so the shared client's reads can return
+// STALE rows even in a force-dynamic route (verified live 2026-11-09: raw
+// PostgREST showed 6 revision rows while the app route kept answering with a
+// cached 2). Writes (POST/PATCH) are never cached, which is why inserts
+// worked while the history listing froze.
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  { global: { fetch: (input: any, init?: any) => fetch(input, { ...init, cache: 'no-store' }) } }
+)
 
 export type RevisionEvent = 'save' | 'publish' | 'unpublish' | 'archive' | 'restore' | 'slug_change'
 
