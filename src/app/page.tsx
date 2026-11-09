@@ -13,6 +13,7 @@ import CTASection from '@/components/marketing/CTASection'
 import AppSection from '@/components/marketing/AppSection'
 import RestylerSection from '@/components/marketing/RestylerSection'
 import LayoutA from '@/components/marketing/LayoutA'
+import { getFooterPosts } from '@/lib/blog'
 
 function HeroSkeleton() {
   return (
@@ -124,7 +125,7 @@ export default async function HomePage({ searchParams }: PageProps) {
       <PricingSection tracking={tracking} />
       <TestimonialsSection dealerType={ctx.dealerType} />
       <RestylerSection />
-      <CTASection tracking={tracking} />
+      <CTASection tracking={tracking} resources={getFooterPosts()} />
     </main>
   )
 }

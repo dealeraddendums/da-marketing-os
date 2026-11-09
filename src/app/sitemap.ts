@@ -1,21 +1,22 @@
 import { MetadataRoute } from 'next'
-import { readdirSync, readFileSync } from 'fs'
+import { readdirSync } from 'fs'
 import { join } from 'path'
-import matter from 'gray-matter'
+import { getAllPosts } from '@/lib/blog'
 
-const SITE_URL = 'https://dealeraddendums.com'
+// Canonical tags use NEXT_PUBLIC_SITE_URL (www on prod) — the sitemap must
+// list the same host or the two signals contradict each other.
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.dealeraddendums.com'
+
+// ISR so posts published after the build appear without a redeploy;
+// /api/blog-publish revalidates this path explicitly on publish.
+export const revalidate = 3600
 
 function getPostDates(): Record<string, string> {
   const dates: Record<string, string> = {}
-  try {
-    const dir = join(process.cwd(), 'content', 'posts')
-    const files = readdirSync(dir).filter(f => f.endsWith('.mdx') || f.endsWith('.md'))
-    for (const f of files) {
-      const slug = f.replace(/\.(mdx|md)$/, '')
-      const { data } = matter(readFileSync(join(dir, f), 'utf-8'))
-      dates[slug] = data.date || new Date().toISOString()
-    }
-  } catch { /* no posts */ }
+  // Drafts are excluded — getAllPosts() only returns published posts.
+  for (const p of getAllPosts()) {
+    dates[p.slug] = p.frontmatter.date || new Date().toISOString()
+  }
   return dates
 }
 

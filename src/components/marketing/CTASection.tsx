@@ -35,9 +35,12 @@ const KIND_COPY: Record<AccountKind, { entity: string; entityPh: string; site: s
 interface Props {
   // Dynamic Landing Engine context — optional so legacy render sites compile.
   tracking?: HeroTracking
+  // Footer "Resources" links (featured published blog posts) — passed from the
+  // server page (this is a client component, it can't read content/posts).
+  resources?: Array<{ slug: string; title: string }>
 }
 
-export default function CTASection({ tracking }: Props) {
+export default function CTASection({ tracking, resources }: Props) {
   const [form, setForm] = useState<FormState>({ name: '', email: '', dealership: '', brand: '', phone: '', zip: '', website: '', address: '', city: '', state: '' })
   // Brand list (Phase 6c): makes first, Reseller/Upfitter/Other grouped at the bottom.
   const [brandOptions, setBrandOptions] = useState<{ brand: string; kind: 'make' | 'generic' }[]>([])
@@ -883,10 +886,36 @@ export default function CTASection({ tracking }: Props) {
         </div>
       </div>
 
+      {/* Footer — Resources row (featured published blog posts) */}
+      {resources && resources.length > 0 && (
+        <div style={{
+          maxWidth: 1100,
+          margin: '48px auto 0',
+          paddingTop: 24,
+          borderTop: '1px solid rgba(255,255,255,0.1)',
+          display: 'flex',
+          alignItems: 'baseline',
+          flexWrap: 'wrap',
+          gap: '8px 24px',
+        }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            Resources
+          </span>
+          {resources.map(r => (
+            <a key={r.slug} href={`/blog/${r.slug}`} style={{ fontSize: 13, color: 'rgba(255,255,255,0.65)', textDecoration: 'none' }}>
+              {r.title}
+            </a>
+          ))}
+          <a href="/blog" style={{ fontSize: 13, color: '#ffa500', textDecoration: 'none', fontWeight: 500 }}>
+            All articles →
+          </a>
+        </div>
+      )}
+
       {/* Footer */}
       <div style={{
         maxWidth: 1100,
-        margin: '56px auto 0',
+        margin: resources && resources.length > 0 ? '24px auto 0' : '56px auto 0',
         paddingTop: 28,
         borderTop: '1px solid rgba(255,255,255,0.1)',
         display: 'flex',

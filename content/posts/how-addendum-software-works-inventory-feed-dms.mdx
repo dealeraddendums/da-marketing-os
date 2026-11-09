@@ -1,0 +1,116 @@
+---
+title: "How Addendum Software Works With Your Inventory Feed and DMS"
+date: "2026-11-09"
+author: "Allan Tone"
+excerpt: "From inventory feed to printed sticker to your website's VDP: a plain explanation of the pipeline inside addendum software, and which feed and DMS providers connect to it."
+metaDescription: "How addendum software connects to your inventory feed and DMS: feed → vehicle record → rules engine → addendum PDF → print and VDP, explained in plain terms."
+tags: ["education", "operations", "addendums"]
+status: "draft"
+featured: true
+related: ["addendum-software-vs-window-sticker-software", "required-vs-suggested-products-dealer-addendum"]
+faq:
+  - q: "Do I have to type vehicles into addendum software?"
+    a: "No. Inventory arrives automatically through a feed from your DMS, website provider, or syndication company. Manual entry exists for one-off units (a VIN scan or a quick add), but the lot syncs itself."
+  - q: "What if my feed provider isn't listed?"
+    a: "Feeds are a standardized industry pattern — a scheduled file or API delivery of your inventory. Most providers can send one. DealerAddendums ingests from the major DMS, website, and syndication providers, and our team sets up the feed request with your provider for you."
+  - q: "How does the printed addendum match my website?"
+    a: "Through a VDP integration. DealerAddendums' Magic Button embeds on your vehicle detail pages and shows shoppers the exact addendum PDF generated for that VIN — the same document printed for the windshield, so online and on-lot disclosures match."
+  - q: "What happens when a vehicle sells?"
+    a: "The next feed update marks it sold and it leaves your active inventory automatically. Printed history is kept, so you still have a record of what was disclosed on that unit."
+---
+
+"Addendum software" sounds like a printing tool. The printing is the last five percent. The other ninety-five percent is a data pipeline: your inventory flows in automatically, product rules decide what belongs on each car, and the same vehicle-specific document comes out wherever it is needed — a printer on the lot or the vehicle's page on your website.
+
+Here is that pipeline in plain terms, stage by stage.
+
+## Stage 1: The inventory feed
+
+A **feed** is a scheduled delivery of your inventory data — VINs, stock numbers, year/make/model/trim, odometer, MSRP or internet price, status — sent by whoever already manages that data for you. Feeds arrive as files on a schedule (often hourly or nightly) or over an API (a direct system-to-system connection).
+
+Three kinds of companies commonly send them:
+
+- **Your DMS** (dealer management system — the system of record for your store). DealerAddendums ingests DMS-side feeds from providers including CDK (through the Fortellis platform), Reynolds, Tekion, Autosoft, PBS, Dealervault, Authenticom, and Team Velocity.
+- **Your website or merchandising provider**, such as Dealer.com, DealerOn, Dealer Inspire, DealerSocket, Dealer eProcess, or DealerCenter.
+- **A syndication or appraisal platform** that already aggregates your inventory, such as HomeNet, vAuto, vinSOLUTIONS, VinCue, DealersLink, or Dealer Specialties.
+
+[ALLAN: confirm this public shortlist of named feed providers is the set you want promoted — it's drawn from the platform's supported-provider list.]
+
+You do not build any of this yourself. When a dealer signs up, our team sends the feed request to the provider, the dealer approves it (usually a one-line email reply), and inventory starts flowing — typically within the provider's standard turnaround of two to three business days.
+
+## Stage 2: The vehicle record
+
+Each feed row becomes (or updates) a **vehicle record**: one entry per VIN with its specs, price, and status. This record is what everything else hangs off. Three behaviors matter:
+
+1. **Updates are automatic.** A price change in your DMS shows up on the next feed cycle. Nobody re-types it.
+2. **Sold units retire themselves.** When a VIN drops out of the feed (or arrives marked sold), it leaves active inventory. Units you have printed stay in history, so the record of what was disclosed survives the sale.
+3. **Manual entry still exists for the edges.** A dealer-trade unit that arrived an hour ago can be added by scanning the VIN with the iPhone app or typing it in; the decoder fills in year, make, model, and trim.
+
+## Stage 3: The rules engine
+
+This is the part that makes addendum software different from a label template. Instead of typing products onto each car, you define each product **once**, with rules about which vehicles it applies to:
+
+- *Spray-in bedliner, $595 — applies to: body style = truck, condition = new.*
+- *Window tint, $399 — applies to: all vehicles.*
+- *Protection package, $1,299 — applies to: used, under 60,000 miles.*
+
+Rules can match on make, model, trim, year, body style, mileage, and fuel type, and each product is marked **required** (already on the car, rolls into the adjusted price) or **suggested** (optional, shown separately — [why that distinction matters](/blog/required-vs-suggested-products-dealer-addendum)).
+
+When a new vehicle lands from the feed, the rules engine evaluates it against your product library and attaches everything that matches. A new F-150 gets the bedliner and the tint; a used Civic gets the tint and the protection package. Three hundred vehicles, zero manual assignments. When you change a product's price, every matching unprinted vehicle reflects it.
+
+This is also where errors used to live. A lot porter with a binder of old stickers will eventually print a $1,995 package on a car that has a $1,495 version installed. A rules engine applies the product data you set, the same way, every time.
+
+## Stage 4: The addendum PDF
+
+For each vehicle, the system renders your **template** — your logo, layout, fonts, disclosure text — filled with that vehicle's data and its matched products, as a PDF. The PDF shows MSRP (when the vehicle has one), each required item with its price, the adjusted total, and suggested items in their own clearly optional section.
+
+Templates are per-store and per-document-type: addendums, FTC Buyers Guides (As-Is, Implied, Warranty — English and Spanish), and CPO/pre-owned info sheets all come from the same vehicle record. Multi-rooftop groups can enforce one group template across stores, or let each store manage its own.
+
+## Stage 5: Print, lot, and website — the same document everywhere
+
+The rendered PDF goes three places:
+
+1. **The printer.** Print one unit from the browser, print the day's arrivals in a batch, or print from the iPhone app on the lot — scan the VIN on the windshield, build, and AirPrint on the spot. Vehicles can also be queued on the lot and printed later at the desk.
+2. **The windshield extras.** QR "scan for info" stickers link a shopper's phone to the vehicle's information.
+3. **Your website's VDP.** The **Magic Button** is a small embed for your vehicle detail pages. A shopper clicks it and sees the exact addendum PDF generated for that VIN — the same document on the glass. Data also flows back out through feed exports, so your online price stack can include addendum items. This closes the most common disclosure gap: a website that says one number while the windshield says another.
+
+The loop, end to end:
+
+```
+DMS / website / syndication feed
+        │  (scheduled file or API)
+        ▼
+  vehicle record (one per VIN, auto-updated)
+        │
+        ▼
+  rules engine (your product library: required / suggested + rules)
+        │
+        ▼
+  addendum PDF (your template + this vehicle's data)
+        │
+        ├──► printed sticker (desk, batch, or iPhone on the lot)
+        └──► website VDP (Magic Button) + QR sticker
+```
+
+## What this replaces
+
+Before a pipeline like this, the addendum process at most stores was: an Excel sheet of products, a Word template, re-typed VINs, and a weekly sweep of the lot to find stickers that no longer match the car. Every step in that chain is a place for a wrong price or a missing disclosure. The pipeline removes the re-typing entirely — the only human inputs are your product library and your template, both set once.
+
+If you are comparing this category against simpler window-sticker tools, we wrote an honest comparison: [addendum software vs. window-sticker software](/blog/addendum-software-vs-window-sticker-software).
+
+## Frequently asked questions
+
+**Do I have to type vehicles in?**
+No — the feed does it. Manual add (VIN scan or quick entry) covers one-off units.
+
+**What if my feed provider isn't listed?**
+Most providers can send a standard inventory feed. Our team handles the feed request with your provider during setup.
+
+**How does the printed addendum match my website?**
+The Magic Button shows the VIN's actual addendum PDF on your VDP — the same document that prints.
+
+**What happens when a vehicle sells?**
+It retires from active inventory on the next feed cycle; print history is kept.
+
+## See it on your own inventory
+
+The fastest way to understand the pipeline is to watch your own lot flow through it. [Start a free trial of DealerAddendums](/#signup) — month-to-month, no setup fees, US-based support, and we set up the feed with your provider.

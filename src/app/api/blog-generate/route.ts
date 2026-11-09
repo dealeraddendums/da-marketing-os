@@ -27,30 +27,38 @@ export async function POST(req: NextRequest) {
 
     const prompt = `You are a senior content marketer for DealerAddendums.com, a B2B SaaS platform that helps car dealerships print vehicle addendums, FTC Buyers Guides, and CPO Info Sheets.
 
-Write a complete, publication-ready blog post in MDX format for the topic: "${topic}"
+Write a complete blog post DRAFT in MDX format for the topic: "${topic}"
 Target keywords: ${kwList}
 
-Requirements:
-- 800-1,100 words of body content
+Style rules (strict):
+- 1,200-1,800 words of body content, ~8th-grade reading level
+- Short, declarative sentences. Define every industry term the first time it appears.
+- No superlatives: never "the only", "#1", "the best". No competitor names used disparagingly.
+- Include at least three concrete specifics (a real example, a rule citation, a number). If you do not have a verified fact, write [ALLAN: describe what fact is needed] instead of inventing one.
 - Authoritative, practical advice that real car dealers will bookmark
 - Naturally mention DealerAddendums as a solution (2-3 times max, not spammy)
-- Internal links: use [anchor text](/lp/kia-dealers), [anchor text](/lp/ford-dealers), or [anchor text](/lp/used-car-dealers) where relevant
-- End with a CTA section (## Ready to Save Time on Your Addendums?) that links to the /#signup free trial form
+- Internal links: link to the homepage (/) and the free trial form (/#signup) at least once each; use [anchor text](/lp/kia-dealers), [anchor text](/lp/ford-dealers), or [anchor text](/lp/used-car-dealers) where relevant
+- End with a short FAQ section (## Frequently Asked Questions) of 3-4 Q&As, then a CTA section (## Ready to Save Time on Your Addendums?) that links to the /#signup free trial form
 - Use H2 and H3 headings only (no H1 — that comes from frontmatter title)
+- Do NOT write an "About DealerAddendums" boilerplate — the site appends one automatically
 - No filler content — every paragraph must be useful to a real dealer
 
-Output ONLY valid MDX. No code fences. No explanation. Start immediately with the frontmatter:
+Output ONLY valid MDX. No code fences. No explanation. Start immediately with the frontmatter (status stays "draft" — a human publishes from the Blog Queue):
 
 ---
-title: "SEO-optimized title here"
+title: "SEO-optimized title here (60 chars or less)"
 date: "${today}"
 author: "Allan Tone"
-excerpt: "150-char meta description"
+excerpt: "155-char meta description"
 tags: ["tag1", "tag2", "tag3"]
-metaDescription: "150-char meta description"
+metaDescription: "155-char meta description"
+status: "draft"
+faq:
+  - q: "Question matching the FAQ section"
+    a: "Plain-text answer, 1-3 sentences"
 ---
 
-Then the body content immediately after.`
+The faq frontmatter must mirror the Q&As in the FAQ section (it becomes FAQPage JSON-LD). Then the body content immediately after.`
 
     try {
       const mdx = await generateText(prompt, 3000)

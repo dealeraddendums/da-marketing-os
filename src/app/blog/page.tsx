@@ -1,25 +1,13 @@
-import { readFileSync, readdirSync } from 'fs'
-import { join } from 'path'
-import matter from 'gray-matter'
 import type { Metadata } from 'next'
 import LoginMenu from '@/components/marketing/LoginMenu'
+import { getAllPosts } from '@/lib/blog'
 
-interface BlogFrontmatter {
-  title: string
-  date: string
-  excerpt?: string
-  author?: string
-  tags?: string[]
-}
+// ISR so a post published after the build (blog-save writes MDX at runtime)
+// appears on the index without a redeploy; /api/blog-publish also revalidates
+// this path explicitly.
+export const revalidate = 3600
 
-interface PostMeta {
-  slug: string
-  frontmatter: BlogFrontmatter
-  readingTime: string
-}
-
-const POSTS_DIR = join(process.cwd(), 'content', 'posts')
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://dealeraddendums.com'
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.dealeraddendums.com'
 
 export const metadata: Metadata = {
   title: 'Blog | DealerAddendums — Dealer Addendum & Compliance Resources',
@@ -33,30 +21,6 @@ export const metadata: Metadata = {
     type: 'website',
   },
   alternates: { canonical: `${SITE_URL}/blog` },
-}
-
-function getAllPosts(): PostMeta[] {
-  try {
-    const files = readdirSync(POSTS_DIR).filter(f => f.endsWith('.mdx') || f.endsWith('.md'))
-    return files.map(f => {
-      const slug = f.replace(/\.(mdx|md)$/, '')
-      const raw = readFileSync(join(POSTS_DIR, f), 'utf-8')
-      const { data, content } = matter(raw)
-      const words = content.trim().split(/\s+/).length
-      const mins = Math.max(1, Math.ceil(words / 200))
-      return {
-        slug,
-        frontmatter: data as BlogFrontmatter,
-        readingTime: `${mins} min read`,
-      }
-    }).sort((a, b) => {
-      const da = new Date(a.frontmatter.date || 0).getTime()
-      const db = new Date(b.frontmatter.date || 0).getTime()
-      return db - da
-    })
-  } catch {
-    return []
-  }
 }
 
 const TAG_COLORS: Record<string, { bg: string; text: string }> = {

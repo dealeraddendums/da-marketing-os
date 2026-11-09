@@ -1,0 +1,112 @@
+---
+title: "Required vs. Suggested Products on a Dealer Addendum"
+date: "2026-11-09"
+author: "Allan Tone"
+excerpt: "Some addendum items are already on the car and built into the price. Others are optional offers. Treating the two the same is how dealers get into disclosure trouble."
+metaDescription: "Required vs. suggested products on a dealer addendum: what belongs in each section, why the distinction matters legally, and how to render both on one label."
+tags: ["addendums", "best practices", "compliance"]
+status: "draft"
+related: ["addendum-vs-monroney-label-vs-buyers-guide", "addendum-software-vs-window-sticker-software"]
+faq:
+  - q: "What is a required product on an addendum?"
+    a: "A product or fee that is already installed on the vehicle or applies to every sale — window tint, a spray-in bedliner, a pre-delivery service charge. It is part of the dealer's asking price, so it is itemized above the total."
+  - q: "What is a suggested product on an addendum?"
+    a: "An optional product the dealer offers but has not built into the price — a protection package, an appearance package, a service contract. It must be clearly marked as optional and must not be presented as a condition of buying the car."
+  - q: "Can a dealer make an add-on mandatory?"
+    a: "If it is genuinely pre-installed, the dealer can decline to remove it — but then it must be in the advertised/asking price and itemized. Presenting an optional product as required is the classic deceptive practice regulators cite. New York City's used-car rules, for example, state a dealer cannot require add-ons as a condition of sale or financing."
+  - q: "Should the two sections share one total?"
+    a: "No. The cleanest format shows a price with required items included, then lists suggested items separately with their own optional total. The buyer can see the real asking price without the optional products."
+---
+
+Every product on a dealer addendum is one of two things. Either it is **already on the car** — installed, applied, or charged on every sale — or it is **an offer** the customer can take or leave. The first kind belongs in the price. The second kind must never look like it is.
+
+That one distinction decides how an addendum should be laid out, how the desk should talk about it, and whether the label protects you or creates exposure. Dealers who blur it get the worst of both worlds: customers who feel tricked and regulators who agree with them.
+
+## Required (fixed) products: already on the car, in the price
+
+A **required product** is installed or applied before the sale and is part of the dealer's asking price. Common examples:
+
+- Pre-delivery service or preparation charges
+- Electronic filing / tag agency fees charged on every deal
+- Window tint installed at PDI (pre-delivery inspection — the dealer's prep process)
+- Spray-in bedliners on every truck in stock
+- Lift kits or wheel packages on built units
+- Protection products that are genuinely already applied (paint sealant, interior treatment)
+
+Because these are on the vehicle, the honest way to present them is: **MSRP, then each required item with its own price, then the adjusted total.** The sticker then shows the true asking price of the car as it sits — the number the desk will actually use.
+
+Here is that format on a real-layout example built in DealerAddendums:
+
+![Example addendum for a Jenkins Auto Group 2026 Hyundai Tucson: MSRP $35,420, then required items — private tag agency $199, electronic filing fee $449, pre-delivery service charge $1,199 — totaling to a clearly labeled price with fees and additions of $37,267, followed by a separate Optional Additions section.](/images/hero/addendum-required.webp)
+
+Three things make this example work:
+
+1. **Each item is itemized with a price** — $199, $449, $1,199 — not a single "dealer fee package."
+2. **The adjusted total is labeled for what it is** ("Price with fees & additions: $37,267"), not passed off as MSRP.
+3. **The fine print explains the charges** and states the label is applied by the dealer, not the manufacturer.
+
+This is also what state law tends to demand. California's supplemental-sticker statute ([Vehicle Code § 11713.1(q)](https://leginfo.legislature.ca.gov/faces/codes_displaySection.xhtml?lawCode=VEH&sectionNum=11713.1.)) requires a new-car sticker priced above MSRP to list each added item and its price. Texas advertising rules (43 Tex. Admin. Code § 215.250) treat items the dealer installed before sale — items the customer never asked for — as part of the advertised price, not optional extras.
+
+## Suggested products: offers, clearly marked as offers
+
+A **suggested product** is one the dealer offers but the buyer can decline:
+
+- Protection packages (paint, interior, road hazard) not yet applied
+- Appearance packages
+- Theft-deterrent or tracking products
+- Service contracts and other F&I (finance and insurance) products presented early
+
+The rules here are about honesty, not placement: the item must be **clearly marked optional**, priced, and never presented as a condition of buying or financing the vehicle. New York City's [Used Car Consumer Bill of Rights](https://www.nyc.gov/assets/dca/downloads/pdf/businesses/Consumer-Bill-of-Rights-Used-Car-Poster-English.pdf) says this directly: the dealer cannot require add-ons as a condition of sale, and must give the itemized price of each add-on in writing.
+
+Here is the suggested-products format done well:
+
+![Example addendum for a Honda of Sarasota 2027 Civic Sport: manufacturer retail price $29,490, then an "Optional Dealers Installed Package" — Premium Protect Plus at $1,999 with its contents bulleted — and a total of $31,489, with the dealer-applied disclosure at the bottom.](/images/hero/addendum-suggested.webp)
+
+The section header says "Optional" in plain words. The package has one price. The contents are bulleted so the customer can judge the value. Nothing about the layout implies the car cannot be bought without it.
+
+## Why the distinction matters
+
+**1. It is the line regulators police.** The deceptive practice is not *selling* add-ons — it is presenting optional ones as mandatory, or hiding mandatory ones until the desk. The FTC pursues both under Section 5 of the FTC Act, and state attorneys general have followed; a 2026 New York AG settlement with two dealerships centered on exactly this — fees and add-ons that were not clearly disclosed before the finance office. The safest structure is the boring one: required items in the price and itemized; suggested items labeled optional.
+
+**2. It is how the desk avoids re-negotiating the sticker.** When the addendum shows a true all-in asking price, the salesperson defends one number. When required and optional items are mixed, every line becomes a negotiation and the addendum reads as padding.
+
+**3. It is what shoppers check online.** If your website's VDP (vehicle detail page — the listing page for one vehicle) shows one price and the windshield shows another with $2,400 of unexplained additions, you have manufactured distrust. The printed label and the online listing should carry the same disclosures. (That is what our Magic Button does — more in [how addendum software works with your inventory feed](/blog/how-addendum-software-works-inventory-feed-dms).)
+
+## How DealerAddendums renders both on one label
+
+In DealerAddendums, required and suggested are properties of the **product**, not things retyped per car:
+
+- Each product in your library is marked required or suggested, with a price and rules — make, model, trim, year, body style, mileage, fuel type. A bedliner rule can say: *trucks only*. A tint product can say: *every unit*.
+- When a vehicle comes in on your inventory feed, matching required products attach automatically and roll into the adjusted price. Matching suggested products attach to the optional section with its own subtotal.
+- The printed addendum renders the two sections separately — required items above the total, suggested items clearly marked below it — like both examples above. One template, every unit, no hand-typing.
+
+Set the product once; every matching vehicle gets it right. That removes the failure mode where one addendum on the lot says a package is optional and the next one rolls it into the price.
+
+## A quick self-audit
+
+Pull three stickers off your lot today and check:
+
+1. Is every priced item on the car actually *on the car* (or genuinely charged on every deal)?
+2. Could a customer tell, from the label alone, which items are optional?
+3. Does the total above the optional section match what the desk will quote?
+4. Does the online listing for that VIN carry the same additions?
+
+If any answer is no, fix the format before someone else grades it for you.
+
+## Frequently asked questions
+
+**What is a required product on an addendum?**
+One that is already installed or applies to every sale. It is part of the asking price and is itemized above the total.
+
+**What is a suggested product?**
+An optional offer — clearly marked optional, priced, and never a condition of the sale.
+
+**Can a dealer make an add-on mandatory?**
+A genuinely pre-installed item can be non-removable, but then it belongs in the advertised and asking price, itemized. Presenting an optional product as required is the practice regulators target.
+
+**Should both sections share one total?**
+No — show the price with required items included, and give suggested items their own optional total.
+
+## Put your product rules to work
+
+[DealerAddendums](/) ships with required/suggested product handling, a rules engine, and templates that render both sections correctly on every unit. [Start a free trial](/#signup) — month-to-month, no setup fees, US-based support.

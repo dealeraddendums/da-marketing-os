@@ -900,43 +900,96 @@ function AnalystBriefCard({ onGoToAnalyst }) {
 }
 
 // ── Blog Queue ────────────────────────────────────────────────────────────────
+// Lists every post on the site (drafts included) from /api/blog-list.
+// Draft rows get a Preview link (the post renders at its URL with noindex)
+// and a Publish button: /api/blog-publish flips the frontmatter to
+// published, stamps today's date, revalidates blog/sitemap/homepage, and
+// submits the URL to the Google Indexing API.
 function BlogQueue() {
-  // No live blog-list endpoint yet — posts authored via the Blog Generator
-  // are saved to the repo/Keystatic, not surfaced back here. Honest empty
-  // state until that source is wired.
-  const posts = [];
+  const [posts, setPosts] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [publishing, setPublishing] = useState(null); // slug in flight
+  const [msg, setMsg] = useState(null);
+
+  const load = () => {
+    fetch("/api/blog-list")
+      .then(r => r.json())
+      .then(data => { setPosts(data.posts || []); setLoading(false); })
+      .catch(() => setLoading(false));
+  };
+  useEffect(load, []);
+
+  const publish = async (post) => {
+    if (!window.confirm(`Publish "${post.title}" live to the blog?\n\nThis sets today as the publish date, adds it to the blog index + sitemap, and submits the URL to Google.`)) return;
+    setPublishing(post.slug); setMsg(null);
+    try {
+      const res = await fetch("/api/blog-publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug: post.slug }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+      const idx = data.indexing?.ok
+        ? "submitted to Google Indexing API"
+        : `live, but indexing submit failed (${data.indexing?.detail || "see logs"}) — sitemap still covers it`;
+      setMsg(`Published ${data.url} — ${idx}.`);
+      load();
+    } catch (e) {
+      setMsg(`Publish failed — ${e.message}`);
+    }
+    setPublishing(null);
+  };
+
+  const list = posts || [];
+  const drafts = list.filter(p => p.status === "draft").length;
   return (
     <Card>
       <SectionTitle
-        action={<Badge variant="neutral">{posts.length} posts</Badge>}
+        action={<Badge variant="neutral">{loading ? "Loading…" : `${list.length} posts · ${drafts} drafts`}</Badge>}
       >Blog Queue</SectionTitle>
-      {posts.length === 0 && (
+      {msg && (
+        <div style={{ fontSize: 12, color: msg.startsWith("Publish failed") ? C.error : C.success, padding: "4px 0 8px" }}>
+          {msg}
+        </div>
+      )}
+      {!loading && list.length === 0 && (
         <div style={{ fontSize: 13, color: C.textMuted, padding: "16px 0", textAlign: "center" }}>
-          No posts to show here yet. Drafts created in the Blog Generator are saved to the site;
-          a live blog-list feed for this panel isn’t wired yet.
+          No posts yet. Author one in the Blog Generator above.
         </div>
       )}
       <div style={{ display: "grid", gap: 8 }}>
-        {posts.map((post, i) => (
-          <div key={i} style={{
+        {list.map((post, i) => (
+          <div key={post.slug} style={{
             display: "flex", alignItems: "center", justifyContent: "space-between",
             padding: "10px 0",
-            borderBottom: i < posts.length - 1 ? `1px solid ${C.border}` : "none",
+            borderBottom: i < list.length - 1 ? `1px solid ${C.border}` : "none",
           }}>
             <div style={{ flex: 1, minWidth: 0, paddingRight: 12 }}>
-              <div style={{
-                fontSize: 14, color: C.textPrimary,
+              <a href={post.url} target="_blank" rel="noreferrer" style={{
+                fontSize: 14, color: C.textPrimary, textDecoration: "none", display: "block",
                 whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
               }}>
-                {post.title}
-              </div>
+                {post.title || post.slug}
+              </a>
               <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>
-                {post.date}{post.social > 0 ? ` · ${post.social} social posts queued` : ""}
+                {post.date}{post.featured ? " · featured" : ""}
               </div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-              <Badge variant={statusVariant(post.status)}>{statusLabel(post.status)}</Badge>
-              {post.status === "draft" && <SmallButton variant="primary">Write</SmallButton>}
+              <Badge variant={post.status === "draft" ? "warning" : "success"}>
+                {post.status === "draft" ? "Draft" : "Published"}
+              </Badge>
+              <SmallButton onClick={() => window.open(post.url, "_blank")}>Preview</SmallButton>
+              {post.status === "draft" && (
+                <SmallButton
+                  variant="primary"
+                  disabled={publishing === post.slug}
+                  onClick={() => publish(post)}
+                >
+                  {publishing === post.slug ? "Publishing…" : "Publish"}
+                </SmallButton>
+              )}
             </div>
           </div>
         ))}

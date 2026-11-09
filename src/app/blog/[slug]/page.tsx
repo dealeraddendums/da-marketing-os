@@ -1,25 +1,9 @@
 import { notFound } from 'next/navigation'
-import { readFileSync, existsSync, readdirSync } from 'fs'
-import { join } from 'path'
-import matter from 'gray-matter'
 import { MDXRemote } from 'next-mdx-remote/rsc'
 import type { Metadata } from 'next'
 import LoginMenu from '@/components/marketing/LoginMenu'
-
-interface BlogFrontmatter {
-  title: string
-  date: string
-  excerpt?: string
-  metaDescription?: string
-  author?: string
-  tags?: string[]
-  coverImage?: string
-}
-
-interface PostMeta {
-  slug: string
-  frontmatter: BlogFrontmatter
-}
+import PostBoilerplate from '@/components/blog/PostBoilerplate'
+import { getPost, getAllPosts, getRelatedPosts } from '@/lib/blog'
 
 interface PageProps {
   params: { slug: string }
@@ -27,49 +11,12 @@ interface PageProps {
 
 export const revalidate = 3600
 
-const POSTS_DIR = () => join(process.cwd(), 'content', 'posts')
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://dealeraddendums.com'
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.dealeraddendums.com'
 
-function getPost(slug: string): { frontmatter: BlogFrontmatter; content: string } | null {
-  const mdxPath = join(POSTS_DIR(), `${slug}.mdx`)
-  const mdPath  = join(POSTS_DIR(), `${slug}.md`)
-  const filePath = existsSync(mdxPath) ? mdxPath : existsSync(mdPath) ? mdPath : null
-  if (!filePath) return null
-  const { data, content } = matter(readFileSync(filePath, 'utf-8'))
-  return { frontmatter: data as BlogFrontmatter, content }
-}
-
-function getAllPosts(): PostMeta[] {
-  try {
-    const files = readdirSync(POSTS_DIR()).filter(f => f.endsWith('.mdx') || f.endsWith('.md'))
-    return files.map(f => {
-      const slug = f.replace(/\.(mdx|md)$/, '')
-      const { data } = matter(readFileSync(join(POSTS_DIR(), f), 'utf-8'))
-      return { slug, frontmatter: data as BlogFrontmatter }
-    }).sort((a, b) => {
-      const da = new Date(a.frontmatter.date || 0).getTime()
-      const db = new Date(b.frontmatter.date || 0).getTime()
-      return db - da
-    })
-  } catch {
-    return []
-  }
-}
-
-function readingTime(content: string): string {
-  const words = content.trim().split(/\s+/).length
-  const mins = Math.max(1, Math.ceil(words / 200))
-  return `${mins} min read`
-}
-
+// Only published posts are pre-rendered; drafts still resolve at request time
+// (dynamicParams defaults to true) so they have preview URLs, with noindex.
 export async function generateStaticParams() {
-  try {
-    return readdirSync(POSTS_DIR())
-      .filter(f => f.endsWith('.mdx') || f.endsWith('.md'))
-      .map(f => ({ slug: f.replace(/\.(mdx|md)$/, '') }))
-  } catch {
-    return []
-  }
+  return getAllPosts().map(p => ({ slug: p.slug }))
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
@@ -83,6 +30,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   return {
     title: `${fm.title} | DealerAddendums Blog`,
     description,
+    ...(post.draft ? { robots: { index: false, follow: false } } : {}),
     openGraph: {
       title: fm.title,
       description,
@@ -108,10 +56,18 @@ export default async function BlogPost({ params }: PageProps) {
   const post = getPost(params.slug)
   if (!post) notFound()
 
-  const { frontmatter: fm, content } = post
-  const readTime = readingTime(content)
-  const allPosts = getAllPosts()
-  const related = allPosts.filter(p => p.slug !== params.slug).slice(0, 3)
+  const { frontmatter: fm, content, readingTime: readTime } = post
+  const related = getRelatedPosts(params.slug, 3)
+
+  const faqJsonLd = fm.faq && fm.faq.length > 0 ? {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: fm.faq.map(item => ({
+      '@type': 'Question',
+      name: item.q,
+      acceptedAnswer: { '@type': 'Answer', text: item.a },
+    })),
+  } : null
 
   const jsonLd = {
     '@context': 'https://schema.org',
@@ -137,6 +93,26 @@ export default async function BlogPost({ params }: PageProps) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
+      {faqJsonLd && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
+        />
+      )}
+
+      {post.draft && (
+        <div style={{
+          background: '#fff3e0',
+          borderBottom: '1px solid #ffb74d',
+          color: '#e65100',
+          fontSize: 13,
+          fontWeight: 600,
+          textAlign: 'center',
+          padding: '8px 16px',
+        }}>
+          DRAFT — this post is not published. It is excluded from the blog index, sitemap, and search engines.
+        </div>
+      )}
 
       {/* Nav */}
       <nav style={{
@@ -248,6 +224,7 @@ export default async function BlogPost({ params }: PageProps) {
           color: '#333333',
         }}>
           <MDXRemote source={content} />
+          <PostBoilerplate />
         </div>
       </article>
 
@@ -325,7 +302,7 @@ export default async function BlogPost({ params }: PageProps) {
           Ready to streamline your dealership's paperwork?
         </h3>
         <p style={{ fontSize: 15, color: 'rgba(255,255,255,0.7)', margin: '0 0 24px' }}>
-          Join 1,600+ dealerships using DealerAddendums. Month-to-month. No credit card required.
+          Join 2,100+ dealerships using DealerAddendums. Month-to-month. No credit card required.
         </p>
         <a
           href="/#signup"
