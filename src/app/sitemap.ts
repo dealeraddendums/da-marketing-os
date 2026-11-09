@@ -7,9 +7,12 @@ import { getAllPosts } from '@/lib/blog'
 // list the same host or the two signals contradict each other.
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.dealeraddendums.com'
 
-// ISR so posts published after the build appear without a redeploy;
-// /api/blog-publish revalidates this path explicitly on publish.
-export const revalidate = 3600
+// Fully dynamic: revalidatePath('/sitemap.xml') does NOT bust a metadata
+// route's ISR cache in Next 14.2 (verified live 2026-11-09 — a publish
+// updated /blog immediately while the sitemap stayed stale), and the sitemap
+// is a cheap fs read of ~a dozen files that crawlers fetch rarely. Generating
+// it per request is the correct trade.
+export const dynamic = 'force-dynamic'
 
 function getPostDates(): Record<string, string> {
   const dates: Record<string, string> = {}
