@@ -192,8 +192,8 @@ function CopyGenerator() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ section, audience, goal }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       if (data.error) throw new Error(data.error);
       setVariants(data.variants);
     } catch (e) {
@@ -285,8 +285,8 @@ function BlogGenerator() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ topic, mode: "outline" }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       if (data.error) throw new Error(data.error);
       setResult(data);
     } catch (e) {
@@ -304,8 +304,8 @@ function BlogGenerator() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ topic: result.title || topic, mode: "full", keywords: result.keywords || [] }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       if (data.error) throw new Error(data.error);
       setFullMdx(data);
     } catch (e) {

@@ -93,7 +93,7 @@ Respond ONLY with JSON (no markdown, no code fences):
 }`
 
   try {
-    const text = await generateText(prompt, 1000)
+    const text = await generateText(prompt, 2048)
     const result = parseJSON<{
       title: string
       metaDescription: string
@@ -104,6 +104,10 @@ Respond ONLY with JSON (no markdown, no code fences):
     }>(text)
 
     if (!result?.title) {
+      console.error(
+        `blog-generate outline: could not parse JSON from model output (len=${text.length}). ` +
+          `Head: ${JSON.stringify(text.slice(0, 200))}`,
+      )
       return NextResponse.json({ error: 'AI returned unexpected format' }, { status: 500 })
     }
 

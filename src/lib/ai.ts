@@ -116,10 +116,22 @@ export async function generateText(prompt: string, maxTokens = 1000): Promise<st
 }
 
 export function parseJSON<T>(text: string): T | null {
+  const clean = text.replace(/```json|```/g, '').trim()
   try {
-    const clean = text.replace(/```json|```/g, '').trim()
     return JSON.parse(clean) as T
   } catch {
+    // The model occasionally wraps the JSON in a sentence of prose. Fall back to
+    // the outermost {...} block. This cannot rescue a response truncated by
+    // max_tokens (give the call enough budget) but it salvages a stray preamble.
+    const first = clean.indexOf('{')
+    const last = clean.lastIndexOf('}')
+    if (first !== -1 && last > first) {
+      try {
+        return JSON.parse(clean.slice(first, last + 1)) as T
+      } catch {
+        return null
+      }
+    }
     return null
   }
 }
