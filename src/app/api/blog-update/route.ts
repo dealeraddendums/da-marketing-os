@@ -57,6 +57,7 @@ export async function POST(req: NextRequest) {
     updateNotice,
     editorNote,
     reviewBy,
+    humanized, // true when the body being saved came from "Humanize with Phrasly"
   } = payload as Record<string, any>
 
   if (!slug || typeof slug !== 'string') {
@@ -88,6 +89,8 @@ export async function POST(req: NextRequest) {
   if (typeof updateNotice === 'string') { if (updateNotice.trim()) fm.updateNotice = updateNotice.trim(); else delete fm.updateNotice }
   if (typeof editorNote === 'string') { if (editorNote.trim()) fm.editorNote = editorNote.trim(); else delete fm.editorNote }
   if (typeof reviewBy === 'string') { if (reviewBy.trim()) fm.reviewBy = reviewBy.trim(); else delete fm.reviewBy }
+  // Phrasly provenance: the saved body came from "Humanize with Phrasly".
+  if (humanized === true) fm.humanizedAt = new Date().toISOString()
   const newBody: string = typeof body === 'string' ? body : existing.content
 
   const wasPublished = existing.status === 'published'
@@ -142,14 +145,21 @@ export async function POST(req: NextRequest) {
   let event: RevisionEvent | null = null
   if (publishing) event = 'publish'
   else if (wasPublished) event = renamed ? 'slug_change' : 'save'
-  // draft saves: no revision (logged on publish only)
+  // draft saves: no revision (logged on publish only) — EXCEPT a humanized
+  // save, which always logs so the Phrasly provenance trail is complete
+  // (the pre-humanize snapshot was written by /api/blog/humanize).
+  else if (humanized === true) event = 'save'
   if (event) {
+    let summary: string = changeSummary || ''
+    if (humanized === true && !/phrasly/i.test(summary)) {
+      summary = summary ? `${summary} [Humanized via Phrasly]` : 'Humanized via Phrasly'
+    }
     await writeRevision({
       slug: finalSlug,
       event,
       frontmatter: fm,
       body: newBody,
-      changeSummary: renamed ? `${changeSummary} [slug: ${slug} → ${finalSlug}]`.trim() : changeSummary,
+      changeSummary: renamed ? `${summary} [slug: ${slug} → ${finalSlug}]`.trim() : summary,
     })
   }
 

@@ -131,6 +131,9 @@ GSC_SITE_URL                       # OPTIONAL — sc-domain:dealeraddendums.com
 GOOGLE_ADS_CUSTOMER_ID             # OPTIONAL preselect — 2056900150
 GOOGLE_ADS_LOGIN_CUSTOMER_ID       # LEAVE EMPTY unless a real accessible MCC
 GOOGLE_ADS_DEVELOPER_TOKEN         # DEAD — retired by Google 2026-09-09, read nowhere
+# Blog humanizer — see "Humanize with Phrasly" under Blog lifecycle
+PHRASLY_API_URL                    # https://business.phrasly.ai/api/v1/humanize
+PHRASLY_API_KEY                    # server-only; never shipped to the client
 ```
 
 ## Reputation Manager (`/reputation`)
@@ -1114,6 +1117,45 @@ only). Rows snapshot full frontmatter + body; the editor's Restore loads a
 revision into the form — it never auto-publishes. A failed revision write is
 logged and never blocks the editor action.
 
+### Humanize with Phrasly (2026-11-10)
+
+Editor-header button "Humanize with Phrasly" → `POST /api/blog/humanize`
+(`isAdminRequest`-gated) → `lib/phrasly.ts humanizeMarkdown()`. **Never
+auto-saves**: the humanized MDX replaces the Body textarea for review, an
+"Undo humanize" link (on the Body label) restores the pre-humanize body until
+the next save or close, and Allan clicks Save himself.
+
+**Endpoint shape, observed live 2026-11-10** (Business API,
+`business.phrasly.ai/api/v1/humanize`): `POST {"text": "..."}` with header
+`x-api-key` → success is **200 `text/plain`, the humanized text IS the body**;
+errors are JSON `{"error": "..."}` with real status codes (400 word-count,
+401 bad key). The old `api.phrasly.ai` JSON-success shape is also handled
+(detected by Content-Type). Limits: 20–5,000 words/request, 5 req/s, billed
+per word (word counts logged server-side as `[phrasly]` lines for spend audit).
+
+**Chunking / structure protection** (`lib/phrasly.ts`): Phrasly only sees
+prose. Headings, fences, tables, HTML/JSX, imports, frontmatter, images,
+blockquotes and HRs pass through byte-identical; paragraphs and list items
+(marker stripped/re-attached) are humanized. Links, images, inline code AND
+bold/italic spans are tokenized as `⟦Ln⟧` (bold/italic survived a short probe
+but got stripped on a full post — tokenize, don't trust). Prose is packed in
+order into ≤~2,500-word chunks joined by a `⟦BRK⟧` separator paragraph, sent
+sequentially. Per-segment validation (tokens exact, no invented `⟦…⟧` content,
+length-expansion guard — Phrasly once fabricated a whole questionnaire from a
+20-word paragraph) with up to 3 attempts per chunk; any still-bad chunk fails
+the WHOLE operation — a half-humanized post is never returned. Brand terms
+(DealerAddendums, Tekion, Monroney, Buyers Guide, CARS Rule, FTC, DMS, CDK,
+Reynolds, Dealertrack, Dealer General) get their exact spelling restored in
+post-processing — and that restore runs BEFORE links are untokenized, or it
+corrupts URL slugs.
+
+**Provenance**: there is no posts table (posts are MDX files), so no
+migration — the humanize route snapshots the PRE-humanize body into
+`blog_post_revisions` (savedBy `phrasly`, even for drafts), and the save that
+follows carries `humanized: true` → `blog-update` stamps frontmatter
+`humanizedAt` and writes a "Humanized via Phrasly" revision (drafts included —
+the one exception to drafts-log-on-publish-only).
+
 ### Admin routes (all `isAdminRequest`-gated except the public archive map)
 
 `GET /api/blog-get` · `GET /api/blog-list` · `GET /api/blog-revisions` ·
@@ -1121,7 +1163,8 @@ logged and never blocks the editor action.
 renames + auto-301) · `POST /api/blog-publish` · `POST /api/blog-unpublish`
 (published → draft) · `POST /api/blog-archive` (reason required; optional
 published redirect target) · `POST /api/blog-restore` (archived → **draft**,
-re-review before re-publish) · `GET /api/blog-archive-map` (public, tiny).
+re-review before re-publish) · `POST /api/blog/humanize` (Phrasly, see above) ·
+`GET /api/blog-archive-map` (public, tiny).
 
 UI: Admin → Blog & Social → Blog Queue (overdue-review section on top,
 Edit/Preview/Publish/Archive per row, collapsible Archived section with

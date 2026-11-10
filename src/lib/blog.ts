@@ -50,6 +50,10 @@ export interface BlogFrontmatter {
   faq?: BlogFaqItem[]
   related?: string[]
   featured?: boolean
+  /** ISO timestamp of the last save whose body came from "Humanize with Phrasly".
+   *  Provenance only — posts are MDX files (no posts table), so this lives in
+   *  frontmatter like every other lifecycle field. */
+  humanizedAt?: string
 }
 
 export interface BlogPost {

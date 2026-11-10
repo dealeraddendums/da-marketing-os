@@ -932,6 +932,11 @@ function BlogEditor({ slug, onClose, onSaved }) {
   const [msg, setMsg]         = useState(null);
   const [err, setErr]         = useState(null);
 
+  // Phrasly humanize: pre-humanize body held for Undo until the next save or
+  // close; humanizedPending rides on the next save to stamp provenance.
+  const [preHumanize, setPreHumanize] = useState(null);
+  const [humanizedPending, setHumanizedPending] = useState(false);
+
   // form fields
   const [f, setF] = useState(null);
   const set = (k, v) => setF(prev => ({ ...prev, [k]: v }));
@@ -972,10 +977,12 @@ function BlogEditor({ slug, onClose, onSaved }) {
           excerpt: f.excerpt, featured: f.featured, body: f.body,
           updateNotice: f.updateNotice, editorNote: f.editorNote, reviewBy: f.reviewBy,
           changeSummary: f.changeSummary,
+          humanized: humanizedPending || undefined,
         }),
       });
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+      setPreHumanize(null); setHumanizedPending(false);
       const parts = [`Saved${data.status === "published" ? " (live)" : " as draft"}.`];
       if (data.renamedFrom) parts.push(`Slug changed — /blog/${data.renamedFrom} now 301s to /blog/${data.slug}.`);
       if (data.indexing) parts.push(data.indexing.ok ? "Re-submitted to Google." : `Indexing submit failed (${data.indexing.detail || "see logs"}).`);
@@ -1000,6 +1007,40 @@ function BlogEditor({ slug, onClose, onSaved }) {
       setPost(p => ({ ...p, status: "draft" }));
     } catch (e) { setErr(`Unpublish failed — ${e.message}`); }
     setBusy(false);
+  };
+
+  const humanize = async () => {
+    const words = (f.body || "").trim().split(/\s+/).filter(Boolean).length;
+    if (!window.confirm(
+      `Humanize the body with Phrasly?\n\n~${words.toLocaleString()} words will be sent to Phrasly and billed against your Phrasly credits (billed per word). Headings, links, code, tables and brand names are protected — only prose is rewritten.\n\nThe result replaces the Body below for review. Nothing is saved until you click Save.`
+    )) return;
+    setBusy(true); setErr(null); setMsg(null);
+    try {
+      const res = await fetch("/api/blog/humanize", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug, body: f.body }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+      setPreHumanize(f.body);
+      setHumanizedPending(true);
+      setF(prev => ({
+        ...prev, body: data.body,
+        changeSummary: prev.changeSummary ? prev.changeSummary : "Humanized via Phrasly",
+      }));
+      setMsg(`Humanized ${data.wordsSent.toLocaleString()} words in ${data.chunks} chunk${data.chunks === 1 ? "" : "s"} — review the Body before saving.`);
+    } catch (e) { setErr(`Humanize failed — ${e.message}`); }
+    setBusy(false);
+  };
+
+  const undoHumanize = () => {
+    if (preHumanize == null) return;
+    setF(prev => ({
+      ...prev, body: preHumanize,
+      changeSummary: prev.changeSummary === "Humanized via Phrasly" ? "" : prev.changeSummary,
+    }));
+    setPreHumanize(null); setHumanizedPending(false);
+    setMsg("Restored the pre-humanize body — nothing was saved.");
   };
 
   const restoreRevision = (rev) => {
@@ -1035,6 +1076,7 @@ function BlogEditor({ slug, onClose, onSaved }) {
       <SectionTitle action={
         <div style={{ display: "flex", gap: 8 }}>
           <Badge variant={isPublished ? "success" : "warning"}>{isPublished ? "Published" : "Draft"}</Badge>
+          <SmallButton variant="secondary" disabled={busy} onClick={humanize}>Humanize with Phrasly</SmallButton>
           <SmallButton onClick={() => window.open(`/blog/${slug}`, "_blank")}>Preview</SmallButton>
           <SmallButton onClick={onClose}>Close</SmallButton>
         </div>
@@ -1080,7 +1122,12 @@ function BlogEditor({ slug, onClose, onSaved }) {
         placeholder={'e.g. "Updated Nov 2026: the FTC CARS Rule was vacated in January 2025; this post has been revised."'}
         onChange={e => set("updateNotice", e.target.value)} />
 
-      <FieldLabel>Body (MDX — same format the generator produces)</FieldLabel>
+      <FieldLabel right={preHumanize != null ? (
+        <a href="#" onClick={e => { e.preventDefault(); undoHumanize(); }}
+          style={{ fontSize: 11, color: C.warning, fontWeight: 600 }}>
+          Undo humanize
+        </a>
+      ) : null}>Body (MDX — same format the generator produces)</FieldLabel>
       <textarea style={{ ...fieldStyle, minHeight: 320, fontFamily: "monospace", fontSize: 12, lineHeight: 1.5 }}
         value={f.body} onChange={e => set("body", e.target.value)} />
 
