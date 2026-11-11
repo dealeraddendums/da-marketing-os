@@ -381,7 +381,7 @@ export default async function BlogPost({ params }: PageProps) {
             }}>
               More for Dealers
             </h2>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 220px), 1fr))', gap: 16 }}>
               {related.map(p => (
                 <a
                   key={p.slug}
