@@ -93,6 +93,21 @@ export async function POST(req: NextRequest) {
   if (humanized === true) fm.humanizedAt = new Date().toISOString()
   const newBody: string = typeof body === 'string' ? body : existing.content
 
+  // Never publish a body that still carries internal "[ALLAN: …]" notes.
+  // Save Draft (action 'save') is always allowed so work can continue.
+  if (action === 'publish') {
+    const placeholders = newBody.match(/\[ALLAN:[^\]]*\]/g)
+    if (placeholders && placeholders.length > 0) {
+      return NextResponse.json(
+        {
+          error: `Can't publish — ${placeholders.length} unresolved editor note${placeholders.length === 1 ? '' : 's'} still in the body: ${placeholders.join('  ')}. Resolve ${placeholders.length === 1 ? 'it' : 'them'} first (Save Draft is fine), then publish.`,
+          placeholders,
+        },
+        { status: 409 }
+      )
+    }
+  }
+
   const wasPublished = existing.status === 'published'
   const publishing = action === 'publish' && !wasPublished
 

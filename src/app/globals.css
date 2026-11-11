@@ -253,3 +253,6 @@ a {
     border: none;
   }
 }
+
+/* Admin UI spinner (Spinner component in marketing-dashboard). */
+@keyframes da-spin { to { transform: rotate(360deg); } }

@@ -83,13 +83,14 @@ const Card = ({ children, style = {} }) => (
 // Section header: 16px weight 600, border-bottom, padding-bottom 12
 const SectionTitle = ({ children, action }) => (
   <div style={{
-    display: "flex", justifyContent: "space-between", alignItems: "center",
+    display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
     borderBottom: `1px solid ${C.border}`, paddingBottom: 12, marginBottom: 16,
   }}>
     <h2 style={{
       margin: 0, fontSize: 16, fontWeight: 600, color: C.textPrimary,
+      minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
     }}>{children}</h2>
-    {action}
+    {action && <div style={{ flexShrink: 0 }}>{action}</div>}
   </div>
 );
 
@@ -125,7 +126,7 @@ const PlatformIcon = ({ platform }) => {
 };
 
 // Small action button (height 28px per table row spec)
-const SmallButton = ({ children, onClick, variant = "secondary", disabled = false }) => {
+const SmallButton = ({ children, onClick, variant = "secondary", disabled = false, title, style = {} }) => {
   const styles = {
     primary:   { bg: C.blue,    color: "#fff", border: C.blue    },
     secondary: { bg: C.bgSurface, color: C.textPrimary, border: C.border },
@@ -134,7 +135,7 @@ const SmallButton = ({ children, onClick, variant = "secondary", disabled = fals
   };
   const s = styles[variant] || styles.secondary;
   return (
-    <button onClick={onClick} disabled={disabled} style={{
+    <button onClick={onClick} disabled={disabled} title={title} style={{
       height: 28, padding: "0 10px", fontSize: 12,
       background: disabled ? C.bgSubtle : s.bg,
       color: disabled ? C.textMuted : s.color,
@@ -142,9 +143,30 @@ const SmallButton = ({ children, onClick, variant = "secondary", disabled = fals
       borderRadius: 4, cursor: disabled ? "not-allowed" : "pointer",
       opacity: disabled ? 0.5 : 1,
       fontFamily: "Roboto, sans-serif",
+      ...style,
     }}>{children}</button>
   );
 };
+
+// Spinning loader (uses the da-spin keyframe in globals.css).
+const Spinner = ({ size = 12 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true"
+    style={{ animation: "da-spin 0.7s linear infinite", flexShrink: 0 }}>
+    <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="3" strokeOpacity="0.25" />
+    <path d="M12 3a9 9 0 0 1 9 9" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+  </svg>
+);
+
+// Sparkle/wand icon for the Humanize (AI) action.
+const WandIcon = ({ size = 13 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style={{ flexShrink: 0 }}>
+    <path d="M11.5 2l1.5 4.1L17 7.6l-4 1.5L11.5 13l-1.5-3.9L6 7.6l4-1.5L11.5 2z" />
+    <path d="M18 13.5l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9.9-2.1z" opacity="0.7" />
+  </svg>
+);
+
+// Internal "[ALLAN: …]" editor notes — must be resolved before publishing.
+const findPlaceholders = (s) => (s || "").match(/\[ALLAN:[^\]]*\]/g) || [];
 
 // Standard button (height 36px)
 const Button = ({ children, onClick, variant = "primary", disabled = false, loading = false }) => {
@@ -936,6 +958,8 @@ function BlogEditor({ slug, onClose, onSaved }) {
   // close; humanizedPending rides on the next save to stamp provenance.
   const [preHumanize, setPreHumanize] = useState(null);
   const [humanizedPending, setHumanizedPending] = useState(false);
+  const [humanizing, setHumanizing] = useState(false);
+  const bodyRef = useRef(null);
 
   // form fields
   const [f, setF] = useState(null);
@@ -1014,7 +1038,7 @@ function BlogEditor({ slug, onClose, onSaved }) {
     if (!window.confirm(
       `Humanize the body with Phrasly?\n\n~${words.toLocaleString()} words will be sent to Phrasly and billed against your Phrasly credits (billed per word). Headings, links, code, tables and brand names are protected — only prose is rewritten.\n\nThe result replaces the Body below for review. Nothing is saved until you click Save.`
     )) return;
-    setBusy(true); setErr(null); setMsg(null);
+    setBusy(true); setHumanizing(true); setErr(null); setMsg(null);
     try {
       const res = await fetch("/api/blog/humanize", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -1030,7 +1054,25 @@ function BlogEditor({ slug, onClose, onSaved }) {
       }));
       setMsg(`Humanized ${data.wordsSent.toLocaleString()} words in ${data.chunks} chunk${data.chunks === 1 ? "" : "s"} — review the Body before saving.`);
     } catch (e) { setErr(`Humanize failed — ${e.message}`); }
-    setBusy(false);
+    setBusy(false); setHumanizing(false);
+  };
+
+  // Select the next unresolved [ALLAN: …] note in the Body textarea.
+  const jumpToPlaceholder = () => {
+    const ta = bodyRef.current;
+    if (!ta) return;
+    const text = ta.value || "";
+    const from = ta.selectionEnd || 0;
+    const re = /\[ALLAN:[^\]]*\]/g;
+    let m, next = null;
+    while ((m = re.exec(text))) { if (m.index >= from) { next = m; break; } }
+    if (!next) { re.lastIndex = 0; next = re.exec(text); } // wrap to the first
+    if (next) {
+      ta.focus();
+      ta.setSelectionRange(next.index, next.index + next[0].length);
+      const lineNo = text.slice(0, next.index).split("\n").length;
+      ta.scrollTop = Math.max(0, (lineNo - 3) * 18);
+    }
   };
 
   const undoHumanize = () => {
@@ -1071,14 +1113,22 @@ function BlogEditor({ slug, onClose, onSaved }) {
       <div style={{ fontSize: 13, color: C.textMuted, padding: 12 }}>Loading…</div></Card>
   );
 
+  const placeholders = findPlaceholders(f.body);
+
   return (
     <Card>
       <SectionTitle action={
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
           <Badge variant={isPublished ? "success" : "warning"}>{isPublished ? "Published" : "Draft"}</Badge>
-          <SmallButton variant="secondary" disabled={busy} onClick={humanize}>Humanize with Phrasly</SmallButton>
-          <SmallButton onClick={() => window.open(`/blog/${slug}`, "_blank")}>Preview</SmallButton>
-          <SmallButton onClick={onClose}>Close</SmallButton>
+          <SmallButton variant="secondary" disabled={busy} onClick={humanize}
+            title="Humanize with Phrasly"
+            style={{ whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: 6 }}>
+            {humanizing ? <><Spinner /> Humanizing…</> : <><WandIcon /> Humanize</>}
+          </SmallButton>
+          <SmallButton onClick={() => window.open(`/blog/${slug}`, "_blank")} disabled={humanizing}
+            style={{ whiteSpace: "nowrap" }}>Preview</SmallButton>
+          <SmallButton onClick={onClose} disabled={humanizing}
+            style={{ whiteSpace: "nowrap" }}>Close</SmallButton>
         </div>
       }>Edit: {f.title || slug}</SectionTitle>
 
@@ -1128,7 +1178,22 @@ function BlogEditor({ slug, onClose, onSaved }) {
           Undo humanize
         </a>
       ) : null}>Body (MDX — same format the generator produces)</FieldLabel>
-      <textarea style={{ ...fieldStyle, minHeight: 320, fontFamily: "monospace", fontSize: 12, lineHeight: 1.5 }}
+      {placeholders.length > 0 && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: 10,
+          background: BADGE.warning.bg, border: "1px solid #ffcc80", borderRadius: 4,
+          padding: "6px 10px", marginBottom: 6,
+        }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: BADGE.warning.text, whiteSpace: "nowrap" }}>
+            {placeholders.length} note{placeholders.length === 1 ? "" : "s"} to resolve
+          </span>
+          <span style={{ fontSize: 11, color: C.textMuted, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            Publishing is blocked until these [ALLAN: …] notes are removed.
+          </span>
+          <SmallButton onClick={jumpToPlaceholder} style={{ whiteSpace: "nowrap" }}>Jump to next</SmallButton>
+        </div>
+      )}
+      <textarea ref={bodyRef} style={{ ...fieldStyle, minHeight: 320, fontFamily: "monospace", fontSize: 12, lineHeight: 1.5 }}
         value={f.body} onChange={e => set("body", e.target.value)} />
 
       <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 10 }}>
@@ -1162,6 +1227,11 @@ function BlogEditor({ slug, onClose, onSaved }) {
         {!isPublished && <>
           <SmallButton variant="secondary" disabled={busy} onClick={() => save("save")}>Save Draft</SmallButton>
           <SmallButton variant="primary" disabled={busy} onClick={() => {
+            const ph = findPlaceholders(f.body);
+            if (ph.length > 0) {
+              setErr(`Can't publish — ${ph.length} unresolved editor note${ph.length === 1 ? "" : "s"}: ${ph.join("  ")}. Resolve ${ph.length === 1 ? "it" : "them"} (Save Draft is fine), then publish.`);
+              return;
+            }
             if (window.confirm("Save & publish this post live?")) save("publish");
           }}>Save &amp; Publish</SmallButton>
         </>}

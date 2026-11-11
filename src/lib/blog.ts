@@ -54,6 +54,11 @@ export interface BlogFrontmatter {
    *  Provenance only — posts are MDX files (no posts table), so this lives in
    *  frontmatter like every other lifecycle field. */
   humanizedAt?: string
+  /** One-sentence closing call to action. The blog post page renders it as the
+   *  CTA card at the bottom of the article; the generator writes it so the card
+   *  always has source copy without having to detect a trailing "Ready to…"
+   *  section in the body. */
+  cta?: string
 }
 
 export interface BlogPost {
@@ -82,8 +87,17 @@ export function isPublished(fm: BlogFrontmatter): boolean {
 }
 
 function readingTime(content: string): string {
-  const words = content.trim().split(/\s+/).length
-  const mins = Math.max(1, Math.ceil(words / 200))
+  // Count real words: drop markdown/MDX syntax (fences, link URLs, images,
+  // headings/markers, inline punctuation) so a code-heavy or link-heavy post
+  // isn't over-counted, then estimate at ~225 wpm (adult prose reading speed).
+  const prose = content
+    .replace(/```[\s\S]*?```/g, ' ')            // fenced code
+    .replace(/`[^`]*`/g, ' ')                   // inline code
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')      // images
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')    // links → keep the anchor text
+    .replace(/[#>*_~|-]/g, ' ')                 // markdown markers
+  const words = prose.trim().split(/\s+/).filter(Boolean).length
+  const mins = Math.max(1, Math.round(words / 225))
   return `${mins} min read`
 }
 

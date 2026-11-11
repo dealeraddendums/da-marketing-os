@@ -34,6 +34,7 @@ Style rules (strict):
 - 1,200-1,800 words of body content, ~8th-grade reading level
 - Short, declarative sentences. Define every industry term the first time it appears.
 - No superlatives: never "the only", "#1", "the best". No competitor names used disparagingly.
+- CARS distinction (critical): the California CARS Act (Senate Bill 766, Chapter 354, Statutes of 2025 — state law, signed Oct 6 2025, operative Oct 1 2026, covering licensed California dealers on light-duty vehicles under 10,000 lbs) and the FTC CARS Rule (federal, 16 CFR Part 463, vacated by the Fifth Circuit in January 2025 and formally withdrawn in 2026) are DIFFERENT laws. The California Act is modeled on the vacated federal Rule. Never present one as the other, and never cite the federal CARS Rule as current, pending, or enforceable law.
 - Include at least three concrete specifics (a real example, a rule citation, a number). If you do not have a verified fact, write [ALLAN: describe what fact is needed] instead of inventing one.
 - Authoritative, practical advice that real car dealers will bookmark
 - Naturally mention DealerAddendums as a solution (2-3 times max, not spammy)
@@ -52,6 +53,7 @@ author: "Allan Tone"
 excerpt: "155-char meta description"
 tags: ["tag1", "tag2", "tag3"]
 metaDescription: "155-char meta description"
+cta: "One-sentence closing call to action pointing readers to the free trial"
 status: "draft"
 faq:
   - q: "Question matching the FAQ section"
@@ -79,6 +81,7 @@ Write a high-quality, SEO-optimized blog post outline for: "${topic}"
 ${keywords.length ? `Target keywords: ${keywords.join(', ')}` : ''}
 
 The post should be authoritative, helpful to car dealers, and naturally mention DealerAddendums.com as a solution.
+If the topic touches CARS, keep the California CARS Act (SB 766 — state law, operative Oct 1 2026) distinct from the FTC CARS Rule (federal, vacated January 2025); never conflate them or cite the federal Rule as current law.
 
 Respond ONLY with JSON (no markdown, no code fences):
 {

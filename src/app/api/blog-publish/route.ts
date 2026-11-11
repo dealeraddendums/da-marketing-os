@@ -43,6 +43,18 @@ export async function POST(req: NextRequest) {
   }
   const wasDraft = status === 'draft'
 
+  // Never publish a post that still has internal "[ALLAN: …]" notes in the body.
+  const placeholders = parsed.content.match(/\[ALLAN:[^\]]*\]/g)
+  if (wasDraft && placeholders && placeholders.length > 0) {
+    return NextResponse.json(
+      {
+        error: `Can't publish — ${placeholders.length} unresolved editor note${placeholders.length === 1 ? '' : 's'} still in the body: ${placeholders.join('  ')}. Resolve ${placeholders.length === 1 ? 'it' : 'them'} in the editor (Save Draft is fine), then publish.`,
+        placeholders,
+      },
+      { status: 409 }
+    )
+  }
+
   if (wasDraft) {
     fm.status = 'published'
     fm.date = new Date().toISOString().split('T')[0] // published_at = today

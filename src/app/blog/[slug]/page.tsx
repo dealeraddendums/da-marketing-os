@@ -1,12 +1,46 @@
 import { notFound, permanentRedirect } from 'next/navigation'
 import { MDXRemote } from 'next-mdx-remote/rsc'
 import type { Metadata } from 'next'
+import type { ReactNode } from 'react'
 import LoginMenu from '@/components/marketing/LoginMenu'
 import PostBoilerplate from '@/components/blog/PostBoilerplate'
 import { getPost, getAllPosts, getRelatedPosts, getBlogRouteMap } from '@/lib/blog'
 
 interface PageProps {
   params: { slug: string }
+}
+
+// Internal editor notes like "[ALLAN: confirm X]" must never reach a reader.
+const ALLAN_NOTE = /\[ALLAN:[^\]]*\]/g
+
+// Slug an H2's text into a stable anchor id (matches the table-of-contents
+// links built from the same headings).
+function slugifyHeading(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/<[^>]+>/g, '')
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .slice(0, 80)
+}
+
+// Plain text out of rendered MDX children, so a custom <h2> can derive its id.
+function textOf(node: ReactNode): string {
+  if (node == null || typeof node === 'boolean') return ''
+  if (typeof node === 'string' || typeof node === 'number') return String(node)
+  if (Array.isArray(node)) return node.map(textOf).join('')
+  if (typeof node === 'object' && 'props' in (node as any)) return textOf((node as any).props?.children)
+  return ''
+}
+
+// Give every H2 an anchor id so the "In this article" TOC can link to it.
+// scroll-mt (set via prose) keeps the sticky top nav from covering the target.
+const mdxComponents = {
+  h2: (props: { children?: ReactNode }) => (
+    <h2 id={slugifyHeading(textOf(props.children))}>{props.children}</h2>
+  ),
 }
 
 export const revalidate = 3600
@@ -72,6 +106,29 @@ export default async function BlogPost({ params }: PageProps) {
 
   const { frontmatter: fm, content, readingTime: readTime } = post
   const related = getRelatedPosts(params.slug, 3)
+
+  // Never render internal "[ALLAN: …]" notes publicly (defense in depth — the
+  // publish guard also blocks publishing a post that still has them).
+  const cleaned = content.replace(ALLAN_NOTE, '').replace(/[ \t]{2,}/g, ' ')
+
+  // The generator ends full posts with a "## Ready to …" CTA section. Pull it
+  // out of the body and render it as the CTA card instead, so it isn't a plain
+  // trailing heading. If there's no such section, the card uses fm.cta / a
+  // default — the card always shows.
+  const ctaHeadingRe = /\n##\s+Ready to[^\n]*\n/i
+  const ctaMatch = cleaned.match(ctaHeadingRe)
+  const bodyForRender = ctaMatch ? cleaned.slice(0, ctaMatch.index).trimEnd() : cleaned.trimEnd()
+
+  // Table of contents from the H2s that remain in the rendered body.
+  const toc = Array.from(bodyForRender.matchAll(/^##\s+(.+?)\s*$/gm)).map(m => ({
+    text: m[1].trim(),
+    id: slugifyHeading(m[1]),
+  }))
+
+  const ctaText =
+    fm.cta?.trim() ||
+    'Month-to-month, no setup fees. Join 2,100+ dealerships using DealerAddendums.'
+  const ctaHref = `/?utm_source=blog&utm_medium=cta&utm_campaign=${encodeURIComponent(params.slug)}#signup`
 
   const faqJsonLd = fm.faq && fm.faq.length > 0 ? {
     '@context': 'https://schema.org',
@@ -234,30 +291,77 @@ export default async function BlogPost({ params }: PageProps) {
       </div>
 
       {/* Body */}
-      <article style={{ padding: '48px 24px 64px' }}>
-        <div style={{
-          maxWidth: 760,
-          margin: '0 auto',
-          fontSize: 15,
-          lineHeight: 1.8,
-          color: '#333333',
-        }}>
-          {fm.updateNotice && (
-            <div style={{
-              background: '#e3f2fd',
-              border: '1px solid #90caf9',
-              borderRadius: 6,
-              padding: '14px 18px',
-              marginBottom: 28,
-              fontSize: 14,
-              lineHeight: 1.6,
-              color: '#0d47a1',
-            }}>
-              <strong style={{ fontWeight: 700 }}>Update: </strong>{fm.updateNotice}
-            </div>
+      <article style={{ padding: '48px 24px 64px', background: '#ffffff' }}>
+        <div className="mx-auto flex max-w-5xl flex-col gap-10 lg:flex-row lg:items-start">
+          {/* In-this-article TOC — desktop only, sticky */}
+          {toc.length >= 2 && (
+            <nav aria-label="In this article" className="hidden shrink-0 lg:block lg:w-56 lg:sticky lg:top-[72px]">
+              <div className="mb-3 text-xs font-bold uppercase tracking-wide text-[#78828c]">In this article</div>
+              <ul className="space-y-2 border-l border-[#e0e0e0] pl-4 text-sm">
+                {toc.map(h => (
+                  <li key={h.id}>
+                    <a href={`#${h.id}`} className="block leading-snug text-[#55595c] no-underline hover:text-[#1976d2]">
+                      {h.text}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </nav>
           )}
-          <MDXRemote source={content} />
-          <PostBoilerplate />
+
+          <div className="mx-auto w-full min-w-0 max-w-3xl lg:mx-0">
+            {fm.updateNotice && (
+              <div style={{
+                background: '#e3f2fd',
+                border: '1px solid #90caf9',
+                borderRadius: 6,
+                padding: '14px 18px',
+                marginBottom: 28,
+                fontSize: 14,
+                lineHeight: 1.6,
+                color: '#0d47a1',
+              }}>
+                <strong style={{ fontWeight: 700 }}>Update: </strong>{fm.updateNotice}
+              </div>
+            )}
+
+            <div className="prose prose-lg max-w-none prose-headings:text-[#2a2b3c] prose-a:text-[#1976d2] prose-a:font-medium prose-h2:mt-12 prose-h2:mb-4 prose-h2:text-2xl prose-h2:font-semibold prose-h2:scroll-mt-24 prose-h3:mt-8 prose-h3:text-xl prose-p:leading-relaxed prose-p:my-5 prose-li:my-1 prose-ul:list-disc prose-ol:list-decimal prose-ul:pl-6 prose-ol:pl-6 prose-strong:text-[#2a2b3c] prose-blockquote:border-l-4 prose-blockquote:border-[#90caf9] prose-blockquote:bg-[#f5f9ff] prose-blockquote:px-4 prose-blockquote:py-1 prose-blockquote:not-italic prose-blockquote:text-[#334] prose-code:rounded prose-code:bg-[#f0f2f5] prose-code:px-1 prose-code:py-0.5 prose-code:text-[0.9em] prose-code:font-normal prose-code:before:content-[''] prose-code:after:content-['']">
+              <MDXRemote source={bodyForRender} components={mdxComponents} />
+            </div>
+
+            <PostBoilerplate />
+
+            {/* Closing CTA card */}
+            <aside style={{
+              marginTop: 32,
+              borderRadius: 8,
+              background: '#f5f9ff',
+              border: '1px solid #bbdefb',
+              padding: '28px 32px',
+              textAlign: 'center',
+            }}>
+              <div style={{ fontSize: 18, fontWeight: 700, color: '#2a2b3c', marginBottom: 8 }}>
+                Ready to try it on your own inventory?
+              </div>
+              <p style={{ fontSize: 15, lineHeight: 1.6, color: '#404347', margin: '0 auto 18px', maxWidth: 560 }}>
+                {ctaText}
+              </p>
+              <a href={ctaHref} style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                height: 44,
+                padding: '0 28px',
+                background: '#1976d2',
+                color: '#ffffff',
+                fontWeight: 600,
+                fontSize: 15,
+                borderRadius: 4,
+                textDecoration: 'none',
+              }}>
+                Start your free trial
+              </a>
+            </aside>
+          </div>
         </div>
       </article>
 
