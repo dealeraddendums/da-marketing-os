@@ -1,0 +1,46 @@
+---
+title: "DealerAddendums + Tekion: CARS Act Pricing Accuracy"
+date: "2026-11-10"
+author: "Allan Tone"
+excerpt: "See how the DealerAddendums Tekion integration pulls real-time pricing to help California dealers meet CARS Act rules and print accurate addendums."
+tags: ["Tekion integration", "California CARS Act", "dealer compliance", "addendum software"]
+metaDescription: "DealerAddendums now syncs with Tekion's New Inventory API for real-time pricing, helping California dealers meet CARS Act rules on every addendum."
+status: "draft"
+faq:
+  - q: "What is the California CARS Act?"
+    a: "It is a California law — Senate Bill 766 (Chapter 354, Statutes of 2025), signed October 6, 2025 and operative October 1, 2026 — aimed at stopping deceptive vehicle pricing practices at dealerships, including hidden fees and add-on charges that are not disclosed upfront. It applies to licensed California dealers on light-duty vehicles under 10,000 lbs and is modeled on the FTC's federal CARS Rule, which was vacated in January 2025."
+  - q: "What is Tekion's New Inventory API?"
+    a: "It is a data connection that lets third-party software, like DealerAddendums, pull live vehicle pricing and inventory data directly from a dealer's Tekion DMS."
+  - q: "Do I need to change how my sales team works to use this integration?"
+    a: "No. Once connected, pricing updates happen automatically in the background. Your team keeps using DealerAddendums the same way they already do."
+  - q: "Does this integration work for used cars and FTC Buyers Guides too?"
+    a: "Yes. The same real-time pricing feed powers FTC Buyers Guide printing and CPO Info Sheets, not just addendums."
+---
+
+California dealers now face a new layer of pricing scrutiny. The California CARS Act — the Combating Auto Retail Scams Act, Senate Bill 766 (Chapter 354, Statutes of 2025), signed October 6, 2025 and operative October 1, 2026 — targets hidden fees and pricing that does not match what a customer sees advertised. It applies to licensed California dealers on retail sales and leases of light-duty vehicles under 10,000 lbs, and it is modeled on the FTC's federal CARS Rule, which the Fifth Circuit vacated in January 2025 — the California Act is live state law; the federal rule is gone. If your window sticker or addendum shows a price that does not match your advertised price, you risk a compliance violation — even if the mismatch was an honest mistake.
+
+This is where DMS (Dealer Management System) data becomes critical. A DMS is the core software a dealership uses to track inventory, deals, and pricing. If your addendum printing tool is not connected to your DMS, your printed price and your system price can drift apart. That drift is exactly what regulators are watching for.
+
+DealerAddendums now connects directly to Tekion through its New Inventory API (Application Programming Interface — a way for two software systems to share data automatically). This guide explains what that means for your lot, your paperwork, and your compliance risk.
+
+## What the California CARS Act Requires
+
+The CARS Act focuses on one core idea: the price a customer sees should be the price a customer pays, with clear disclosure of any additional charges. Dealers must avoid advertising a price that excludes mandatory fees, then adding those fees later in the deal.
+
+For addendum printing, this creates a practical problem. An addendum is the sticker or sheet a dealer attaches to a vehicle listing optional accessories, markups, or dealer-installed items, along with their prices. If that addendum price does not match what is in your DMS or what is advertised online, you have a discrepancy. Under the CARS Act, that discrepancy is a compliance issue, not just a paperwork error.
+
+Here is a concrete example. Say a dealership advertises a used sedan at $21,500 online. The DMS updates the price to $20,900 after a manager approves a discount. If the addendum printed on the windshield still shows $21,500, a customer walking the lot sees two different numbers for the same car. That gap is the kind of thing CARS Act enforcement is designed to catch.
+
+## Why Pricing Accuracy Is the Hard Part
+
+Most dealerships do not have one pricing system. They have several:
+
+1. The DMS, where deals and inventory live.
+2. The dealer website, often fed by a separate inventory syndication service (a tool that pushes vehicle listings to third-party sites like Autotrader or Cars.com).
+3. Printed materials — window stickers, addendums, and buyer's guides — often created manually or with outdated templates.
+
+Each of these can update on a different schedule. A price change in the DMS might take hours to reach the website and even longer to reach a printed addendum if someone has to manually re-type it. On a 300-vehicle lot, that lag adds up fast. Even a well-run F&I (Finance and Insurance) office can lose track of which stickers need reprinting after a price change.
+
+This is not a staffing problem. It is a data-sync problem. The fix is connecting your printing tool directly to the source of truth: your DMS.
+
+## How Tekion's New Inventory API Changes the
