@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
   const slug = req.nextUrl.searchParams.get('slug') || ''
-  const post = getPost(slug)
+  const post = await getPost(slug, true)
   if (!post) return NextResponse.json({ error: `No post "${slug}"` }, { status: 404 })
   return NextResponse.json({
     slug: post.slug,

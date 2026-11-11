@@ -125,7 +125,7 @@ export default async function HomePage({ searchParams }: PageProps) {
       <PricingSection tracking={tracking} />
       <TestimonialsSection dealerType={ctx.dealerType} />
       <RestylerSection />
-      <CTASection tracking={tracking} resources={getFooterPosts()} />
+      <CTASection tracking={tracking} resources={await getFooterPosts()} />
     </main>
   )
 }

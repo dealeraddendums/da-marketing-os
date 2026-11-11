@@ -14,11 +14,11 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.dealeraddendum
 // it per request is the correct trade.
 export const dynamic = 'force-dynamic'
 
-function getPostDates(): Record<string, string> {
+async function getPostDates(): Promise<Record<string, string>> {
   const dates: Record<string, string> = {}
   // Drafts and archived posts are excluded — getAllPosts() returns published
   // only. lastmod = updatedAt (stamped on every published save) when present.
-  for (const p of getAllPosts()) {
+  for (const p of await getAllPosts()) {
     dates[p.slug] = p.frontmatter.updatedAt || p.frontmatter.date || new Date().toISOString()
   }
   return dates
@@ -33,8 +33,8 @@ function getLPSlugs(): string[] {
   } catch { return [] }
 }
 
-export default function sitemap(): MetadataRoute.Sitemap {
-  const postDates = getPostDates()
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  const postDates = await getPostDates()
   const lpSlugs = getLPSlugs()
 
   const staticPages: MetadataRoute.Sitemap = [

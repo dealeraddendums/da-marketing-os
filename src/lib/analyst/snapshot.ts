@@ -270,7 +270,7 @@ export async function buildSnapshot(days = 30): Promise<AnalystSnapshot> {
   let contentReview: AnalystSnapshot['contentReview']
   try {
     const { getOverdueReviews } = await import('../blog')
-    const overdue = getOverdueReviews().slice(0, 10).map(p => ({
+    const overdue = (await getOverdueReviews()).slice(0, 10).map(p => ({
       slug: p.slug,
       title: p.frontmatter.title,
       reviewBy: p.frontmatter.reviewBy || '',

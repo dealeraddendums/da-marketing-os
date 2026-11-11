@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic'
 // slugs and where they went. Middleware caches it in module scope for 60s;
 // the CDN/proxy may cache it briefly too.
 export async function GET() {
-  const map = getBlogRouteMap()
+  const map = await getBlogRouteMap()
   return NextResponse.json(map, {
     headers: { 'Cache-Control': 'public, max-age=30, stale-while-revalidate=60' },
   })

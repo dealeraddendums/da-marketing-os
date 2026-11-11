@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
   const today = new Date().toISOString().split('T')[0]
-  const posts = getAllPosts({ includeDrafts: true, includeArchived: true }).map(p => ({
+  const posts = (await getAllPosts({ includeDrafts: true, includeArchived: true, fresh: true })).map(p => ({
     slug: p.slug,
     title: p.frontmatter.title,
     date: p.frontmatter.date,

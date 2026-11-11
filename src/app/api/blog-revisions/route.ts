@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { isAdminRequest } from '@/lib/admin-auth'
+import { getPost } from '@/lib/blog'
 import { listRevisions } from '@/lib/blog-revisions'
 
 export const dynamic = 'force-dynamic'
@@ -13,6 +14,8 @@ export async function GET(req: NextRequest) {
   }
   const slug = req.nextUrl.searchParams.get('slug') || ''
   if (!slug) return NextResponse.json({ error: 'slug is required' }, { status: 400 })
-  const revisions = await listRevisions(slug)
+  const post = await getPost(slug, true)
+  if (!post || !post.id) return NextResponse.json({ revisions: [] })
+  const revisions = await listRevisions(post.id)
   return NextResponse.json({ revisions })
 }

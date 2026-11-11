@@ -44,10 +44,10 @@ export async function POST(req: NextRequest) {
 
   // Snapshot the pre-humanize body into the revision log so the original is
   // always retrievable (writeRevision logs failures and never throws).
-  const existing = slug && typeof slug === 'string' ? getPost(slug) : null
+  const existing = slug && typeof slug === "string" ? await getPost(slug, true) : null
   if (existing) {
     await writeRevision({
-      slug: existing.slug,
+      postId: existing.id,
       event: 'save',
       frontmatter: existing.frontmatter,
       body,

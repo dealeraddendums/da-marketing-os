@@ -50,11 +50,11 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.dealeraddendum
 // Only published posts are pre-rendered; drafts still resolve at request time
 // (dynamicParams defaults to true) so they have preview URLs, with noindex.
 export async function generateStaticParams() {
-  return getAllPosts().map(p => ({ slug: p.slug }))
+  return (await getAllPosts()).map(p => ({ slug: p.slug }))
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
-  const post = getPost(params.slug)
+  const post = await getPost(params.slug)
   if (!post || post.status === 'archived') return {}
   const { frontmatter: fm } = post
   const description = fm.metaDescription || fm.excerpt || ''
@@ -87,25 +87,25 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 }
 
 export default async function BlogPost({ params }: PageProps) {
-  const post = getPost(params.slug)
+  const post = await getPost(params.slug)
 
   // Fallbacks for renamed / archived posts. The middleware normally answers
   // these with a true 301 / 410 before the page runs; this covers a cold
   // archive-map cache or a direct render.
   if (!post) {
-    const { moved } = getBlogRouteMap()
+    const { moved } = await getBlogRouteMap()
     if (moved[params.slug]) permanentRedirect(`/blog/${moved[params.slug]}`)
     notFound()
   }
   if (post.status === 'archived') {
     const target = post.frontmatter.archiveRedirectSlug
-    const targetPost = target ? getPost(target) : null
+    const targetPost = target ? await getPost(target) : null
     if (targetPost && targetPost.status === 'published') permanentRedirect(`/blog/${target}`)
     notFound()
   }
 
   const { frontmatter: fm, content, readingTime: readTime } = post
-  const related = getRelatedPosts(params.slug, 3)
+  const related = await getRelatedPosts(params.slug, 3)
 
   // Never render internal "[ALLAN: …]" notes publicly (defense in depth — the
   // publish guard also blocks publishing a post that still has them).

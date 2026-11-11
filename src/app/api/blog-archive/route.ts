@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { writeFileSync } from 'fs'
-import matter from 'gray-matter'
 import { revalidatePath } from 'next/cache'
 import { isAdminRequest } from '@/lib/admin-auth'
-import { getPost, postFilePath, type BlogFrontmatter } from '@/lib/blog'
+import { getPost, type BlogFrontmatter } from '@/lib/blog'
+import { dbSavePost } from '@/lib/blog-store'
 import { writeRevision } from '@/lib/blog-revisions'
 import { notifyUrlDeleted } from '@/lib/google/indexing'
 
@@ -11,14 +10,9 @@ export const dynamic = 'force-dynamic'
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.dealeraddendums.com'
 
-// Archive a post. Requires a reason; optionally names a published replacement
-// post. Consequences (all derived from status === 'archived'):
-//   - gone from blog index, related posts, footer Resources, sitemap
-//   - its URL 301s to the replacement, or returns 410 Gone (middleware +
-//     the /blog/[slug] page fallback) — never a noindex-but-200 page
-//   - URL_DELETED sent to the Indexing API
-// Restore (separate route) sends it back to DRAFT for re-review, never
-// straight to published.
+// Archive a post (requires a reason; optional published replacement). Archived
+// posts leave the index/related/footer/sitemap; the URL 301s to the replacement
+// or returns 410. Restore (separate route) sends it back to DRAFT.
 export async function POST(req: NextRequest) {
   if (!isAdminRequest(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -30,7 +24,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'A reason is required to archive a post' }, { status: 400 })
   }
 
-  const post = getPost(slug)
+  const post = await getPost(slug, true)
   if (!post) return NextResponse.json({ error: `No post "${slug}"` }, { status: 404 })
   if (post.status === 'archived') {
     return NextResponse.json({ error: 'Post is already archived' }, { status: 409 })
@@ -38,7 +32,7 @@ export async function POST(req: NextRequest) {
 
   let redirect: string | undefined
   if (redirectSlug) {
-    const target = getPost(redirectSlug)
+    const target = await getPost(redirectSlug, true)
     if (!target || target.status !== 'published' || target.slug === slug) {
       return NextResponse.json({ error: 'Redirect target must be a different, published post' }, { status: 400 })
     }
@@ -52,10 +46,10 @@ export async function POST(req: NextRequest) {
   if (redirect) fm.archiveRedirectSlug = redirect
   else delete fm.archiveRedirectSlug
 
-  writeFileSync(postFilePath(slug)!, matter.stringify(post.content, fm), 'utf-8')
+  const saved = await dbSavePost(slug, fm, post.content)
 
   await writeRevision({
-    slug,
+    postId: saved.id,
     event: 'archive',
     frontmatter: fm,
     body: post.content,

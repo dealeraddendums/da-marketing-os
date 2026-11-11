@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { readFileSync, writeFileSync } from 'fs'
-import matter from 'gray-matter'
 import { revalidatePath } from 'next/cache'
 import { isAdminRequest } from '@/lib/admin-auth'
-import { postFilePath, postStatus, type BlogFrontmatter } from '@/lib/blog'
+import { getPost, type BlogFrontmatter } from '@/lib/blog'
+import { dbSavePost } from '@/lib/blog-store'
 import { writeRevision } from '@/lib/blog-revisions'
 import { submitUrlForIndexing } from '@/lib/google/indexing'
 
@@ -11,11 +10,9 @@ export const dynamic = 'force-dynamic'
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.dealeraddendums.com'
 
-// Admin-only publish step: flip a draft post to published, stamp today's date
-// as the publication date, revalidate the blog index / post / sitemap, and
-// submit the URL to the Google Indexing API. An indexing failure never fails
-// the publish — the post is live either way and the sitemap is the canonical
-// signal; the result reports it so the operator can retry.
+// Admin-only publish: flip a draft to published, stamp today's date, revalidate
+// blog/post/sitemap, submit to the Google Indexing API. Indexing failure never
+// fails the publish.
 export async function POST(req: NextRequest) {
   if (!isAdminRequest(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -26,25 +23,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'slug is required' }, { status: 400 })
   }
 
-  const filePath = postFilePath(slug)
-  if (!filePath) {
+  const post = await getPost(slug, true)
+  if (!post) {
     return NextResponse.json({ error: `No post found for slug "${slug}"` }, { status: 404 })
   }
-
-  const raw = readFileSync(filePath, 'utf-8')
-  const parsed = matter(raw)
-  const fm = parsed.data as BlogFrontmatter
-  const status = postStatus(fm)
-  if (status === 'archived') {
+  if (post.status === 'archived') {
     return NextResponse.json(
       { error: 'Post is archived — restore it to draft and re-review before publishing' },
       { status: 409 }
     )
   }
-  const wasDraft = status === 'draft'
+  const wasDraft = post.status === 'draft'
 
-  // Never publish a post that still has internal "[ALLAN: …]" notes in the body.
-  const placeholders = parsed.content.match(/\[ALLAN:[^\]]*\]/g)
+  // Never publish a body that still has internal "[ALLAN: …]" notes.
+  const placeholders = post.content.match(/\[ALLAN:[^\]]*\]/g)
   if (wasDraft && placeholders && placeholders.length > 0) {
     return NextResponse.json(
       {
@@ -55,21 +47,20 @@ export async function POST(req: NextRequest) {
     )
   }
 
+  const fm: BlogFrontmatter = { ...post.frontmatter }
   if (wasDraft) {
     fm.status = 'published'
     fm.date = new Date().toISOString().split('T')[0] // published_at = today
-    writeFileSync(filePath, matter.stringify(parsed.content, fm), 'utf-8')
+    const saved = await dbSavePost(slug, fm, post.content)
     await writeRevision({
-      slug,
+      postId: saved.id,
       event: 'publish',
       frontmatter: fm,
-      body: parsed.content,
+      body: post.content,
       changeSummary: 'Published from the Blog Queue',
     })
   }
 
-  // The index page, the post itself and the sitemap are all ISR — make the
-  // publish visible now rather than at the next revalidation window.
   revalidatePath('/blog')
   revalidatePath(`/blog/${slug}`)
   revalidatePath('/sitemap.xml')

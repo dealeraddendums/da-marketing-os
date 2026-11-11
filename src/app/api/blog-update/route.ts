@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { writeFileSync, unlinkSync } from "fs"
-import { join } from 'path'
-import matter from 'gray-matter'
 import { revalidatePath } from 'next/cache'
 import { isAdminRequest } from '@/lib/admin-auth'
-import { getPost, postFilePath, safeSlug, POSTS_DIR, type BlogFrontmatter } from '@/lib/blog'
-import { writeRevision, rekeyRevisions, type RevisionEvent } from '@/lib/blog-revisions'
+import { getPost, safeSlug, type BlogFrontmatter } from '@/lib/blog'
+import { dbSavePost, dbRenamePost, dbSlugExists } from '@/lib/blog-store'
+import { writeRevision, type RevisionEvent } from '@/lib/blog-revisions'
 import { submitUrlForIndexing, notifyUrlDeleted, type IndexingResult } from '@/lib/google/indexing'
 
 export const dynamic = 'force-dynamic'
@@ -24,19 +22,14 @@ function revalidateBlog(slug: string, oldSlug?: string) {
   revalidatePath('/') // footer Resources row
 }
 
-// The editor's save endpoint.
-//
-// action:
-//   'save'    — keep the current status. Draft: just writes the file (no
-//               revision — drafts are logged on publish only). Published:
-//               stamps updatedAt, writes a revision, re-submits to the
-//               Indexing API, revalidates blog + sitemap.
-//   'publish' — draft → published: stamps date (published_at), writes a
-//               'publish' revision, submits to the Indexing API.
-//
-// Slug change: newSlug renames the file. On a PUBLISHED post the old slug is
-// recorded in previousSlugs (middleware 301s it) and the old URL gets a
-// URL_DELETED notification; the revision event becomes 'slug_change'.
+// The editor's save endpoint (writes to Supabase blog_posts, migration 024).
+//   'save'    — keep current status. Draft: no revision (logged on publish) unless
+//               humanized. Published: stamp updatedAt, revision, re-index.
+//   'publish' — draft → published: stamp date (published_at), 'publish' revision,
+//               submit to the Indexing API.
+// Slug change renames the row in place (same id → revision history follows); on a
+// PUBLISHED post the old slug is recorded in previousSlugs (middleware 301s it)
+// and the old URL gets a URL_DELETED notification.
 export async function POST(req: NextRequest) {
   if (!isAdminRequest(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -57,7 +50,7 @@ export async function POST(req: NextRequest) {
     updateNotice,
     editorNote,
     reviewBy,
-    humanized, // true when the body being saved came from "Humanize with Phrasly"
+    humanized, // true when the body came from "Humanize with Phrasly"
   } = payload as Record<string, any>
 
   if (!slug || typeof slug !== 'string') {
@@ -67,7 +60,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `Unknown action "${action}"` }, { status: 400 })
   }
 
-  const existing = getPost(slug)
+  const existing = await getPost(slug, true)
   if (!existing) return NextResponse.json({ error: `No post "${slug}"` }, { status: 404 })
   if (existing.status === 'archived') {
     return NextResponse.json({ error: 'Post is archived — restore it to draft before editing' }, { status: 409 })
@@ -79,7 +72,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'body cannot be empty' }, { status: 400 })
   }
 
-  // ── Frontmatter: start from what's on disk, apply only provided fields ──
+  // ── Frontmatter: start from the post, apply only provided fields ──
   const fm: BlogFrontmatter = { ...existing.frontmatter }
   if (typeof title === 'string') fm.title = title.trim()
   if (typeof metaTitle === 'string') { if (metaTitle.trim()) fm.metaTitle = metaTitle.trim(); else delete fm.metaTitle }
@@ -89,12 +82,10 @@ export async function POST(req: NextRequest) {
   if (typeof updateNotice === 'string') { if (updateNotice.trim()) fm.updateNotice = updateNotice.trim(); else delete fm.updateNotice }
   if (typeof editorNote === 'string') { if (editorNote.trim()) fm.editorNote = editorNote.trim(); else delete fm.editorNote }
   if (typeof reviewBy === 'string') { if (reviewBy.trim()) fm.reviewBy = reviewBy.trim(); else delete fm.reviewBy }
-  // Phrasly provenance: the saved body came from "Humanize with Phrasly".
   if (humanized === true) fm.humanizedAt = new Date().toISOString()
   const newBody: string = typeof body === 'string' ? body : existing.content
 
   // Never publish a body that still carries internal "[ALLAN: …]" notes.
-  // Save Draft (action 'save') is always allowed so work can continue.
   if (action === 'publish') {
     const placeholders = newBody.match(/\[ALLAN:[^\]]*\]/g)
     if (placeholders && placeholders.length > 0) {
@@ -129,13 +120,12 @@ export async function POST(req: NextRequest) {
   if (typeof newSlug === 'string' && newSlug.trim() && safeSlug(newSlug) !== slug) {
     const target = safeSlug(newSlug)
     if (!target) return NextResponse.json({ error: 'Invalid new slug' }, { status: 400 })
-    if (postFilePath(target)) {
+    if (await dbSlugExists(target)) {
       return NextResponse.json({ error: `A post with slug "${target}" already exists` }, { status: 409 })
     }
     finalSlug = target
     renamed = true
     if (wasPublished) {
-      // Auto-301: old slug is remembered; middleware + the archive map 301 it.
       const prev = new Set(fm.previousSlugs || [])
       prev.add(slug)
       prev.delete(finalSlug)
@@ -143,34 +133,23 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // ── Write the file (new path first, then remove the old on rename) ──
-  const outPath = join(POSTS_DIR(), `${finalSlug}.mdx`)
-  writeFileSync(outPath, matter.stringify(newBody, fm), 'utf-8')
-  if (renamed) {
-    const oldPath = postFilePath(slug)
-    // postFilePath(slug) now may resolve to the new file only if same name; it
-    // resolves the OLD slug's file, which still exists — remove it.
-    if (oldPath && oldPath !== outPath) unlinkSync(oldPath)
-  }
+  // ── Write to the DB (rename updates the row in place → same id) ──
+  const saved = renamed
+    ? await dbRenamePost(slug, finalSlug, fm, newBody)
+    : await dbSavePost(finalSlug, fm, newBody)
 
-  // ── Revision log ──
-  // On a rename, re-key the existing history to the new slug first so the
-  // post's whole revision trail follows it (the slug IS the post's identity).
-  if (renamed) await rekeyRevisions(slug, finalSlug)
+  // ── Revision log (keyed on the stable post id; no re-keying on rename) ──
   let event: RevisionEvent | null = null
   if (publishing) event = 'publish'
   else if (wasPublished) event = renamed ? 'slug_change' : 'save'
-  // draft saves: no revision (logged on publish only) — EXCEPT a humanized
-  // save, which always logs so the Phrasly provenance trail is complete
-  // (the pre-humanize snapshot was written by /api/blog/humanize).
-  else if (humanized === true) event = 'save'
+  else if (humanized === true) event = 'save' // draft humanized save → always logged
   if (event) {
     let summary: string = changeSummary || ''
     if (humanized === true && !/phrasly/i.test(summary)) {
       summary = summary ? `${summary} [Humanized via Phrasly]` : 'Humanized via Phrasly'
     }
     await writeRevision({
-      slug: finalSlug,
+      postId: saved.id,
       event,
       frontmatter: fm,
       body: newBody,

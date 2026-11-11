@@ -1,26 +1,27 @@
-// Shared blog-post reader. Posts are MDX files in content/posts/ — there is
-// no database table for them (only the revision log, migration 023). Draft /
-// published / archived state and all lifecycle fields live in frontmatter:
+// Shared blog-post reader.
 //
-//   status: "draft" | "published" | "archived"  — absent means published (legacy)
-//   updatedAt: ISO date                — stamped on every save of a published post
-//   archivedAt / archivedReason        — set by Archive
-//   archiveRedirectSlug                — optional replacement post (old URL 301s)
-//   previousSlugs: []                  — old slugs after a rename (301 sources)
-//   editorNote                         — internal, NEVER rendered publicly
-//   updateNotice                       — public banner at the top of the post
-//   metaTitle                          — overrides title in the <title> tag
-//   reviewBy: ISO date                 — internal review-due date (amber badge)
-//   faq: [{ q, a }]                    — FAQPage JSON-LD + FAQ section
-//   related: ["slug-a", "slug-b"]      — curated related-posts map
-//   featured: true                     — homepage footer Resources row
+// Storage moved from MDX files to the database (migration 024): posts live in
+// Supabase `blog_posts` so they survive a deploy (the editor/generator write
+// on the running box, and a deploy wipes uncommitted disk writes). The MDX
+// body is stored as text and compiled at render exactly as before.
 //
-// Server-side only (fs). Every consumer (blog index, [slug] page, sitemap,
-// homepage footer, middleware archive map, admin routes) reads through this
-// file so each status means the same thing everywhere.
+// BLOG_SOURCE selects the read source:
+//   'supabase' (default) — read blog_posts (the source of truth).
+//   'files'              — read the frozen content/posts/*.mdx snapshot. The
+//                          instant rollback: set BLOG_SOURCE=files + redeploy.
+// The file-read path is kept intact through burn-in; a later cleanup PR removes
+// it with the files. Writes always go to the DB (see lib/blog-store.ts); files
+// are never written anymore (no dual-write — drift risk).
+//
+// Lifecycle fields (frontmatter in file mode, columns in DB mode, same meaning):
+//   status draft|published|archived (absent = published, legacy) · updatedAt ·
+//   archivedAt/archivedReason/archiveRedirectSlug · previousSlugs · editorNote
+//   (internal) · updateNotice (public banner) · metaTitle · reviewBy · faq ·
+//   related · featured · humanizedAt · cta.
 import { readFileSync, readdirSync, existsSync } from 'fs'
 import { join } from 'path'
 import matter from 'gray-matter'
+import { dbGetPost, dbGetAllPosts, rowToFrontmatter, type BlogRow } from './blog-store'
 
 export interface BlogFaqItem {
   q: string
@@ -50,18 +51,15 @@ export interface BlogFrontmatter {
   faq?: BlogFaqItem[]
   related?: string[]
   featured?: boolean
-  /** ISO timestamp of the last save whose body came from "Humanize with Phrasly".
-   *  Provenance only — posts are MDX files (no posts table), so this lives in
-   *  frontmatter like every other lifecycle field. */
+  /** ISO timestamp of the last save whose body came from "Humanize with Phrasly". */
   humanizedAt?: string
-  /** One-sentence closing call to action. The blog post page renders it as the
-   *  CTA card at the bottom of the article; the generator writes it so the card
-   *  always has source copy without having to detect a trailing "Ready to…"
-   *  section in the body. */
+  /** One-sentence closing CTA; the post page renders it as the CTA card. */
   cta?: string
 }
 
 export interface BlogPost {
+  /** DB row id (supabase mode only; undefined in files mode). */
+  id?: string
   slug: string
   frontmatter: BlogFrontmatter
   content: string
@@ -70,6 +68,9 @@ export interface BlogPost {
   /** Kept for existing call sites: true only for status === 'draft'. */
   draft: boolean
 }
+
+const BLOG_SOURCE: 'supabase' | 'files' =
+  process.env.BLOG_SOURCE === 'files' ? 'files' : 'supabase'
 
 export const POSTS_DIR = () => join(process.cwd(), 'content', 'posts')
 
@@ -88,14 +89,13 @@ export function isPublished(fm: BlogFrontmatter): boolean {
 
 function readingTime(content: string): string {
   // Count real words: drop markdown/MDX syntax (fences, link URLs, images,
-  // headings/markers, inline punctuation) so a code-heavy or link-heavy post
-  // isn't over-counted, then estimate at ~225 wpm (adult prose reading speed).
+  // headings/markers, inline punctuation), then estimate at ~225 wpm.
   const prose = content
-    .replace(/```[\s\S]*?```/g, ' ')            // fenced code
-    .replace(/`[^`]*`/g, ' ')                   // inline code
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')      // images
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')    // links → keep the anchor text
-    .replace(/[#>*_~|-]/g, ' ')                 // markdown markers
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`[^`]*`/g, ' ')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/[#>*_~|-]/g, ' ')
   const words = prose.trim().split(/\s+/).filter(Boolean).length
   const mins = Math.max(1, Math.round(words / 225))
   return `${mins} min read`
@@ -113,63 +113,80 @@ export function postFilePath(slug: string): string | null {
   return existsSync(mdx) ? mdx : existsSync(md) ? md : null
 }
 
-export function getPost(slug: string): BlogPost | null {
+function toBlogPost(slug: string, fm: BlogFrontmatter, content: string, id?: string): BlogPost {
+  const status = postStatus(fm)
+  return { id, slug, frontmatter: fm, content, readingTime: readingTime(content), status, draft: status === 'draft' }
+}
+
+function rowToPost(row: BlogRow): BlogPost {
+  return toBlogPost(row.slug, rowToFrontmatter(row), row.body_mdx, row.id)
+}
+
+// ── File-mode (rollback) readers ──────────────────────────────────────────────
+function getPostFromFile(slug: string): BlogPost | null {
   const filePath = postFilePath(slug)
   if (!filePath) return null
   const { data, content } = matter(readFileSync(filePath, 'utf-8'))
-  const fm = data as BlogFrontmatter
-  const status = postStatus(fm)
-  return { slug, frontmatter: fm, content, readingTime: readingTime(content), status, draft: status === 'draft' }
+  return toBlogPost(slug, data as BlogFrontmatter, content)
 }
 
-/**
- * Posts, newest first. By default only PUBLISHED posts — the public index,
- * sitemap, footer and related-posts fallback must never list a draft or an
- * archived post. includeDrafts additionally admits drafts (admin queue,
- * sibling previews); includeArchived additionally admits archived posts
- * (admin queue only).
- */
-export function getAllPosts(opts: { includeDrafts?: boolean; includeArchived?: boolean } = {}): BlogPost[] {
+function getAllPostsFromFiles(): BlogPost[] {
   try {
     const files = readdirSync(POSTS_DIR()).filter(f => f.endsWith('.mdx') || f.endsWith('.md'))
     const posts: BlogPost[] = []
     for (const f of files) {
-      const slug = f.replace(/\.(mdx|md)$/, '')
-      const post = getPost(slug)
-      if (!post) continue
-      if (post.status === 'draft' && !opts.includeDrafts) continue
-      if (post.status === 'archived' && !opts.includeArchived) continue
-      posts.push(post)
+      const post = getPostFromFile(f.replace(/\.(mdx|md)$/, ''))
+      if (post) posts.push(post)
     }
-    return posts.sort((a, b) => {
-      const da = new Date(a.frontmatter.date || 0).getTime()
-      const db = new Date(b.frontmatter.date || 0).getTime()
-      return db - da
-    })
+    return posts
   } catch {
     return []
   }
 }
 
+// ── Public readers (async; branch on BLOG_SOURCE) ─────────────────────────────
+export async function getPost(slug: string, fresh = false): Promise<BlogPost | null> {
+  if (BLOG_SOURCE === 'files') return getPostFromFile(slug)
+  const row = await dbGetPost(slug, fresh)
+  return row ? rowToPost(row) : null
+}
+
 /**
- * Related posts for a slug: the frontmatter `related` list first (in order;
- * drafts included so sibling previews link to each other pre-publish, but
- * ARCHIVED posts are always skipped), topped up with the newest published.
+ * Posts, newest first. By default only PUBLISHED. includeDrafts/includeArchived
+ * widen the set (admin queue, route map, sibling previews).
  */
-export function getRelatedPosts(slug: string, limit = 3): BlogPost[] {
-  const self = getPost(slug)
+export async function getAllPosts(opts: { includeDrafts?: boolean; includeArchived?: boolean; fresh?: boolean } = {}): Promise<BlogPost[]> {
+  const all = BLOG_SOURCE === 'files'
+    ? getAllPostsFromFiles()
+    : (await dbGetAllPosts(opts.fresh)).map(rowToPost)
+  return all
+    .filter(p => {
+      if (p.status === 'draft' && !opts.includeDrafts) return false
+      if (p.status === 'archived' && !opts.includeArchived) return false
+      return true
+    })
+    .sort((a, b) => {
+      const da = new Date(a.frontmatter.date || 0).getTime()
+      const db = new Date(b.frontmatter.date || 0).getTime()
+      return db - da
+    })
+}
+
+/** Related posts: frontmatter `related` first (archived skipped), topped up with newest published. */
+export async function getRelatedPosts(slug: string, limit = 3): Promise<BlogPost[]> {
+  const self = await getPost(slug)
   const out: BlogPost[] = []
   const seen = new Set<string>([slug])
   for (const rel of self?.frontmatter.related || []) {
     if (seen.has(rel)) continue
-    const p = getPost(rel)
+    const p = await getPost(rel)
     if (p && p.status !== 'archived') {
       out.push(p)
       seen.add(rel)
     }
     if (out.length >= limit) return out
   }
-  for (const p of getAllPosts()) {
+  for (const p of await getAllPosts()) {
     if (out.length >= limit) break
     if (seen.has(p.slug)) continue
     out.push(p)
@@ -178,42 +195,37 @@ export function getRelatedPosts(slug: string, limit = 3): BlogPost[] {
   return out
 }
 
-/** Published posts for the homepage footer Resources row: featured only. */
-export function getFooterPosts(limit = 3): Array<{ slug: string; title: string }> {
-  const published = getAllPosts()
-  const featured = published.filter(p => p.frontmatter.featured)
-  return featured.slice(0, limit).map(p => ({ slug: p.slug, title: p.frontmatter.title }))
+/** Published featured posts for the homepage footer Resources row. */
+export async function getFooterPosts(limit = 3): Promise<Array<{ slug: string; title: string }>> {
+  const published = await getAllPosts()
+  return published.filter(p => p.frontmatter.featured).slice(0, limit).map(p => ({ slug: p.slug, title: p.frontmatter.title }))
 }
 
-/**
- * The redirect/410 map the middleware consumes for /blog/<slug> requests:
- *  - moved:    old slug (from previousSlugs) → current slug  → 301
- *  - archived: slug → replacement slug, or null              → 301 or 410
- */
-export function getBlogRouteMap(): {
+/** The redirect/410 map the middleware consumes for /blog/<slug>. */
+export async function getBlogRouteMap(): Promise<{
   moved: Record<string, string>
   archived: Record<string, string | null>
-} {
+}> {
   const moved: Record<string, string> = {}
   const archived: Record<string, string | null> = {}
-  for (const p of getAllPosts({ includeDrafts: true, includeArchived: true })) {
+  const all = await getAllPosts({ includeDrafts: true, includeArchived: true })
+  const published = new Set(all.filter(p => p.status === 'published').map(p => p.slug))
+  for (const p of all) {
     for (const old of p.frontmatter.previousSlugs || []) {
       if (old && old !== p.slug) moved[old] = p.slug
     }
     if (p.status === 'archived') {
       const target = p.frontmatter.archiveRedirectSlug || null
-      // Only redirect to a post that is actually published; otherwise 410.
-      const targetPost = target ? getPost(target) : null
-      archived[p.slug] = targetPost && targetPost.status === 'published' ? target : null
+      archived[p.slug] = target && published.has(target) ? target : null
     }
   }
   return { moved, archived }
 }
 
 /** Posts whose internal reviewBy date has passed (published or draft). */
-export function getOverdueReviews(): BlogPost[] {
+export async function getOverdueReviews(): Promise<BlogPost[]> {
   const today = new Date().toISOString().split('T')[0]
-  return getAllPosts({ includeDrafts: true }).filter(
+  return (await getAllPosts({ includeDrafts: true })).filter(
     p => p.frontmatter.reviewBy && p.frontmatter.reviewBy <= today
   )
 }

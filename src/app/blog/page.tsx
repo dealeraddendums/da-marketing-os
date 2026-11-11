@@ -42,8 +42,8 @@ function tagStyle(tag: string) {
   return TAG_COLORS[key] || { bg: '#f5f6f7', text: '#55595c' }
 }
 
-export default function BlogIndex() {
-  const posts = getAllPosts()
+export default async function BlogIndex() {
+  const posts = await getAllPosts()
   const [featured, ...rest] = posts
 
   return (

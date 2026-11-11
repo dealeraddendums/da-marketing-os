@@ -1,26 +1,17 @@
-// Revision log for blog posts — blog_post_revisions (migration 023).
-// Posts live as MDX files; this table is the append-only history behind them.
+// Revision log for blog posts — blog_post_revisions (migration 024, reshaped
+// from slug-keyed to post_id-keyed FK → blog_posts.id). A snapshot is written
+// on publish, on every save of a published post, on unpublish/archive/restore,
+// and on a humanized save. The row snapshots the full frontmatter + body so
+// Restore reproduces the post exactly. Because it keys on the stable post id,
+// a slug rename needs no re-keying — the history follows the post.
 //
-// Policy (who writes a row, enforced by the admin routes):
-//   - every save of a PUBLISHED post        → event 'save'
-//   - every publish (draft → published)     → event 'publish'
-//   - unpublish / archive / restore         → their own events
-//   - slug rename                           → event 'slug_change' under the NEW slug
-//   - saves of a DRAFT                      → no row (drafts are logged on publish only)
-//
-// A revision snapshots the full frontmatter + body so Restore can reproduce
-// the post exactly. Failures are logged and never fail the editor action —
-// losing one history row is better than blocking a save.
+// Own client with cache:'no-store' (Next 14 patches global fetch with its Data
+// Cache; supabase-js SELECTs are GETs and would otherwise return stale rows).
+// Failures are logged and never thrown — losing one history row beats blocking
+// an editor action.
 import { createClient } from '@supabase/supabase-js'
 import type { BlogFrontmatter } from './blog'
 
-// ⚠️ Own client with cache:'no-store' on every request. Next 14 patches
-// global fetch with its file-backed Data Cache, and supabase-js SELECTs are
-// GETs keyed on the PostgREST URL — so the shared client's reads can return
-// STALE rows even in a force-dynamic route (verified live 2026-11-09: raw
-// PostgREST showed 6 revision rows while the app route kept answering with a
-// cached 2). Writes (POST/PATCH) are never cached, which is why inserts
-// worked while the history listing froze.
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -31,7 +22,7 @@ export type RevisionEvent = 'save' | 'publish' | 'unpublish' | 'archive' | 'rest
 
 export interface BlogRevision {
   id: string
-  slug: string
+  post_id: string
   event: RevisionEvent
   title: string | null
   meta_title: string | null
@@ -44,15 +35,20 @@ export interface BlogRevision {
 }
 
 export async function writeRevision(args: {
-  slug: string
+  postId?: string
   event: RevisionEvent
   frontmatter: BlogFrontmatter
   body: string
   changeSummary?: string
   savedBy?: string
 }): Promise<void> {
+  if (!args.postId) {
+    // No post id (e.g. a files-mode rollback has no DB row) — nothing to key on.
+    console.warn('[blog-revisions] skipped: no postId')
+    return
+  }
   const { error } = await supabase.from('blog_post_revisions').insert({
-    slug: args.slug,
+    post_id: args.postId,
     event: args.event,
     title: args.frontmatter.title ?? null,
     meta_title: args.frontmatter.metaTitle ?? null,
@@ -65,21 +61,11 @@ export async function writeRevision(args: {
   if (error) console.error('[blog-revisions] insert failed:', error.message)
 }
 
-/** On a slug rename, move the post's history to the new slug (the slug is the
- *  post's identity, so the trail must follow it). Logged, never throws. */
-export async function rekeyRevisions(oldSlug: string, newSlug: string): Promise<void> {
-  const { error } = await supabase
-    .from('blog_post_revisions')
-    .update({ slug: newSlug })
-    .eq('slug', oldSlug)
-  if (error) console.error('[blog-revisions] rekey failed:', error.message)
-}
-
-export async function listRevisions(slug: string, limit = 50): Promise<BlogRevision[]> {
+export async function listRevisions(postId: string, limit = 50): Promise<BlogRevision[]> {
   const { data, error } = await supabase
     .from('blog_post_revisions')
     .select('*')
-    .eq('slug', slug)
+    .eq('post_id', postId)
     .order('saved_at', { ascending: false })
     .limit(limit)
   if (error) {
