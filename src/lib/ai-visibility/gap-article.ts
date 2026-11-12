@@ -174,8 +174,13 @@ Then the body content immediately after.`
   let fm: BlogFrontmatter | null = null
   let body = ''
   for (let attempt = 1; attempt <= 2; attempt++) {
-    const { text, truncated } = await generateTextFull(genPrompt, 6000)
-    if (truncated) continue
+    // 8000 matches the full generator: the first live run truncated at 6000
+    // on attempt 1 and only the retry saved it.
+    const { text, truncated } = await generateTextFull(genPrompt, 8000)
+    if (truncated) {
+      console.error(`[gap-article] attempt ${attempt}: output truncated at max_tokens — retrying`)
+      continue
+    }
     try {
       const parsed = matter(text.replace(/^```(?:mdx|markdown)?\n?|```\s*$/g, ''))
       const pfm = parsed.data as BlogFrontmatter
