@@ -508,20 +508,30 @@ function TrendChart({ trend }: { trend: AnyObj[] }) {
   const n = trend.length
   const x = (i: number) => PAD + (n === 1 ? 0 : (i * (W - PAD * 2)) / (n - 1))
   const y = (pct: number) => H - PAD - (pct / 100) * (H - PAD * 2)
-  const series = ENGINE_IDS.map(e => ({
-    color: ENGINE_META[e].color, width: 1.5,
-    points: trend.map((t, i) => ({ i, v: t.perEngine?.[e] })),
-  })).concat([{
-    color: C.navy, width: 2.5,
+  // Overall draws FIRST (beneath) — it's thicker, and whenever a series equals
+  // it exactly (a one-engine run makes overall == that engine) drawing it last
+  // hid the engine line entirely. Engines get a tiny fixed y-offset (≤2px ≈
+  // 0.5%) so engines that tie with EACH OTHER stay individually visible too.
+  const series = [{
+    color: C.navy, width: 2.5, dy: 0,
     points: trend.map((t, i) => ({ i, v: t.overall })),
-  }])
-  const path = (pts: { i: number; v: number | null }[]) => {
+  }].concat(ENGINE_IDS.map((e, idx) => ({
+    color: ENGINE_META[e].color, width: 1.5, dy: (idx - 1.5) * 1.2,
+    points: trend.map((t, i) => ({ i, v: t.perEngine?.[e] })),
+  })))
+  const path = (pts: { i: number; v: number | null }[], dy: number) => {
     let d = ''
     for (const p of pts) {
       if (p.v === null || p.v === undefined) continue
-      d += `${d ? 'L' : 'M'}${x(p.i).toFixed(1)},${y(p.v).toFixed(1)}`
+      d += `${d ? 'L' : 'M'}${x(p.i).toFixed(1)},${(y(p.v) + dy).toFixed(1)}`
     }
     return d
+  }
+  // An isolated point (both neighbors null) draws no path segment, so it needs
+  // a clearly visible dot — e.g. an engine's first-ever run.
+  const isolated = (pts: { v: number | null }[], i: number) => {
+    const has = (j: number) => j >= 0 && j < pts.length && pts[j].v !== null && pts[j].v !== undefined
+    return !has(i - 1) && !has(i + 1)
   }
   return (
     <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto' }}>
@@ -538,9 +548,12 @@ function TrendChart({ trend }: { trend: AnyObj[] }) {
       ))}
       {series.map((s, idx) => (
         <g key={idx}>
-          <path d={path(s.points)} fill="none" stroke={s.color} strokeWidth={s.width} />
-          {s.points.map(p => (p.v === null || p.v === undefined) ? null : (
-            <circle key={p.i} cx={x(p.i)} cy={y(p.v)} r={s.width + 1} fill={s.color} />
+          <path d={path(s.points, s.dy)} fill="none" stroke={s.color} strokeWidth={s.width} />
+          {s.points.map((p, i) => (p.v === null || p.v === undefined) ? null : (
+            <circle
+              key={p.i} cx={x(p.i)} cy={y(p.v) + s.dy}
+              r={isolated(s.points, i) ? s.width + 2.5 : s.width + 1} fill={s.color}
+            />
           ))}
         </g>
       ))}
