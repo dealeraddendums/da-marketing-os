@@ -1453,6 +1453,7 @@ function BlogQueue() {
   const row = (post, i, last, extra) => (
     <div key={post.slug} style={{
       display: "flex", alignItems: "center", justifyContent: "space-between",
+      minWidth: 0,
       padding: "10px 0", borderBottom: !last ? `1px solid ${C.border}` : "none",
     }}>
       <div style={{ flex: 1, minWidth: 0, paddingRight: 12 }}>
@@ -1526,7 +1527,9 @@ function BlogQueue() {
           No posts yet. Author one in the Blog Generator above.
         </div>
       )}
-      <div style={{ display: "grid", gap: 0 }}>
+      {/* minmax(0,1fr): a grid's auto track grows to the rows' min-content
+          (long nowrap title + 5 buttons), overflowing the card. */}
+      <div style={{ display: "grid", gap: 0, gridTemplateColumns: "minmax(0,1fr)" }}>
         {active.filter(p => !p.reviewOverdue).map((post, i, arr) => row(post, i, i === arr.length - 1, activeButtons(post)))}
       </div>
 
