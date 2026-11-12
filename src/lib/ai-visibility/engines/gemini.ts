@@ -7,16 +7,20 @@
 
 import type { EngineAnswer } from '../types'
 
-const MODEL = process.env.AI_VISIBILITY_GEMINI_MODEL || 'gemini-2.5-flash'
+// gemini-2.5-flash is retired for new accounts (404 "no longer available to
+// new users" as of 2026-11); gemini-3.8-flash is its replacement.
+const MODEL = process.env.AI_VISIBILITY_GEMINI_MODEL || 'gemini-3.8-flash'
 
-// Approximate price table (USD). Grounded queries bill ~$35/1k requests beyond
-// the daily free tier; counted at full rate to keep the cap conservative.
-const IN_PER_M = 0.30
-const OUT_PER_M = 2.50
-const GROUNDING_PER_CALL = 0.035
+// Approximate price table (USD) for gemini-3.8-flash at the intro rates in
+// force through 2026-12-31 — both token rates DOUBLE on 2027-01-01 ($1.50 /
+// $7.50). Grounded queries bill ~$14/1k beyond a 5k/month free tier; counted
+// at full rate to keep the cap conservative.
+const IN_PER_M = 0.75
+const OUT_PER_M = 3.75
+const GROUNDING_PER_CALL = 0.014
 
 export const geminiAvailable = () => !!process.env.GEMINI_API_KEY
-export const GEMINI_EST_COST_PER_CALL = 0.038
+export const GEMINI_EST_COST_PER_CALL = 0.02
 
 interface GeminiResponse {
   candidates?: {

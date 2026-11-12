@@ -55,12 +55,14 @@ still runs on the engines that have keys.
 
 ~25 prompts × 4 engines = ~100 calls per run. Approximate per-run cost:
 
-- ChatGPT search-preview: ~$0.80 (search tool ≈ $27.50/1k calls dominates)
-- Gemini grounding: ~$0.95 (grounded queries ≈ $35/1k, counted at full rate)
+- ChatGPT gpt-5-search-api: ~$1.50 (search results arrive as ~15–20k prompt
+  tokens per call at $1.25/M, plus search fee ≈ $25/1k calls)
+- Gemini 3.8 Flash grounding: ~$0.50 (grounded queries ≈ $14/1k, counted at
+  full rate; token intro rates double 2027-01-01)
 - Perplexity sonar: ~$0.20
 - Claude Haiku + web search: ~$0.65 (searches $10/1k, ≤3 per call)
 
-**≈ $2.60 per full run, ~$11/month weekly.** The runner refuses to start when
+**≈ $2.85 per full run, ~$12/month weekly.** The runner refuses to start when
 the estimate exceeds the **$5 hard cap** (`COST_CAP_USD` in
 `src/lib/ai-visibility/run.ts`), and refuses while another run is in flight.
 Actual cost is computed from each engine's returned token usage and stored on

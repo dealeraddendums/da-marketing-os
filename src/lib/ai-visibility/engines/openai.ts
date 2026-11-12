@@ -7,15 +7,19 @@
 
 import type { EngineAnswer } from '../types'
 
-const MODEL = process.env.AI_VISIBILITY_OPENAI_MODEL || 'gpt-4o-mini-search-preview'
+// gpt-4o-mini-search-preview was deprecated by OpenAI (404 as of 2026-11);
+// gpt-5-search-api is the only *search* chat model on the account.
+const MODEL = process.env.AI_VISIBILITY_OPENAI_MODEL || 'gpt-5-search-api'
 
-// Approximate price table (USD). Keep in sync with README "Cost expectations".
-const IN_PER_M = 0.15
-const OUT_PER_M = 0.60
-const SEARCH_PER_CALL = 0.0275 // web-search tool cost, ~$27.50 per 1k calls
+// Approximate price table (USD) for gpt-5-search-api. Keep in sync with README
+// "Cost expectations". Search results are injected as prompt tokens (~15-20k
+// per call), which dominates the cost.
+const IN_PER_M = 1.25
+const OUT_PER_M = 10.0
+const SEARCH_PER_CALL = 0.025 // web-search fee, ~$25 per 1k calls
 
 export const openaiAvailable = () => !!process.env.OPENAI_API_KEY
-export const OPENAI_EST_COST_PER_CALL = 0.032
+export const OPENAI_EST_COST_PER_CALL = 0.06
 
 interface ChatResponse {
   choices?: {
