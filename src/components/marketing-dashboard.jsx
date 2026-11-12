@@ -4096,7 +4096,10 @@ export default function App() {
         {tab === "blog" && (
           <div style={{ display: "grid", gap: 20 }}>
             <BlogGenerator />
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+            {/* minmax(0,1fr): a wide Blog Queue row (title + 5 buttons) must
+                truncate inside its column, not push the Social Queue off-screen
+                (grid items' default min-width:auto). */}
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 20 }}>
               <BlogQueue />
               <SocialQueue />
             </div>
