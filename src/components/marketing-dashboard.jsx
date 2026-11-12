@@ -320,7 +320,6 @@ function BlogGenerator() {
   const [loading,        setLoading]        = useState(false);
   const [generatingFull, setGeneratingFull] = useState(false);
   const [saving,         setSaving]         = useState(false);
-  const [scheduling,     setScheduling]     = useState(false);
   const [result,         setResult]         = useState(null);
   const [fullMdx,        setFullMdx]        = useState(null);
   const [saveMsg,        setSaveMsg]        = useState(null);
@@ -413,27 +412,8 @@ function BlogGenerator() {
     setSaving(false);
   };
 
-  const scheduleSocial = async () => {
-    if (!fullMdx) return;
-    setScheduling(true);
-    try {
-      const res = await fetch("/api/social-schedule", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: fullMdx.title,
-          slug: fullMdx.slug,
-          excerpt: result?.metaDescription || "",
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
-      setSaveMsg(`Social posts scheduled for ${data.posts?.length || 3} platforms.`);
-    } catch (e) {
-      setError(`Social scheduling failed — ${e.message}`);
-    }
-    setScheduling(false);
-  };
+  // Social generation moved to the Blog Queue (published posts only — a draft's
+  // URL is a noindex preview, so promoting one was never right).
 
   return (
     <Card>
@@ -501,13 +481,6 @@ function BlogGenerator() {
               disabled={!fullMdx || saving}
             >
               {saving ? "Saving…" : "Add to Queue"}
-            </SmallButton>
-            <SmallButton
-              variant="secondary"
-              onClick={scheduleSocial}
-              disabled={!fullMdx || scheduling}
-            >
-              {scheduling ? "Scheduling…" : "Generate Social Posts"}
             </SmallButton>
           </div>
 
@@ -1428,6 +1401,28 @@ function BlogQueue() {
     setPublishing(null);
   };
 
+  const [socialing, setSocialing] = useState(null); // slug being queued for social
+  const queueSocial = async (post) => {
+    setSocialing(post.slug); setMsg(null);
+    try {
+      const res = await fetch("/api/social-schedule", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug: post.slug }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+      if (data.created?.length) {
+        setMsg(`LinkedIn post drafted → review it in the Social Queue (pending until you Approve).`);
+      } else {
+        setMsg(`Nothing queued — ${data.skipped?.[0]?.reason || "already in the queue"}.`);
+      }
+      window.dispatchEvent(new Event("da-social-queue-changed"));
+    } catch (e) {
+      setMsg(`Social queue failed — ${e.message}`);
+    }
+    setSocialing(null);
+  };
+
   const restore = async (post) => {
     if (!window.confirm(`Restore "${post.title}" to DRAFT? It must be re-reviewed and re-published before going live again.`)) return;
     setMsg(null);
@@ -1497,6 +1492,11 @@ function BlogQueue() {
           {publishing === post.slug ? "Publishing…" : "Publish"}
         </SmallButton>
       )}
+      {post.status === "published" && (
+        <SmallButton disabled={socialing === post.slug} onClick={() => queueSocial(post)}>
+          {socialing === post.slug ? "Queuing…" : "LinkedIn post"}
+        </SmallButton>
+      )}
       <SmallButton variant="danger" onClick={() => setArchiving(post)}>Archive</SmallButton>
     </>
   );
@@ -1563,62 +1563,131 @@ function BlogQueue() {
 
 // ── Social Queue ──────────────────────────────────────────────────────────────
 function SocialQueue() {
-  const [livePosts, setLivePosts] = useState(null);
-  const [liveLoading, setLiveLoading] = useState(true);
+  const [data, setData] = useState(null);   // { posts, posting }
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState(null);
+  const [editId, setEditId] = useState(null);
+  const [editText, setEditText] = useState("");
+  const [msg, setMsg] = useState(null);
 
-  useEffect(() => {
+  const load = () => {
     fetch("/api/social-queue")
       .then(r => r.json())
-      .then(data => { setLivePosts(data.posts || []); setLiveLoading(false); })
-      .catch(() => setLiveLoading(false));
+      .then(d => { setData(d.posts ? d : { posts: [], posting: null }); setLoading(false); })
+      .catch(() => setLoading(false));
+  };
+  useEffect(() => {
+    load();
+    // The Blog Queue's "LinkedIn post" button announces new rows.
+    window.addEventListener("da-social-queue-changed", load);
+    return () => window.removeEventListener("da-social-queue-changed", load);
   }, []);
 
-  const isLive = !liveLoading && livePosts !== null;
-  const displayPosts = isLive && livePosts.length > 0
-    ? livePosts.map(p => ({
-        platform: p.platform?.charAt(0).toUpperCase() + p.platform?.slice(1) || "Unknown",
-        content: p.content,
-        scheduled: p.scheduledFor ? new Date(p.scheduledFor).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—",
-        status: p.publishedAt ? "published" : new Date(p.scheduledFor) > new Date() ? "scheduled" : "draft",
-      }))
-    : [];
+  const act = async (id, action, content) => {
+    setBusyId(id); setMsg(null);
+    try {
+      const res = await fetch("/api/social-queue", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, action, content }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || d.error) throw new Error(d.error || `HTTP ${res.status}`);
+      setEditId(null);
+      load();
+    } catch (e) {
+      setMsg(`${action} failed — ${e.message}`);
+    }
+    setBusyId(null);
+  };
+
+  const posts = data?.posts || [];
+  const posting = data?.posting;
+  const statusBadge = (s) =>
+    s === "approved" ? <Badge variant="success">Approved</Badge>
+    : s === "published" ? <Badge variant="info">Published</Badge>
+    : s === "rejected" ? <Badge variant="neutral">Rejected</Badge>
+    : <Badge variant="warning">Pending</Badge>;
 
   return (
     <Card>
       <SectionTitle
         action={
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <Badge variant={isLive ? "success" : "neutral"}>
-              {liveLoading ? "Loading…" : isLive ? "Live Queue" : "No data yet"}
+            {/* Honest posting status: queued ≠ will post. */}
+            <Badge variant={posting?.connected ? "success" : "neutral"}>
+              {loading ? "Loading…"
+                : !posting ? "Posting: unknown"
+                : posting.connected ? `Posting: connected, ${posting.approvedPending} approved pending`
+                : "Posting: not connected"}
             </Badge>
-            <Badge variant="info">{displayPosts.length} queued</Badge>
+            <Badge variant="info">{posts.filter(p => p.status === "pending" || p.status === "approved").length} queued</Badge>
           </div>
         }
       >Social Queue</SectionTitle>
-      {displayPosts.length === 0 && (
+      {msg && <div style={{ fontSize: 12, color: C.error, marginBottom: 8 }}>{msg}</div>}
+      {posts.length === 0 && (
         <div style={{ fontSize: 13, color: C.textMuted, padding: "16px 0", textAlign: "center" }}>
-          No posts queued. Generate social posts from the Blog Generator.
+          No posts queued. Use “LinkedIn post” on a published post in the Blog Queue.
         </div>
       )}
       <div style={{ display: "grid", gap: 8 }}>
-        {displayPosts.map((post, i) => (
-          <div key={i} style={{
+        {posts.map((post, i) => (
+          <div key={post.id} style={{
             display: "flex", gap: 10, alignItems: "flex-start",
             padding: "10px 0",
-            borderBottom: i < displayPosts.length - 1 ? `1px solid ${C.border}` : "none",
+            borderBottom: i < posts.length - 1 ? `1px solid ${C.border}` : "none",
+            opacity: post.status === "rejected" ? 0.55 : 1,
           }}>
-            <PlatformIcon platform={post.platform} />
+            <PlatformIcon platform={(post.platform || "").charAt(0).toUpperCase() + (post.platform || "").slice(1)} />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{
-                fontSize: 14, color: C.textPrimary, lineHeight: 1.4,
-                display: "-webkit-box", WebkitLineClamp: 2,
-                WebkitBoxOrient: "vertical", overflow: "hidden",
-              }}>
-                {post.content}
+              {editId === post.id ? (
+                <div>
+                  <textarea
+                    value={editText}
+                    onChange={e => setEditText(e.target.value)}
+                    rows={5}
+                    style={{
+                      width: "100%", boxSizing: "border-box", fontSize: 13,
+                      fontFamily: "'Roboto', sans-serif", color: C.textPrimary,
+                      border: `1px solid ${C.border}`, borderRadius: 4, padding: 8,
+                    }}
+                  />
+                  <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+                    <SmallButton variant="primary" disabled={busyId === post.id}
+                      onClick={() => act(post.id, "edit", editText)}>Save</SmallButton>
+                    <SmallButton onClick={() => setEditId(null)}>Cancel</SmallButton>
+                    {post.status === "approved" && (
+                      <span style={{ fontSize: 11, color: C.textMuted, alignSelf: "center" }}>
+                        Saving an edit sends it back to Pending for re-approval.
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div style={{ fontSize: 14, color: C.textPrimary, lineHeight: 1.4, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                  {post.content}
+                </div>
+              )}
+              <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>
+                /blog/{post.post_slug}
+                {post.scheduled_for ? ` · earliest ${new Date(post.scheduled_for).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : ""}
+                {post.published_at ? ` · posted ${new Date(post.published_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : ""}
               </div>
-              <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>{post.scheduled}</div>
             </div>
-            <Badge variant={statusVariant(post.status)}>{statusLabel(post.status)}</Badge>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end", flexShrink: 0 }}>
+              {statusBadge(post.status)}
+              {editId !== post.id && (post.status === "pending" || post.status === "approved") && (
+                <div style={{ display: "flex", gap: 6 }}>
+                  {post.status === "pending" && (
+                    <SmallButton variant="primary" disabled={busyId === post.id}
+                      onClick={() => act(post.id, "approve")}>Approve</SmallButton>
+                  )}
+                  <SmallButton onClick={() => { setEditId(post.id); setEditText(post.content); }}>Edit</SmallButton>
+                  <SmallButton variant="danger" disabled={busyId === post.id}
+                    onClick={() => act(post.id, "reject")}>Reject</SmallButton>
+                </div>
+              )}
+            </div>
           </div>
         ))}
       </div>
