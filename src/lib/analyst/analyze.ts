@@ -22,7 +22,7 @@ export const ANALYST_MODEL = 'claude-sonnet-5'
 const PRICE_PER_MTOK = { input: 2.0, output: 10.0 }
 
 export type Severity = 'critical' | 'warning' | 'opportunity' | 'info'
-export type Area = 'ads' | 'seo' | 'analytics' | 'measurement'
+export type Area = 'ads' | 'seo' | 'analytics' | 'measurement' | 'ai_visibility'
 export type Effort = 'low' | 'med' | 'high'
 
 export interface Finding {
@@ -83,6 +83,8 @@ HOW TO ANALYSE
 
 6. Prioritise by expected value, not ease. Recommendations are ordered by what most moves qualified trial signups, with priority 1 the most important. Tracking fixes usually outrank campaign tweaks because everything downstream depends on them.
 
+7. If the snapshot contains an "aiVisibility" object, comment on it: it reports whether AI assistants (ChatGPT, Gemini, Perplexity, Claude) mention DealerAddendums when dealers ask our target questions — overall and per-engine visibility %, the top unanswered gaps, and competitors gaining mentions. Treat a low or falling visibility %, or a competitor gaining, as findings in area "ai_visibility"; recommend specific content (the listed gap prompts) rather than generic "do more SEO". If the object is absent, say nothing about AI visibility.
+
 OUTPUT FORMAT
 
 Respond with a single JSON object and nothing else. No prose before or after, no markdown code fences. The object must match this schema exactly:
@@ -92,7 +94,7 @@ Respond with a single JSON object and nothing else. No prose before or after, no
   "findings": [
     {
       "severity": "critical" | "warning" | "opportunity" | "info",
-      "area": "ads" | "seo" | "analytics" | "measurement",
+      "area": "ads" | "seo" | "analytics" | "measurement" | "ai_visibility",
       "title": string — one short line,
       "evidence": string — must cite actual numbers from the snapshot,
       "diagnosis": string — what is causing this and why it matters
@@ -148,7 +150,7 @@ function parseBrief(text: string): Brief | null {
  *  than crashing a render or showing an unstyled badge. */
 function normalise(brief: Brief): Brief {
   const sev: Severity[] = ['critical', 'warning', 'opportunity', 'info']
-  const areas: Area[] = ['ads', 'seo', 'analytics', 'measurement']
+  const areas: Area[] = ['ads', 'seo', 'analytics', 'measurement', 'ai_visibility']
   const efforts: Effort[] = ['low', 'med', 'high']
   const order: Record<Severity, number> = { critical: 0, warning: 1, opportunity: 2, info: 3 }
 

@@ -8,7 +8,9 @@
     "start": "next start -p 3020",
     "lint": "next lint",
     "test:rsa": "node scripts/test-rsa-validation.mjs",
-    "test:experiments": "node scripts/test-experiments.mjs"
+    "test:experiments": "node scripts/test-experiments.mjs",
+    "test:ai-visibility": "node scripts/test-ai-visibility-parse.mjs",
+    "ai-visibility:run": "node scripts/ai-visibility-run.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.20.0",

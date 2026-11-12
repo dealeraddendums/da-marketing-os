@@ -109,6 +109,19 @@ export interface AnalystSnapshot {
   contentReview?: {
     overdue: { slug: string; title: string; reviewBy: string; status: string }[]
   }
+  /**
+   * Latest AI Visibility audit (admin → AI Visibility tab): do AI assistants
+   * mention/cite DealerAddendums when dealers ask our target questions? Small
+   * by construction — overall + per-engine %, the top gaps, and competitors
+   * gaining mentions. Absent when no audit has run yet.
+   */
+  aiVisibility?: {
+    latestRunAt: string
+    overallPct: number | null
+    perEngine: Record<string, number | null>
+    topGaps: { prompt: string; competitors: string[] }[]
+    competitorsGaining: { name: string; mentions: number; delta: number }[]
+  }
 }
 
 function roughTokens(value: unknown): number {
@@ -288,6 +301,18 @@ export async function buildSnapshot(days = 30): Promise<AnalystSnapshot> {
     errors.push({ source: 'content-review', error: msg(e) })
   }
 
+  // ── AI Visibility summary (our own Supabase, not a Google source) ─────────
+  let aiVisibility: AnalystSnapshot['aiVisibility']
+  try {
+    const { visibilitySummaryForAnalyst } = await import('../ai-visibility/store')
+    const summary = await visibilitySummaryForAnalyst()
+    if (summary) aiVisibility = summary
+  } catch (e) {
+    // Missing tables (migration 025 not applied) or a read hiccup — the brief
+    // is still worth having without it.
+    errors.push({ source: 'ai-visibility', error: msg(e) })
+  }
+
   if (errors.length) {
     notes.push(
       `Some sources failed and are absent from this snapshot: ` +
@@ -327,6 +352,7 @@ export async function buildSnapshot(days = 30): Promise<AnalystSnapshot> {
       gscPropertyIsDomainLevel,
     },
     ...(contentReview ? { contentReview } : {}),
+    ...(aiVisibility ? { aiVisibility } : {}),
   }
 
   snapshot.meta.approxTokens = roughTokens(snapshot)

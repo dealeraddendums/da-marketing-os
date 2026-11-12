@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import HeroSlidesAdmin from "@/components/admin/HeroSlidesAdmin";
+import AiVisibilityPanel from "@/components/admin/AiVisibilityPanel";
 
 // ── DA Design System — exact values from DADesignGuidelines.md ────────────────
 const C = {
@@ -3775,6 +3776,7 @@ const TABS = [
   { id: "hero",      label: "Hero Slides"  },
   { id: "leads",     label: "Leads"        },
   { id: "analyst",   label: "Analyst"      },
+  { id: "aivis",     label: "AI Visibility"},
   { id: "approvals", label: "Approvals"    },
 ];
 
@@ -3926,6 +3928,7 @@ export default function App() {
         {tab === "ads"       && <AdsPanel />}
         {tab === "seo"       && <SeoPanel />}
         {tab === "analyst"   && <AnalystPanel />}
+        {tab === "aivis"     && <AiVisibilityPanel />}
         {tab === "approvals" && <ApprovalsPanel />}
         {tab === "hero"      && <HeroSlidesAdmin />}
 
