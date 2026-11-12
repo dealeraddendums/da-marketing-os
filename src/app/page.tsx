@@ -13,6 +13,7 @@ import CTASection from '@/components/marketing/CTASection'
 import AppSection from '@/components/marketing/AppSection'
 import RestylerSection from '@/components/marketing/RestylerSection'
 import LayoutA from '@/components/marketing/LayoutA'
+import SiteJsonLd from '@/components/marketing/SiteJsonLd'
 import { getFooterPosts } from '@/lib/blog'
 
 function HeroSkeleton() {
@@ -106,6 +107,7 @@ export default async function HomePage({ searchParams }: PageProps) {
   if (layoutVariant === 'a') {
     return (
       <main>
+        <SiteJsonLd />
         <Suspense fallback={<HeroSkeleton />}>
           <LayoutA personalization={ctx} />
         </Suspense>
@@ -116,6 +118,7 @@ export default async function HomePage({ searchParams }: PageProps) {
   // Layout B — new design
   return (
     <main>
+      <SiteJsonLd />
       <Suspense fallback={<HeroSkeleton />}>
         <HeroSection hero={resolved.hero} tracking={tracking} warm={warm} slides={heroSlides} />
       </Suspense>

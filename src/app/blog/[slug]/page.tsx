@@ -5,6 +5,7 @@ import type { ReactNode } from 'react'
 import LoginMenu from '@/components/marketing/LoginMenu'
 import PostBoilerplate from '@/components/blog/PostBoilerplate'
 import { getPost, getAllPosts, getRelatedPosts, getBlogRouteMap } from '@/lib/blog'
+import { deriveFaqFromBody } from '@/lib/blog-faq'
 
 interface PageProps {
   params: { slug: string }
@@ -130,10 +131,14 @@ export default async function BlogPost({ params }: PageProps) {
     'Month-to-month, no setup fees. Join 2,100+ dealerships using DealerAddendums.'
   const ctaHref = `/?utm_source=blog&utm_medium=cta&utm_campaign=${encodeURIComponent(params.slug)}#signup`
 
-  const faqJsonLd = fm.faq && fm.faq.length > 0 ? {
+  // FAQPage: the explicit frontmatter faq wins; otherwise derive from the
+  // post's own structure (≥2 question-phrased H2/H3 headings with answers) —
+  // never forced onto a post without a real Q&A section.
+  const faqItems = (fm.faq && fm.faq.length > 0) ? fm.faq : deriveFaqFromBody(bodyForRender)
+  const faqJsonLd = faqItems.length > 0 ? {
     '@context': 'https://schema.org',
     '@type': 'FAQPage',
-    mainEntity: fm.faq.map(item => ({
+    mainEntity: faqItems.map(item => ({
       '@type': 'Question',
       name: item.q,
       acceptedAnswer: { '@type': 'Answer', text: item.a },
@@ -147,11 +152,19 @@ export default async function BlogPost({ params }: PageProps) {
     description: fm.metaDescription || fm.excerpt || '',
     datePublished: fm.date,
     dateModified: fm.updatedAt || fm.date,
-    author: { '@type': 'Person', name: fm.author || 'DealerAddendums' },
+    // The byline is the company, not a person — matches the visible author
+    // treatment and the Organization emitted on the homepage.
+    author: { '@type': 'Organization', name: 'DealerAddendums', url: `${SITE_URL}/` },
     publisher: {
       '@type': 'Organization',
       name: 'DealerAddendums',
       url: SITE_URL,
+      logo: {
+        '@type': 'ImageObject',
+        url: `${SITE_URL}/images/da-mark.png`,
+        width: 214,
+        height: 214,
+      },
     },
     url: `${SITE_URL}/blog/${params.slug}`,
     image: fm.coverImage || `${SITE_URL}/og-default.png`,
