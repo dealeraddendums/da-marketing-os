@@ -160,20 +160,42 @@ export default function AiVisibilityPanel() {
     setOpenCell(res.ok ? { ...json.result, promptText } : { error: json.error || 'Failed to load', promptText })
   }
 
+  // Send a gap to the blog pipeline. The server generates a FULL draft in the
+  // background (202 + poll); a second click returns the existing draft.
+  const setGap = (id: string, value: AnyObj) => setGapMsg((m: AnyObj) => ({ ...m, [id]: value }))
+
+  const pollGapJob = async (gap: AnyObj, jobId: string, slug: string) => {
+    for (let i = 0; i < 90; i++) {
+      await new Promise(r => setTimeout(r, 5000))
+      const res = await fetch(`/api/blog-generate?id=${encodeURIComponent(jobId)}`)
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`)
+      if (json.status === 'done') return (json.result || {}) as AnyObj
+      if (json.status === 'error') throw new Error(json.error || 'Generation failed')
+    }
+    throw new Error(`Still generating — check the Blog Queue for ${slug} in a minute`)
+  }
+
   const sendGap = async (gap: AnyObj) => {
     setSendingGap(gap.prompt_id)
-    const res = await fetch('/api/ai-visibility/gap-to-blog', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        prompt_id: gap.prompt_id, engines: gap.enginesLost, competitors: gap.competitorsNamed,
-      }),
-    })
-    const json = await res.json().catch(() => ({}))
-    setGapMsg((m: AnyObj) => ({
-      ...m,
-      [gap.prompt_id]: res.ok ? `Draft created: ${json.slug}` : (json.error || 'Failed'),
-    }))
+    try {
+      const res = await fetch('/api/ai-visibility/gap-to-blog', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt_id: gap.prompt_id }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`)
+      if (json.existing) {
+        setGap(gap.prompt_id, { state: 'done', slug: json.slug, existing: true })
+      } else {
+        setGap(gap.prompt_id, { state: 'working', slug: json.slug })
+        const result = await pollGapJob(gap, json.jobId, json.slug)
+        setGap(gap.prompt_id, { state: 'done', slug: result.slug || json.slug, existing: !!result.existing })
+      }
+    } catch (e) {
+      setGap(gap.prompt_id, { state: 'error', error: e instanceof Error ? e.message : 'Failed' })
+    }
     setSendingGap('')
   }
 
@@ -314,11 +336,25 @@ export default function AiVisibilityPanel() {
                     <td style={td}>{g.enginesLost.map((e: string) => ENGINE_META[e]?.label || e).join(', ')}</td>
                     <td style={td}>{g.competitorsNamed.join(', ')}</td>
                     <td style={{ ...td, whiteSpace: 'nowrap' }}>
-                      {gapMsg[g.prompt_id]
-                        ? <span style={{ fontSize: 12, color: C.success }}>{gapMsg[g.prompt_id]}</span>
-                        : <SmallButton variant="primary" onClick={() => sendGap(g)} disabled={sendingGap === g.prompt_id}>
-                            {sendingGap === g.prompt_id ? 'Sending…' : 'Send to Blog pipeline'}
-                          </SmallButton>}
+                      {gapMsg[g.prompt_id]?.state === 'working' ? (
+                        <span style={{ fontSize: 12, color: C.textMuted }}>Writing the draft… (~1 min)</span>
+                      ) : gapMsg[g.prompt_id]?.state === 'done' ? (
+                        <span style={{ fontSize: 12, color: C.success, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                          {gapMsg[g.prompt_id].existing ? 'Draft already exists' : 'Draft ready'}
+                          <SmallButton onClick={() => { window.location.href = `/admin?tab=blog&edit=${encodeURIComponent(gapMsg[g.prompt_id].slug)}` }}>
+                            Open draft
+                          </SmallButton>
+                        </span>
+                      ) : (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                          {gapMsg[g.prompt_id]?.state === 'error' && (
+                            <span style={{ fontSize: 12, color: C.error }}>{gapMsg[g.prompt_id].error}</span>
+                          )}
+                          <SmallButton variant="primary" onClick={() => sendGap(g)} disabled={sendingGap === g.prompt_id}>
+                            {sendingGap === g.prompt_id ? 'Working…' : 'Send to Blog pipeline'}
+                          </SmallButton>
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))}

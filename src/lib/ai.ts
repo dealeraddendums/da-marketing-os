@@ -18,6 +18,13 @@
 const API_URL = 'https://api.anthropic.com/v1/messages'
 const API_VERSION = '2023-06-01'
 
+// Hard ceiling on one non-streaming call. Without it a stalled upstream
+// connection leaves the caller hanging until Node's internal limits (~5 min)
+// or nginx's 600s — which the dashboard experiences as a spinner that never
+// resolves. 180s comfortably covers the largest call we make (a full blog
+// post) while still failing loudly on a wedged connection.
+const AI_TIMEOUT_MS = 180_000
+
 /**
  * The model for every non-streaming marketing AI feature, and for the two
  * streaming routes that import it.
@@ -56,6 +63,18 @@ export async function createMessage(params: {
   system?: string
   messages: AiMessage[]
 }): Promise<string> {
+  return (await createMessageFull(params)).text
+}
+
+/** Like createMessage, but also reports whether the output was truncated at
+ *  max_tokens — callers producing structured/long-form output (the blog
+ *  generator) must treat truncation as a failure, not ship a cut-off draft. */
+export async function createMessageFull(params: {
+  model?: string
+  maxTokens?: number
+  system?: string
+  messages: AiMessage[]
+}): Promise<{ text: string; truncated: boolean }> {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY is not set')
 
@@ -66,16 +85,25 @@ export async function createMessage(params: {
   }
   if (params.system) body.system = params.system
 
-  const res = await fetch(API_URL, {
-    method: 'POST',
-    headers: {
-      'x-api-key': apiKey,
-      'anthropic-version': API_VERSION,
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify(body),
-    cache: 'no-store',
-  })
+  let res: Response
+  try {
+    res = await fetch(API_URL, {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': API_VERSION,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(body),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(AI_TIMEOUT_MS),
+    })
+  } catch (e) {
+    if (e instanceof Error && (e.name === 'TimeoutError' || e.name === 'AbortError')) {
+      throw new Error(`Anthropic request timed out after ${AI_TIMEOUT_MS / 1000}s`)
+    }
+    throw e
+  }
 
   const raw = await res.text()
   if (!res.ok) {
@@ -101,15 +129,24 @@ export async function createMessage(params: {
     .join('')
     .trim()
 
-  if (json.stop_reason === 'max_tokens') {
+  const truncated = json.stop_reason === 'max_tokens'
+  if (truncated) {
     console.warn('[ai] response hit max_tokens — output is probably truncated')
   }
-  return text
+  return { text, truncated }
 }
 
 /** Unchanged signature — the original interface every caller was written against. */
 export async function generateText(prompt: string, maxTokens = 1000): Promise<string> {
   return createMessage({
+    maxTokens,
+    messages: [{ role: 'user', content: prompt }],
+  })
+}
+
+/** generateText + the truncation flag (see createMessageFull). */
+export async function generateTextFull(prompt: string, maxTokens = 1000): Promise<{ text: string; truncated: boolean }> {
+  return createMessageFull({
     maxTokens,
     messages: [{ role: 'user', content: prompt }],
   })

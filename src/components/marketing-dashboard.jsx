@@ -288,6 +288,33 @@ function CopyGenerator() {
 }
 
 // ── Blog Generator ────────────────────────────────────────────────────────────
+// Generation runs as a background job (POST → 202 {jobId} → poll GET ?id=),
+// the same pattern as the AI Visibility runner: the old synchronous request
+// held the connection open for the whole model call (30–150s), which read as
+// "the generator hangs" and lost everything on a tab switch. Progress now
+// survives tab switches via sessionStorage (job id + results).
+const BLOGGEN_KEY = "da_bloggen_state";
+
+function readBloggenState() {
+  try { return JSON.parse(sessionStorage.getItem(BLOGGEN_KEY) || "{}") || {}; } catch { return {}; }
+}
+function writeBloggenState(patch) {
+  try { sessionStorage.setItem(BLOGGEN_KEY, JSON.stringify({ ...readBloggenState(), ...patch })); } catch {}
+}
+
+async function pollBlogJob(jobId) {
+  // ~8 min ceiling; the server job itself times out well before that.
+  for (let i = 0; i < 120; i++) {
+    await new Promise(r => setTimeout(r, 4000));
+    const res = await fetch(`/api/blog-generate?id=${encodeURIComponent(jobId)}`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    if (data.status === "done") return data.result;
+    if (data.status === "error") throw new Error(data.error || "Generation failed");
+  }
+  throw new Error("Timed out waiting for the generation job");
+}
+
 function BlogGenerator() {
   const [topic,          setTopic]          = useState("");
   const [loading,        setLoading]        = useState(false);
@@ -298,43 +325,74 @@ function BlogGenerator() {
   const [fullMdx,        setFullMdx]        = useState(null);
   const [saveMsg,        setSaveMsg]        = useState(null);
   const [error,          setError]          = useState(null);
+  const aliveRef = useRef(true);
+
+  const finishJob = (kind, res) => {
+    if (kind === "full") { setFullMdx(res); setGeneratingFull(false); writeBloggenState({ fullMdx: res, job: null }); }
+    else { setResult(res); setLoading(false); writeBloggenState({ result: res, fullMdx: null, job: null }); }
+  };
+  const failJob = (kind, e) => {
+    setError(kind === "full"
+      ? `Full post generation failed — ${e.message}`
+      : `Generation failed — ${e.message || "check API connection."}`);
+    setLoading(false); setGeneratingFull(false);
+    writeBloggenState({ job: null });
+  };
+
+  const startJob = async (kind, body) => {
+    const res = await fetch("/api/blog-generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+    writeBloggenState({ job: { jobId: data.jobId, kind }, topic: body.topic });
+    const result = await pollBlogJob(data.jobId);
+    return result;
+  };
+
+  // Resume after a tab switch: restore outline/full results, and re-attach to
+  // a generation that is still running server-side.
+  useEffect(() => {
+    aliveRef.current = true;
+    const saved = readBloggenState();
+    if (saved.topic) setTopic(t => t || saved.topic);
+    if (saved.result) setResult(saved.result);
+    if (saved.fullMdx) setFullMdx(saved.fullMdx);
+    if (saved.job?.jobId) {
+      const kind = saved.job.kind;
+      if (kind === "full") setGeneratingFull(true); else setLoading(true);
+      pollBlogJob(saved.job.jobId)
+        .then(res => { if (aliveRef.current) finishJob(kind, res); else writeBloggenState({ [kind === "full" ? "fullMdx" : "result"]: res, job: null }); })
+        .catch(e => { if (aliveRef.current) failJob(kind, e); else writeBloggenState({ job: null }); });
+    }
+    return () => { aliveRef.current = false; };
+  }, []);
 
   const generate = async () => {
     if (!topic.trim()) return;
     setLoading(true); setResult(null); setFullMdx(null); setSaveMsg(null); setError(null);
+    writeBloggenState({ result: null, fullMdx: null });
     try {
-      const res = await fetch("/api/blog-generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic, mode: "outline" }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-      if (data.error) throw new Error(data.error);
-      setResult(data);
+      const data = await startJob("outline", { topic, mode: "outline" });
+      if (aliveRef.current) finishJob("outline", data); else writeBloggenState({ result: data, job: null });
     } catch (e) {
-      setError(`Generation failed — ${e.message || "check API connection."}`);
+      if (aliveRef.current) failJob("outline", e); else writeBloggenState({ job: null });
     }
-    setLoading(false);
   };
 
   const writeFull = async () => {
     if (!result) return;
     setGeneratingFull(true); setFullMdx(null); setSaveMsg(null); setError(null);
     try {
-      const res = await fetch("/api/blog-generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic: result.title || topic, mode: "full", keywords: result.keywords || [] }),
+      const data = await startJob("full", {
+        topic: result.title || topic, mode: "full", keywords: result.keywords || [],
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-      if (data.error) throw new Error(data.error);
-      setFullMdx(data);
+      if (aliveRef.current) finishJob("full", data); else writeBloggenState({ fullMdx: data, job: null });
     } catch (e) {
-      setError(`Full post generation failed — ${e.message}`);
+      if (aliveRef.current) failJob("full", e); else writeBloggenState({ job: null });
     }
-    setGeneratingFull(false);
   };
 
   const addToQueue = async () => {
@@ -1324,7 +1382,19 @@ function BlogQueue() {
   const [loading, setLoading] = useState(true);
   const [publishing, setPublishing] = useState(null); // slug in flight
   const [msg, setMsg] = useState(null);
-  const [editing, setEditing] = useState(null);       // slug in the editor
+  // slug in the editor; ?edit=<slug> deep-links straight into it (consumed
+  // once — the param is stripped so a later reload doesn't force it back open).
+  const [editing, setEditing] = useState(() => {
+    try {
+      const url = new URL(window.location.href);
+      const e = url.searchParams.get("edit");
+      if (e) {
+        url.searchParams.delete("edit");
+        window.history.replaceState({}, "", url.toString());
+      }
+      return e || null;
+    } catch { return null; }
+  });
   const [archiving, setArchiving] = useState(null);   // post in the archive modal
   const [showArchived, setShowArchived] = useState(false);
 
@@ -3782,7 +3852,15 @@ const TABS = [
 
 // ── Main App ──────────────────────────────────────────────────────────────────
 export default function App() {
-  const [tab, setTab] = useState("overview");
+  // Deep link: /admin?tab=blog&edit=<slug> (used by the AI Visibility gap
+  // panel's "Open draft"). This component renders client-only (ssr:false), so
+  // window exists on first render.
+  const [tab, setTab] = useState(() => {
+    try {
+      const t = new URLSearchParams(window.location.search).get("tab");
+      return t && TABS.some(x => x.id === t) ? t : "overview";
+    } catch { return "overview"; }
+  });
 
   // Live stats from Supabase via admin-stats API
   const [stats, setStats] = useState({
