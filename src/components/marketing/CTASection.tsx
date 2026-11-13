@@ -43,7 +43,7 @@ interface Props {
 export default function CTASection({ tracking, resources }: Props) {
   const [form, setForm] = useState<FormState>({ name: '', email: '', dealership: '', brand: '', phone: '', zip: '', website: '', address: '', city: '', state: '' })
   // Brand list (Phase 6c): makes first, Reseller/Upfitter/Other grouped at the bottom.
-  const [brandOptions, setBrandOptions] = useState<{ brand: string; kind: 'make' | 'generic' }[]>([])
+  const [brandOptions, setBrandOptions] = useState<{ brand: string; kind: 'make' | 'generic' | 'combo' }[]>([])
   // Pre-fill stops the moment the visitor picks a brand themselves.
   const brandTouched = useRef(false)
   const [accountKind, setAccountKind] = useState<AccountKind>('single')
@@ -791,7 +791,9 @@ export default function CTASection({ tracking, resources }: Props) {
                       >
                         <option value="">Select your brand…</option>
                         <optgroup label="Makes">
-                          {brandOptions.filter((b) => b.kind === 'make').map((b) => (
+                          {/* Combo brands (CDJR / CDJRF) list WITH the makes, first (their sort
+                              puts them at the top) — extremely common franchise combos. */}
+                          {brandOptions.filter((b) => b.kind === 'make' || b.kind === 'combo').map((b) => (
                             <option key={b.brand} value={b.brand}>{b.brand}</option>
                           ))}
                         </optgroup>
