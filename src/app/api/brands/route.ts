@@ -12,7 +12,10 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const infer = req.nextUrl.searchParams.get('infer')
   const url = `${base.replace(/\/$/, '')}/api/self-serve/brands${infer ? `?infer=${encodeURIComponent(infer.slice(0, 120))}` : ''}`
   try {
-    const res = await fetch(url, { headers: { 'X-API-Key': key }, signal: AbortSignal.timeout(8000) })
+    // cache: 'no-store' — force-dynamic does NOT opt this fetch out of Next's data cache, which
+    // was serving day-old brand lists and inference answers across deploys; the response's own
+    // Cache-Control (300s) is the intended caching layer.
+    const res = await fetch(url, { headers: { 'X-API-Key': key }, cache: 'no-store', signal: AbortSignal.timeout(8000) })
     if (!res.ok) return NextResponse.json({ brands: [] })
     const j = await res.json()
     return NextResponse.json({ brands: j.brands ?? [], inferred: j.inferred ?? null },
