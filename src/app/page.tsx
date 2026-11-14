@@ -67,11 +67,22 @@ export default async function HomePage({ searchParams }: PageProps) {
       layoutVariant: 'home-b',
       headline: 'Create · Manage · Print Addendums. Compliant by Design.',
     }
+    // Partner-group logos for the TrustedBy band. All six are pre-normalized
+    // 400×160 transparent PNGs (content trimmed + fitted so visual weight
+    // matches across the set).
+    const homeBLogos = [
+      { name: 'Lithia Motors', src: '/home-b/logos/lithia.png', width: 400, height: 160 },
+      { name: 'AutoNation', src: '/home-b/logos/autonation.png', width: 400, height: 160 },
+      { name: 'Penske Automotive', src: '/home-b/logos/penske-automotive.png', width: 400, height: 160 },
+      { name: 'Group 1 Automotive', src: '/home-b/logos/group-1-automotive.png', width: 400, height: 160 },
+      { name: 'Asbury Automotive Group', src: '/home-b/logos/asbury-automotive-group.png', width: 400, height: 160 },
+      { name: 'Sonic Automotive', src: '/home-b/logos/sonic-automotive.png', width: 400, height: 160 },
+    ]
     return (
       <>
         <SiteJsonLd />
         <AbAssignmentTracker bucket="B" />
-        <HomeB trialHref="#signup" dealerCount="1,600+" logos={[]} />
+        <HomeB trialHref="#signup" dealerCount="1,600+" logos={homeBLogos} tracking={homeBTracking} />
         <CTASection tracking={homeBTracking} resources={await getFooterPosts()} />
       </>
     )

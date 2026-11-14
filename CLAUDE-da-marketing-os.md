@@ -568,15 +568,23 @@ the default and the control — with the split at 0 nobody ever sees B.**
   `dealeraddendums-logo.png` (1947×451 transparent wordmark — BLACK text, only
   render it on white/light backgrounds; header renders it 190×44), and
   `platform-screenshot.png` (2880×1800, downscaled from a 6001×3750 original
-  that is NOT committed). Still owed: customer logos (400×160 each) via the
-  `logos` prop — TrustedBy renders headline-only while it's empty.
-- Home B's header nav links are in-page anchors (fixed 2026-11-14; the ZIP's
-  original `/product` etc. routes don't exist): Product → `#platform`
-  (PlatformShowcase), Compliance → `#compliance` (ValueProps), How It Works →
-  `#how-it-works` (PlatformShowcase's "Create. Manage. Print." block), Pricing
-  → `#signup` (variant B doesn't render PricingSection, the only `#pricing`
-  anchor). Targets carry `scroll-mt-20`; hrefs live in BOTH
-  `sections/Hero.tsx` and `MobileNav.tsx` — keep in sync.
+  that is NOT committed). Partner-group logos SUPPLIED 2026-11-14:
+  `/public/home-b/logos/` holds six 400×160 transparent PNGs (lithia,
+  autonation, penske-automotive, group-1-automotive, asbury-automotive-group,
+  sonic-automotive — trimmed marks fitted into a 340×110 content box so visual
+  weight matches), passed via the `logos` prop in `app/page.tsx`; TrustedBy is
+  the grayscale-to-color logo band (2×3 / 3×2 / 1×6 across breakpoints).
+  Variant B also renders the live homepage's FeaturesSection (#features) and
+  PricingSection (#pricing) unchanged, wrapped in data-ab-section divs; nav =
+  Product/Features/Compliance/How It Works/Pricing. Hero photo is
+  object-right so the dealership stays visible on phones.
+- Home B's header nav links are in-page anchors (the ZIP's original `/product`
+  etc. routes don't exist): Product → `#platform` (PlatformShowcase), Features
+  → `#features` (FeaturesSection's own id), Compliance → `#compliance`
+  (ValueProps), How It Works → `#how-it-works` (PlatformShowcase's "Create.
+  Manage. Print." block), Pricing → `#pricing` (PricingSection's own id — B
+  renders it since 2026-11-14). Home B sections carry `scroll-mt-20`; hrefs
+  live in BOTH `sections/Hero.tsx` and `MobileNav.tsx` — keep in sync.
 
 ## Tracking (GA4 · GTM · Google Ads conversions)
 

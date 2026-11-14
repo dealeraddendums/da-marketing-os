@@ -6,9 +6,10 @@ import Link from 'next/link';
 // In-page anchors — keep in sync with the navigation const in sections/Hero.tsx.
 const links = [
   { label: 'Product', href: '#platform' },
+  { label: 'Features', href: '#features' },
   { label: 'Compliance', href: '#compliance' },
   { label: 'How It Works', href: '#how-it-works' },
-  { label: 'Pricing', href: '#signup' },
+  { label: 'Pricing', href: '#pricing' },
 ];
 
 export default function MobileNav({ trialHref }: { trialHref: string }) {

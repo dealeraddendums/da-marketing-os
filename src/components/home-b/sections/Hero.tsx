@@ -6,13 +6,14 @@ type HeroProps = { trialHref: string; headline: string; subhead: string };
 
 // In-page anchors into Home B's own sections (the ZIP's original /product,
 // /compliance, /how-it-works, /pricing routes don't exist on this site).
-// Pricing → #signup because variant B doesn't render PricingSection (the only
-// #pricing anchor). Keep in sync with MobileNav.tsx.
+// #features and #pricing are the live FeaturesSection/PricingSection's own
+// ids, now rendered inside HomeB. Keep in sync with MobileNav.tsx.
 const navigation = [
   { label: 'Product', href: '#platform' },
+  { label: 'Features', href: '#features' },
   { label: 'Compliance', href: '#compliance' },
   { label: 'How It Works', href: '#how-it-works' },
-  { label: 'Pricing', href: '#signup' },
+  { label: 'Pricing', href: '#pricing' },
 ];
 
 export default function Hero({ trialHref, headline, subhead }: HeroProps) {
@@ -36,7 +37,7 @@ export default function Hero({ trialHref, headline, subhead }: HeroProps) {
 
       <div className="absolute inset-x-0 bottom-0 top-20 -z-10 overflow-hidden">
         {/* Real photo (5000×2812, 16:9). fill mode sizes from the container, so no width/height props and no layout shift. */}
-        <Image src="/home-b/hero-dealership.jpg" alt="Modern blue SUV outside a contemporary dealership" fill priority sizes="100vw" className="object-cover object-center" />
+        <Image src="/home-b/hero-dealership.jpg" alt="Modern blue SUV outside a contemporary dealership" fill priority sizes="100vw" className="object-cover object-right" />
         <div className="absolute inset-0 bg-gradient-to-r from-[#071B36]/95 via-[#0F2A52]/85 to-[#0F2A52]/20 lg:via-[#0F2A52]/70" />
       </div>
 
