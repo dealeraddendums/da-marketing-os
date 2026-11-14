@@ -14,6 +14,9 @@ import AppSection from '@/components/marketing/AppSection'
 import RestylerSection from '@/components/marketing/RestylerSection'
 import LayoutA from '@/components/marketing/LayoutA'
 import SiteJsonLd from '@/components/marketing/SiteJsonLd'
+import AbAssignmentTracker from '@/components/marketing/AbAssignmentTracker'
+import HomeB from '@/components/home-b/HomeB'
+import { AB_HOME_HEADER, AB_HOME_NEW_HEADER, incrementAbHomeStat, parseBucket } from '@/lib/ab-home'
 import { getFooterPosts } from '@/lib/blog'
 
 function HeroSkeleton() {
@@ -36,6 +39,44 @@ function getString(v: string | string[] | undefined): string {
 export default async function HomePage({ searchParams }: PageProps) {
   const h = headers()
   const cookieStore = cookies()
+
+  // ── Home B layout test ──────────────────────────────────────────────────────
+  // Bucket decided in middleware (cookie da_ab_home → x-ab-home request
+  // header); default A covers any render that skipped middleware. The page is
+  // already force-dynamic, so each request renders its own variant — nothing
+  // here changes A's caching behavior.
+  const abHome = parseBucket(h.get(AB_HOME_HEADER)) ?? 'A'
+  if (h.get(AB_HOME_NEW_HEADER) === '1') {
+    // First-party "visitors" counter: counted once, at assignment time only.
+    void incrementAbHomeStat(abHome, 'visitors')
+  }
+
+  if (abHome === 'B') {
+    // Variant B: the Home B redesign, followed by the EXISTING CTASection — it
+    // carries the id="signup" trial form (every Home B CTA points at #signup)
+    // and the site footer, so the conversion instrument and the legal links
+    // are identical across variants. The hero personalization engine
+    // (resolveHero) deliberately does not run for B.
+    const homeBTracking: HeroTracking = {
+      contextKey: 'home-b',
+      variationId: 'home-b',
+      heroSource: 'static-default',
+      keyword: '',
+      dealerType: 'unknown',
+      abVariant: 'home-b', // keeps B's leads out of the hero copy test arms
+      layoutVariant: 'home-b',
+      headline: 'Create · Manage · Print Addendums. Compliant by Design.',
+    }
+    return (
+      <>
+        <SiteJsonLd />
+        <AbAssignmentTracker bucket="B" />
+        <HomeB trialHref="#signup" dealerCount="1,600+" logos={[]} />
+        <CTASection tracking={homeBTracking} resources={await getFooterPosts()} />
+      </>
+    )
+  }
+
   const abVariant     = cookieStore.get('da_hero_ab')?.value || 'personalized'
   // Layout test retired 2026-06-12 — everyone gets the new hero regardless of
   // stale da_layout cookies. LayoutA stays in the repo for a future
@@ -108,6 +149,7 @@ export default async function HomePage({ searchParams }: PageProps) {
     return (
       <main>
         <SiteJsonLd />
+        <AbAssignmentTracker bucket="A" />
         <Suspense fallback={<HeroSkeleton />}>
           <LayoutA personalization={ctx} />
         </Suspense>
@@ -119,6 +161,7 @@ export default async function HomePage({ searchParams }: PageProps) {
   return (
     <main>
       <SiteJsonLd />
+      <AbAssignmentTracker bucket="A" />
       <Suspense fallback={<HeroSkeleton />}>
         <HeroSection hero={resolved.hero} tracking={tracking} warm={warm} slides={heroSlides} />
       </Suspense>

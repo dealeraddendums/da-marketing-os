@@ -7,6 +7,7 @@ import { trackServerEvent } from '@/lib/analytics'
 import { verifyTurnstile } from '@/lib/turnstile'
 import { provisionInDaPlatform, type ProvisionOutcome } from '@/lib/lead-confirm'
 import { normalizeWebsiteUrl } from '@/lib/website-url'
+import { AB_HOME_COOKIE, parseBucket } from '@/lib/ab-home'
 
 const ATTR_FIELDS = [
   'utm_source', 'utm_medium', 'utm_campaign', 'utm_term',
@@ -167,6 +168,11 @@ Based on the dealership name and email domain, provide a brief intelligence summ
     // would be meaningless. Non-identifying: random first-party cookie values.
     ga_client_id: (body.ga_client_id as string) || null,
     ga_session_id: (body.ga_session_id as string) || null,
+    // Home B layout bucket (migration 027) — read from the server-set cookie,
+    // never the body. Persisted here because the trial_signup conversion fires
+    // at setup-code verification, a different session where the cookie may be
+    // gone; the lead row is what carries the bucket to that moment.
+    ab_home: parseBucket(req.cookies.get(AB_HOME_COOKIE)?.value),
   }
   const _leadPayloadReady = true
   void _leadPayloadReady
@@ -218,6 +224,18 @@ Based on the dealership name and email domain, provide a brief intelligence summ
     console.warn('[leads] ga_client_id/ga_session_id rejected — migration 013 not applied yet; saving without GA4 attribution')
     delete leadPayload.ga_client_id
     delete leadPayload.ga_session_id
+    ;({ data: lead, error: dbError } = await supabase
+      .from('marketing_leads')
+      .insert(leadPayload)
+      .select()
+      .single())
+  }
+
+  // marketing_leads.ab_home is migration 027 — until it's applied, save the
+  // lead without the Home B bucket rather than lose the signup.
+  if (dbError && /ab_home/i.test(dbError.message)) {
+    console.warn('[leads] ab_home rejected — migration 027 not applied yet; saving without the Home B bucket')
+    delete leadPayload.ab_home
     ;({ data: lead, error: dbError } = await supabase
       .from('marketing_leads')
       .insert(leadPayload)

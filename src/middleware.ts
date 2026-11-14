@@ -30,6 +30,24 @@ function weightedPick(options: string[], weights: number[]): string {
 // appears on the second pageview of the same session.
 const SESSION_WINDOW_MS = 30 * 60 * 1000
 
+// ── Home B layout A/B (homepage "/" only) ────────────────────────────────────
+// Server-side bucketing — the page renders the chosen variant directly off the
+// x-ab-home request header, so there is no client-side variant flip/flicker.
+// Names + semantics mirror src/lib/ab-home.ts (middleware is edge runtime, so
+// it can't import that module's supabase dependency — keep the two in sync).
+const AB_HOME_COOKIE = 'da_ab_home'
+const AB_HOME_COOKIE_MAX_AGE = 60 * 60 * 24 * 30 // 30 days
+// Known bots always get A and never get a cookie: crawlers must index the
+// stable control, and their traffic must not dilute the experiment counters.
+// Googlebot/bingbot/duckduckbot etc. all match /bot/.
+const AB_BOT_RE = /bot|crawl|spider|slurp|bingpreview|facebookexternalhit|ia_archiver|whatsapp|telegram|lighthouse|gtmetrix|pingdom|headlesschrome|phantomjs|prerender/i
+
+function abHomeBPct(): number {
+  const n = parseInt(process.env.AB_HOME_B_PCT || '0', 10)
+  if (!Number.isFinite(n)) return 0
+  return Math.min(100, Math.max(0, n))
+}
+
 // ── Blog archive / rename routing ────────────────────────────────────────────
 // Middleware can't read content/posts (edge runtime, no fs), so it consults
 // /api/blog-archive-map and caches the result in module scope for 60s.
@@ -90,6 +108,43 @@ export async function middleware(request: NextRequest) {
   }
   const { searchParams } = new URL(request.url)
 
+  // ── Home B bucketing — "/" only ────────────────────────────────────────────
+  const isHome = request.nextUrl.pathname === '/'
+  let abHome: 'A' | 'B' = 'A'
+  let abHomeAssigned = false // just assigned this request → set cookie + count a visitor
+  if (isHome) {
+    const ua = request.headers.get('user-agent') || ''
+    const isBot = AB_BOT_RE.test(ua)
+
+    // Team preview: /?variant=A|B pins the cookie and redirects back to /
+    // without the variant param (other params, e.g. UTMs, are preserved so a
+    // tagged preview link doesn't lose attribution). Ignored for bots.
+    const variantParam = (searchParams.get('variant') || '').toUpperCase()
+    if (!isBot && (variantParam === 'A' || variantParam === 'B')) {
+      const url = request.nextUrl.clone()
+      url.searchParams.delete('variant')
+      const redirect = NextResponse.redirect(url)
+      redirect.cookies.set(AB_HOME_COOKIE, variantParam, {
+        maxAge: AB_HOME_COOKIE_MAX_AGE,
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+      })
+      return redirect
+    }
+
+    if (!isBot) {
+      const existing = request.cookies.get(AB_HOME_COOKIE)?.value
+      if (existing === 'A' || existing === 'B') {
+        abHome = existing
+      } else {
+        abHome = Math.random() * 100 < abHomeBPct() ? 'B' : 'A'
+        abHomeAssigned = true
+      }
+    }
+    // Bots: abHome stays 'A', no cookie, no visitor count.
+  }
+
   const utmTerm     = searchParams.get('utm_term')     || ''
   const utmCampaign = searchParams.get('utm_campaign') || ''
   const utmSource   = searchParams.get('utm_source')   || ''
@@ -122,8 +177,27 @@ export async function middleware(request: NextRequest) {
   requestHeaders.set(CTX_HEADERS.campaign, utmCampaign)
   requestHeaders.set(CTX_HEADERS.device, ctx.device)
   requestHeaders.set(CTX_HEADERS.returning, returning ? '1' : '0')
+  // Never trust client-sent copies of the A/B headers — x-ab-home-new drives a
+  // first-party counter, so a spoofed value would inflate it.
+  requestHeaders.delete('x-ab-home')
+  requestHeaders.delete('x-ab-home-new')
+  if (isHome) {
+    requestHeaders.set('x-ab-home', abHome)
+    // Only on the request that first assigned a bucket — the homepage
+    // increments the first-party visitors counter off this flag.
+    if (abHomeAssigned) requestHeaders.set('x-ab-home-new', '1')
+  }
 
   const response = NextResponse.next({ request: { headers: requestHeaders } })
+
+  if (isHome && abHomeAssigned) {
+    response.cookies.set(AB_HOME_COOKIE, abHome, {
+      maxAge: AB_HOME_COOKIE_MAX_AGE,
+      httpOnly: true,
+      sameSite: 'lax',
+      path: '/',
+    })
+  }
 
   if (!firstSeenRaw) {
     response.cookies.set('da_fs', String(Date.now()), {

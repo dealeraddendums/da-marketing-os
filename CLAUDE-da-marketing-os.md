@@ -134,6 +134,7 @@ GOOGLE_ADS_DEVELOPER_TOKEN         # DEAD — retired by Google 2026-09-09, read
 # Blog humanizer — see "Humanize with Phrasly" under Blog lifecycle
 PHRASLY_API_URL                    # https://business.phrasly.ai/api/v1/humanize
 PHRASLY_API_KEY                    # server-only; never shipped to the client
+AB_HOME_B_PCT                      # OPTIONAL, default 0 — % of new visitors bucketed to Home B (see Home B A/B section)
 ```
 
 ## Reputation Manager (`/reputation`)
@@ -524,6 +525,51 @@ can spend money, which is a property worth keeping until the approval queue is
 real. Build the queue and the audit trail before the applier, not after.
 
 ---
+
+## Home B homepage A/B test (2026-11-14)
+
+A full homepage redesign ("Home B", ChatGPT-generated, `src/components/home-b/`)
+runs as a server-side A/B variant of `/`. **The current homepage is variant A,
+the default and the control — with the split at 0 nobody ever sees B.**
+
+- **Cookie:** `da_ab_home` = `A` | `B` — 30 days, httpOnly, SameSite=Lax, path=/.
+  Assigned in `src/middleware.ts` on the first visit to `/` only; the bucket
+  reaches the page as the `x-ab-home` request header (server-rendered, no
+  client-side variant flip, no flicker).
+- **Env var:** `AB_HOME_B_PCT` (0–100, default **0**) in `.env.production` on
+  the box — the probability a NEW visitor is assigned B. Existing cookies stick
+  regardless.
+- **Preview override:** `/?variant=B` (or `=A`) pins the cookie and redirects
+  back to `/` with the variant param stripped (other query params are kept).
+  Works at any split, including 0.
+- **Bots** (UA match) always get A and no cookie.
+- **To flip the split on:** edit `/home/ubuntu/da-marketing-os/.env.production`
+  on 54.176.9.39 → `AB_HOME_B_PCT=50`, then `pm2 restart da-marketing
+  --update-env`. Set back to `0` to turn it off (B-cookied visitors keep seeing
+  B until their cookie expires — delete the cookie logic in middleware to hard-kill).
+- **Conversion instrument is shared:** variant B renders `<HomeB
+  trialHref="#signup">` followed by the existing `CTASection` (the `id="signup"`
+  trial form + site footer), so form starts/signups flow through the exact same
+  `/api/leads` + setup-code path on both variants.
+- **Tracking:** `ab_assignment` dataLayer event (`{event, ab_home}`) once per
+  homepage load for GTM; `trial_form_start` + `trial_signup` MP events carry an
+  `ab_home` param. The bucket is persisted on `marketing_leads.ab_home` at form
+  submission (migration **027**) so the signup conversion (fired at setup-code
+  verification, cookie long gone) still carries it. First-party counters
+  (assigned visitors + form starts per bucket) live in `ab_home_stats`
+  (migration 027, incremented via the `increment_ab_home_stat` RPC —
+  service-role only). Admin → A/B Tests tab has the **Home B card**
+  (`/api/ab-home`) reading all of it, plus the live `AB_HOME_B_PCT`.
+  `channel_experiments` has a registry row `home_b_layout` (sentinel
+  utm_source — measurement is via `ab_home`, not utm).
+- **Images:** `/public/home-b/` — `honda-addendum.png` is real (supplied
+  2026-11-14); the `*-PLACEHOLDER.png` files are solid-color stand-ins that the
+  components currently reference. When real assets land, drop them in at the
+  `assets.manifest.md` paths and swap the `src` in
+  `src/components/home-b/sections/{Hero,PlatformShowcase}.tsx` back.
+- ⚠️ Home B's header nav links (`/product`, `/compliance`, `/how-it-works`,
+  `/pricing`) have **no matching routes** — decide targets before raising the
+  split above 0 (see the integration report, 2026-11-14).
 
 ## Tracking (GA4 · GTM · Google Ads conversions)
 

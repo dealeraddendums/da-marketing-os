@@ -598,6 +598,72 @@ function NewExperimentModal({ onClose }) {
   );
 }
 
+// ── Home B layout test (homepage "/" A/B) ─────────────────────────────────────
+// First-party numbers only (ab_home_stats + marketing_leads.ab_home via
+// /api/ab-home) — deliberately not GA4. Bucketing happens in middleware
+// (cookie da_ab_home); the split is the AB_HOME_B_PCT env var on the box.
+function HomeBCard() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/ab-home")
+      .then(r => r.json())
+      .then(d => { if (!d.error) setData(d); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
+
+  const pct = data?.pct ?? 0;
+  const buckets = data?.buckets || { A: {}, B: {} };
+  const rows = [
+    { label: "Visitors (assigned)", key: "visitors" },
+    { label: "Trial form starts", key: "formStarts" },
+    { label: "Form submits", key: "submits" },
+    { label: "Trial signups (confirmed)", key: "signups" },
+  ];
+
+  return (
+    <Card style={{ marginBottom: 20 }}>
+      <SectionTitle
+        action={
+          loading
+            ? <Badge variant="neutral">Loading…</Badge>
+            : pct > 0
+              ? <Badge variant="success">Live — {pct}% of new visitors get B</Badge>
+              : <Badge variant="neutral">Draft — AB_HOME_B_PCT=0, everyone sees A</Badge>
+        }
+      >Home B Layout Test</SectionTitle>
+      <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12 }}>
+        Homepage ("/") only. A = current homepage, B = Home B redesign. Preview with /?variant=B.
+        Counts are first-party (assignment counters + marketing_leads), not GA4.
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        {["A", "B"].map(bucket => (
+          <div key={bucket} style={{
+            padding: 12, borderRadius: 6,
+            background: C.bgSubtle, border: `1px solid ${C.border}`,
+          }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: C.textPrimary, marginBottom: 8 }}>
+              {bucket === "A" ? "A — Current homepage (control)" : "B — Home B redesign"}
+            </div>
+            {rows.map(r => (
+              <div key={r.key} style={{
+                display: "flex", justifyContent: "space-between",
+                fontSize: 13, color: C.textPrimary, padding: "3px 0",
+              }}>
+                <span style={{ color: C.textMuted }}>{r.label}</span>
+                <span style={{ fontWeight: 600 }}>
+                  {(buckets[bucket]?.[r.key] ?? 0).toLocaleString()}
+                </span>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 // ── A/B Experiments ───────────────────────────────────────────────────────────
 function ABPanel() {
   const [liveExperiments, setLiveExperiments] = useState(null);
@@ -629,6 +695,8 @@ function ABPanel() {
   return (
     <>
       {showModal && <NewExperimentModal onClose={handleNewExperiment} />}
+
+      <HomeBCard />
 
       <Card>
         <SectionTitle

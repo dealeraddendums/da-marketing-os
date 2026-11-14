@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { rateLimit } from '@/lib/rate-limit'
 import { sendGa4Event } from '@/lib/ga4-mp'
+import { AB_HOME_COOKIE, incrementAbHomeStat, parseBucket } from '@/lib/ab-home'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,6 +32,12 @@ export async function POST(req: NextRequest) {
   const rawPage = typeof body?.source_page === 'string' ? body.source_page : ''
   const sourcePage = /^\/[\w\-./]{0,120}$/.test(rawPage) ? rawPage : '/'
 
+  // Home B bucket, from the server-set cookie — never from the body. Absent on
+  // visitors who have not hit "/" (e.g. a form start on an /lp page); those
+  // simply carry no ab_home and are not counted in the first-party split.
+  const abHome = parseBucket(req.cookies.get(AB_HOME_COOKIE)?.value)
+  if (abHome) void incrementAbHomeStat(abHome, 'form_start')
+
   await sendGa4Event({
     // NOT `form_start` — GA4 enhanced measurement already emits that for every
     // form on the site (57,647/30d). See lib/ga4-mp.ts for the full reasoning.
@@ -38,7 +45,7 @@ export async function POST(req: NextRequest) {
     clientId: body?.ga_client_id || null,
     sessionId: body?.ga_session_id || null,
     fallbackSeed: `form_start:${ip}`,
-    params: { source_page: sourcePage, form_id: 'trial_signup_form' },
+    params: { source_page: sourcePage, form_id: 'trial_signup_form', ...(abHome ? { ab_home: abHome } : {}) },
   })
 
   return new NextResponse(null, { status: 204 })

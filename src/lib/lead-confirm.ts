@@ -172,6 +172,7 @@ export interface LeadRow {
   landing_page: string | null
   ga_client_id?: string | null
   ga_session_id?: string | null
+  ab_home?: string | null // Home B layout bucket (migration 027); absent on older leads
 }
 
 /**
@@ -215,6 +216,9 @@ async function fireTrialSignup(lead: LeadRow, outcome: ProvisionOutcome): Promis
       // Makes it visible in GA4 when attribution had to be synthesised, so an
       // unattributed conversion is never mistaken for a Direct one.
       attribution_recovered: lead.ga_client_id ? 'true' : 'false',
+      // Home B layout bucket, persisted on the lead at form submission — the
+      // cookie is unavailable here (different session, email-client click).
+      ab_home: lead.ab_home || '(none)',
     },
   })
   console.log(
