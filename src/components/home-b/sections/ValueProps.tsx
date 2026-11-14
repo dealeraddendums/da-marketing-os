@@ -17,7 +17,7 @@ const items: { title: string; description: string; icon: ReactNode }[] = [
 
 export default function ValueProps() {
   return (
-    <section data-ab-section="value_props" aria-labelledby="home-b-value-title" className="bg-white py-16 sm:py-20">
+    <section id="compliance" data-ab-section="value_props" aria-labelledby="home-b-value-title" className="scroll-mt-20 bg-white py-16 sm:py-20">
       <div className="mx-auto grid max-w-7xl gap-10 px-5 sm:px-8 lg:grid-cols-12 lg:gap-8 lg:px-10">
         <div className="lg:col-span-4">
           <h2 id="home-b-value-title" className="text-4xl font-black uppercase leading-[1.05] tracking-tight text-[#0F2A52] sm:text-5xl">Good Looks.<br /><span className="text-[#E68A13]">Serious Compliance.</span></h2>

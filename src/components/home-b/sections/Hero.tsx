@@ -4,11 +4,15 @@ import MobileNav from '../MobileNav';
 
 type HeroProps = { trialHref: string; headline: string; subhead: string };
 
+// In-page anchors into Home B's own sections (the ZIP's original /product,
+// /compliance, /how-it-works, /pricing routes don't exist on this site).
+// Pricing → #signup because variant B doesn't render PricingSection (the only
+// #pricing anchor). Keep in sync with MobileNav.tsx.
 const navigation = [
-  { label: 'Product', href: '/product' },
-  { label: 'Compliance', href: '/compliance' },
-  { label: 'How It Works', href: '/how-it-works' },
-  { label: 'Pricing', href: '/pricing' },
+  { label: 'Product', href: '#platform' },
+  { label: 'Compliance', href: '#compliance' },
+  { label: 'How It Works', href: '#how-it-works' },
+  { label: 'Pricing', href: '#signup' },
 ];
 
 export default function Hero({ trialHref, headline, subhead }: HeroProps) {

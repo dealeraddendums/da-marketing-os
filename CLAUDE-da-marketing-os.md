@@ -567,9 +567,13 @@ the default and the control — with the split at 0 nobody ever sees B.**
   components currently reference. When real assets land, drop them in at the
   `assets.manifest.md` paths and swap the `src` in
   `src/components/home-b/sections/{Hero,PlatformShowcase}.tsx` back.
-- ⚠️ Home B's header nav links (`/product`, `/compliance`, `/how-it-works`,
-  `/pricing`) have **no matching routes** — decide targets before raising the
-  split above 0 (see the integration report, 2026-11-14).
+- Home B's header nav links are in-page anchors (fixed 2026-11-14; the ZIP's
+  original `/product` etc. routes don't exist): Product → `#platform`
+  (PlatformShowcase), Compliance → `#compliance` (ValueProps), How It Works →
+  `#how-it-works` (PlatformShowcase's "Create. Manage. Print." block), Pricing
+  → `#signup` (variant B doesn't render PricingSection, the only `#pricing`
+  anchor). Targets carry `scroll-mt-20`; hrefs live in BOTH
+  `sections/Hero.tsx` and `MobileNav.tsx` — keep in sync.
 
 ## Tracking (GA4 · GTM · Google Ads conversions)
 
