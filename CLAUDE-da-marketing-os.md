@@ -562,11 +562,14 @@ the default and the control — with the split at 0 nobody ever sees B.**
   (`/api/ab-home`) reading all of it, plus the live `AB_HOME_B_PCT`.
   `channel_experiments` has a registry row `home_b_layout` (sentinel
   utm_source — measurement is via `ab_home`, not utm).
-- **Images:** `/public/home-b/` — `honda-addendum.png` is real (supplied
-  2026-11-14); the `*-PLACEHOLDER.png` files are solid-color stand-ins that the
-  components currently reference. When real assets land, drop them in at the
-  `assets.manifest.md` paths and swap the `src` in
-  `src/components/home-b/sections/{Hero,PlatformShowcase}.tsx` back.
+- **Images:** `/public/home-b/` — ALL REAL as of 2026-11-14, no placeholders
+  remain: `honda-addendum.png` (1168×3036), `hero-dealership.jpg` (5000×2812,
+  16:9, rendered via `fill` + a navy gradient overlay for headline contrast),
+  `dealeraddendums-logo.png` (1947×451 transparent wordmark — BLACK text, only
+  render it on white/light backgrounds; header renders it 190×44), and
+  `platform-screenshot.png` (2880×1800, downscaled from a 6001×3750 original
+  that is NOT committed). Still owed: customer logos (400×160 each) via the
+  `logos` prop — TrustedBy renders headline-only while it's empty.
 - Home B's header nav links are in-page anchors (fixed 2026-11-14; the ZIP's
   original `/product` etc. routes don't exist): Product → `#platform`
   (PlatformShowcase), Compliance → `#compliance` (ValueProps), How It Works →

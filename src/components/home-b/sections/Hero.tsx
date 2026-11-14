@@ -21,8 +21,8 @@ export default function Hero({ trialHref, headline, subhead }: HeroProps) {
       <header className="relative z-30 bg-white">
         <div className="mx-auto flex min-h-20 max-w-7xl items-center justify-between gap-4 px-5 py-3 sm:px-8 lg:px-10">
           <Link href="/" aria-label="DealerAddendums home" className="shrink-0 rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#0F2A52]">
-            {/* PLACEHOLDER asset — swap src back to /home-b/dealeraddendums-logo.png when the real wordmark lands */}
-            <Image src="/home-b/dealeraddendums-logo-PLACEHOLDER.png" width={520} height={110} alt="DealerAddendums" className="h-auto w-[205px] sm:w-[260px]" priority />
+            {/* Real wordmark (1947×451 transparent, black text — only render on white/light backgrounds). 190×44 keeps its 4.32:1 ratio. */}
+            <Image src="/home-b/dealeraddendums-logo.png" width={190} height={44} alt="DealerAddendums" className="h-auto w-[190px]" priority />
           </Link>
           <nav aria-label="Primary navigation" className="hidden items-center gap-6 lg:flex xl:gap-9">
             {navigation.map((item) => (
@@ -35,8 +35,8 @@ export default function Hero({ trialHref, headline, subhead }: HeroProps) {
       </header>
 
       <div className="absolute inset-x-0 bottom-0 top-20 -z-10 overflow-hidden">
-        {/* PLACEHOLDER asset — swap src back to /home-b/hero-dealership.jpg when the real photo lands */}
-        <Image src="/home-b/hero-dealership-PLACEHOLDER.png" alt="Modern blue SUV outside a contemporary dealership" fill priority sizes="100vw" className="object-cover object-center" />
+        {/* Real photo (5000×2812, 16:9). fill mode sizes from the container, so no width/height props and no layout shift. */}
+        <Image src="/home-b/hero-dealership.jpg" alt="Modern blue SUV outside a contemporary dealership" fill priority sizes="100vw" className="object-cover object-center" />
         <div className="absolute inset-0 bg-gradient-to-r from-[#071B36]/95 via-[#0F2A52]/85 to-[#0F2A52]/20 lg:via-[#0F2A52]/70" />
       </div>
 
