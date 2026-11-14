@@ -1,8 +1,8 @@
 import type { HeroTracking } from '@/lib/hero-engine';
-import FeaturesSection from '../marketing/FeaturesSection';
 import PricingSection from '../marketing/PricingSection';
 import Hero from './sections/Hero';
 import ValueProps from './sections/ValueProps';
+import Features from './sections/Features';
 import PlatformShowcase from './sections/PlatformShowcase';
 import TrustedBy from './sections/TrustedBy';
 import FinalCta from './sections/FinalCta';
@@ -35,13 +35,11 @@ export default function HomeB({
     <main className="w-full overflow-x-clip bg-white font-sans text-[#0F2A52]">
       <Hero trialHref={trialHref} headline={headline} subhead={subhead} />
       <ValueProps />
-      {/* The live homepage's FeaturesSection/PricingSection, unchanged (they carry
-          their own #features / #pricing anchors); the wrappers only add B's
-          data-ab-section markers without touching the shared components. */}
-      <div data-ab-section="features">
-        <FeaturesSection />
-      </div>
+      <Features />
       <PlatformShowcase />
+      {/* The live homepage's PricingSection, unchanged (it carries its own
+          #pricing anchor); the wrapper only adds B's data-ab-section marker
+          without touching the shared component. */}
       <div data-ab-section="pricing">
         <PricingSection tracking={tracking} />
       </div>

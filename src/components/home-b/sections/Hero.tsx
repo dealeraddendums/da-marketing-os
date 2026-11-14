@@ -6,8 +6,8 @@ type HeroProps = { trialHref: string; headline: string; subhead: string };
 
 // In-page anchors into Home B's own sections (the ZIP's original /product,
 // /compliance, /how-it-works, /pricing routes don't exist on this site).
-// #features and #pricing are the live FeaturesSection/PricingSection's own
-// ids, now rendered inside HomeB. Keep in sync with MobileNav.tsx.
+// #features is B's own Features section; #pricing is the live
+// PricingSection's own id, rendered inside HomeB. Keep in sync with MobileNav.tsx.
 const navigation = [
   { label: 'Product', href: '#platform' },
   { label: 'Features', href: '#features' },

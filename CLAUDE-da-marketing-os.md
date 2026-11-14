@@ -574,13 +574,18 @@ the default and the control — with the split at 0 nobody ever sees B.**
   sonic-automotive — trimmed marks fitted into a 340×110 content box so visual
   weight matches), passed via the `logos` prop in `app/page.tsx`; TrustedBy is
   the grayscale-to-color logo band (2×3 / 3×2 / 1×6 across breakpoints).
-  Variant B also renders the live homepage's FeaturesSection (#features) and
-  PricingSection (#pricing) unchanged, wrapped in data-ab-section divs; nav =
-  Product/Features/Compliance/How It Works/Pricing. Hero photo is
-  object-right so the dealership stays visible on phones.
+  Variant B has its OWN six-card Features section
+  (`home-b/sections/Features.tsx`, #features, SVG icons in ValueProps' stroke
+  style, copy verbatim from the live FEATURES data, "See all features" →
+  `/#features` = A's 12-card anchor) and renders the live homepage's
+  PricingSection (#pricing) unchanged in a data-ab-section wrapper; the
+  shared FeaturesSection is NOT rendered in B (its "Trusted by Leading Dealer
+  Groups" text strip stays A-only). Nav = Product/Features/Compliance/How It
+  Works/Pricing. Hero photo is object-right so the dealership stays visible
+  on phones.
 - Home B's header nav links are in-page anchors (the ZIP's original `/product`
   etc. routes don't exist): Product → `#platform` (PlatformShowcase), Features
-  → `#features` (FeaturesSection's own id), Compliance → `#compliance`
+  → `#features` (B's own Features section), Compliance → `#compliance`
   (ValueProps), How It Works → `#how-it-works` (PlatformShowcase's "Create.
   Manage. Print." block), Pricing → `#pricing` (PricingSection's own id — B
   renders it since 2026-11-14). Home B sections carry `scroll-mt-20`; hrefs
