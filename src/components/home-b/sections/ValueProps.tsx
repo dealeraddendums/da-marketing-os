@@ -10,7 +10,7 @@ function BoltIcon() {
   return <svg aria-hidden="true" viewBox="0 0 48 48" fill="none" className="h-12 w-12 text-[#F5A623]"><path d="M27 3 9 27h14l-2 18 18-26H25l2-16Z" stroke="currentColor" strokeWidth="2.5" strokeLinejoin="round"/></svg>;
 }
 const items: { title: string; description: string; icon: ReactNode }[] = [
-  { title: 'Stay Compliant', description: "Automatically align with federal, state and corporate requirements, including the Buyer's Guide.", icon: <ShieldIcon /> },
+  { title: 'Stay Compliant', description: "Conform your addendums to federal, state and corporate requirements — including the Buyer's Guide. Whatever your legal team requests, we can implement.", icon: <ShieldIcon /> },
   { title: 'Look Professional', description: 'Clean, branded addendums that highlight your vehicles and authorized options.', icon: <LayersIcon /> },
   { title: 'Print in Seconds', description: 'Create accurate, compliant documents in just a few clicks and get them to the window right away.', icon: <BoltIcon /> },
 ];
