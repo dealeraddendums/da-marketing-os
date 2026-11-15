@@ -1,10 +1,15 @@
 'use client'
-// Admin → Hero Slides: manage the homepage hero slider.
+// Admin → Hero Slides: manage the hero addendum rotator shown on BOTH
+// homepage variants (A and Home B).
 // List with drag-to-reorder, add/edit/delete, image upload (server converts to
 // WebP ≤ 300 KB), active toggle (max 4 active), and a live preview rendering
-// the real HeroSlider component on the hero's navy background.
+// the real HeroAddendumRotator component on the hero's navy background.
 import { useCallback, useEffect, useRef, useState } from 'react'
-import HeroSlider from '@/components/marketing/HeroSlider'
+import HeroAddendumRotator from '@/components/shared/HeroAddendumRotator'
+
+// The rotator's card frame — warn (never block) when an upload strays >5%
+// from it or isn't portrait at all.
+const TARGET_RATIO = 1200 / 3069
 
 const C = {
   navy: '#2a2b3c',
@@ -108,6 +113,7 @@ export default function HeroSlidesAdmin() {
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [aspectWarning, setAspectWarning] = useState('')
   const dragFrom = useRef<number | null>(null)
   const [dragOver, setDragOver] = useState<number | null>(null)
 
@@ -212,9 +218,32 @@ export default function HeroSlidesAdmin() {
     void persistOrder(next)
   }
 
+  // Warn (don't block) when the image isn't portrait or strays >5% from the
+  // rotator's 1200:3069 frame — a mismatched card letterboxes/crops on both
+  // homepages.
+  const checkAspect = (file: File) => {
+    const url = URL.createObjectURL(file)
+    const img = new window.Image()
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      const { naturalWidth: w, naturalHeight: h } = img
+      if (!w || !h) return
+      if (h <= w) {
+        setAspectWarning(`This image is ${w}×${h} — landscape. The hero card frame is portrait (1200×3069); this image will be cropped to fit.`)
+      } else if (Math.abs(w / h / TARGET_RATIO - 1) > 0.05) {
+        setAspectWarning(`This image is ${w}×${h} (ratio ${(w / h).toFixed(3)}), more than 5% off the hero card's 1200:3069 frame (${TARGET_RATIO.toFixed(3)}) — it will be cropped to fit. It still works; a 1200×3069 scan matches exactly.`)
+      } else {
+        setAspectWarning('')
+      }
+    }
+    img.onerror = () => URL.revokeObjectURL(url)
+    img.src = url
+  }
+
   const uploadImage = async (file: File) => {
     setUploading(true)
     setError('')
+    checkAspect(file)
     try {
       const fd = new FormData()
       fd.append('file', file)
@@ -238,8 +267,10 @@ export default function HeroSlidesAdmin() {
         <div>
           <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0 }}>Hero Slides</h2>
           <p style={{ fontSize: 13, color: C.muted, margin: '4px 0 0' }}>
-            The homepage hero slider. Up to {MAX_ACTIVE} active slides ({activeSlides.length} active now).
-            Edits go live within a minute — no redeploy.
+            The hero addendum rotator — these slides show on BOTH homepage variants (A and Home B).
+            Up to {MAX_ACTIVE} active slides ({activeSlides.length} active now).
+            Edits go live within a minute — no redeploy. If no slides are active, both heroes fall
+            back to a built-in set of four addendum cards.
           </p>
         </div>
         <button
@@ -272,7 +303,7 @@ export default function HeroSlidesAdmin() {
             <div>
               <div style={{
                 width: 200,
-                aspectRatio: '760 / 1968',
+                aspectRatio: '1200 / 3069',
                 border: `1px solid ${C.border}`,
                 borderRadius: 4,
                 background: C.subtle,
@@ -304,7 +335,13 @@ export default function HeroSlidesAdmin() {
               </label>
               <p style={{ fontSize: 11, color: C.muted, margin: '8px 0 0' }}>
                 PNG, JPG or WebP — converted to WebP ≤ 300 KB automatically.
+                Portrait, ideally 1200×3069 (the hero card frame).
               </p>
+              {aspectWarning && (
+                <p style={{ fontSize: 11, color: '#b26a00', background: '#fff8e1', border: '1px solid #ffe0b2', borderRadius: 4, padding: '6px 8px', margin: '8px 0 0' }}>
+                  ⚠ {aspectWarning}
+                </p>
+              )}
             </div>
 
             {/* Fields */}
@@ -362,7 +399,7 @@ export default function HeroSlidesAdmin() {
           <div style={{ padding: 24, fontSize: 13, color: C.muted }}>Loading slides…</div>
         ) : slides.length === 0 ? (
           <div style={{ padding: 24, fontSize: 13, color: C.muted }}>
-            No slides yet — the homepage shows its built-in image pair until a slide is added.
+            No slides yet — both homepages show the built-in four addendum cards until a slide is added.
           </div>
         ) : (
           slides.map((s, i) => (
@@ -431,16 +468,23 @@ export default function HeroSlidesAdmin() {
         )}
       </div>
 
-      {/* Live preview — the real HeroSlider on the hero's navy background */}
+      {/* Live preview — the real HeroAddendumRotator on the hero's navy background */}
       {activeSlides.length > 0 && (
         <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 6, padding: 20 }}>
           <h3 style={{ fontSize: 15, fontWeight: 600, margin: '0 0 4px' }}>Live preview</h3>
           <p style={{ fontSize: 12, color: C.muted, margin: '0 0 16px' }}>
-            Exactly the component the homepage renders, with the active slides in their saved order.
+            Exactly the rotator both homepages render, with the active slides in their saved order.
           </p>
           <div style={{ background: C.navy, borderRadius: 6, padding: '32px 28px', display: 'flex', justifyContent: 'center' }}>
-            <div style={{ width: 520, maxWidth: '100%' }}>
-              <HeroSlider key={activeSlides.map(s => s.id + s.updated_at).join('|')} slides={activeSlides} />
+            <div style={{ width: 260, maxWidth: '100%' }}>
+              <HeroAddendumRotator
+                key={activeSlides.map(s => s.id + s.updated_at).join('|')}
+                images={activeSlides.map(s => ({
+                  src: s.image_path,
+                  alt: [s.title, s.description].filter(Boolean).join(' ').trim() || 'Vehicle addendum printed with DealerAddendums',
+                }))}
+                sizes="260px"
+              />
             </div>
           </div>
         </div>

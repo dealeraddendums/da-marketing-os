@@ -9,16 +9,9 @@
 
 import Image from 'next/image'
 import { useEffect, useRef, useState } from 'react'
+import type { HeroAddendumImage } from '@/lib/hero-addendum-images'
 
-export type HeroAddendumImage = { src: string; alt: string }
-
-// Rotation order: Van Nuys → BMW → Lithia → Harbor.
-export const HERO_ADDENDUM_IMAGES: HeroAddendumImage[] = [
-  { src: '/hero/addendum-honda-vannuys.png', alt: 'Honda of Van Nuys vehicle addendum printed with DealerAddendums' },
-  { src: '/hero/addendum-bmw-dallas.png', alt: 'BMW of Dallas vehicle addendum printed with DealerAddendums' },
-  { src: '/hero/addendum-lithia-boise.png', alt: 'Lithia of Boise vehicle addendum printed with DealerAddendums' },
-  { src: '/hero/addendum-harbor-honda.png', alt: 'Harbor Honda vehicle addendum printed with DealerAddendums' },
-]
+export type { HeroAddendumImage }
 
 type Props = {
   images: HeroAddendumImage[]

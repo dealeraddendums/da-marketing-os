@@ -1,4 +1,5 @@
 import type { HeroTracking } from '@/lib/hero-engine';
+import type { HeroAddendumImage } from '@/lib/hero-addendum-images';
 import PricingSection from '../marketing/PricingSection';
 import Hero from './sections/Hero';
 import ValueProps from './sections/ValueProps';
@@ -21,6 +22,8 @@ export type HomeBProps = {
   subhead?: string;
   logos: HomeBLogo[];
   tracking?: HeroTracking;
+  /** Hero rotator cards (admin-managed hero_slides, server-fetched with fallback). */
+  heroImages: HeroAddendumImage[];
 };
 
 export default function HomeB({
@@ -30,10 +33,11 @@ export default function HomeB({
   subhead = 'Beautiful vehicle addendums. Built-in compliance. Ready in seconds.',
   logos,
   tracking,
+  heroImages,
 }: HomeBProps) {
   return (
     <main className="w-full overflow-x-clip bg-white font-sans text-[#0F2A52]">
-      <Hero trialHref={trialHref} headline={headline} subhead={subhead} />
+      <Hero trialHref={trialHref} headline={headline} subhead={subhead} images={heroImages} />
       <ValueProps />
       <Features />
       <PlatformShowcase />

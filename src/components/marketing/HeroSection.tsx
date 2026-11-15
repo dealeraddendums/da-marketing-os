@@ -3,7 +3,7 @@ import { useEffect, useRef } from 'react'
 import posthog from 'posthog-js'
 import type { HeroContent, HeroTracking } from '@/lib/hero-engine'
 import LoginMenu from './LoginMenu'
-import HeroAddendumRotator, { HERO_ADDENDUM_IMAGES } from '../shared/HeroAddendumRotator'
+import HeroAddendumRotator, { type HeroAddendumImage } from '../shared/HeroAddendumRotator'
 
 // Signals the client echoes back to /api/personalize to warm the hero cache
 // for this context (server recomputes the context key — never trusts ours).
@@ -17,6 +17,8 @@ interface Props {
   hero: HeroContent
   tracking: HeroTracking
   warm: WarmPayload | null
+  /** Hero rotator cards (admin-managed hero_slides, server-fetched with fallback). */
+  images: HeroAddendumImage[]
 }
 
 const NAV_LINKS = ['Features', 'Pricing', 'Testimonials']
@@ -70,7 +72,7 @@ export function abTrackOnce(guardKey: string, event: string, t?: Partial<HeroTra
   }).catch(() => {})
 }
 
-export default function HeroSection({ hero, tracking, warm }: Props) {
+export default function HeroSection({ hero, tracking, warm, images }: Props) {
   const fired = useRef(false)
 
   useEffect(() => {
@@ -331,7 +333,7 @@ export default function HeroSection({ hero, tracking, warm }: Props) {
               frame's size (260px, white, radius 6, no tilt/shadow). */}
           <div className="hero-visual">
             <div style={{ width: 260, maxWidth: '100%', margin: '0 auto' }}>
-              <HeroAddendumRotator images={HERO_ADDENDUM_IMAGES} sizes="260px" />
+              <HeroAddendumRotator images={images} sizes="260px" />
             </div>
           </div>
         </div>

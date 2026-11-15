@@ -1,9 +1,9 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import MobileNav from '../MobileNav';
-import HeroAddendumRotator, { HERO_ADDENDUM_IMAGES } from '../../shared/HeroAddendumRotator';
+import HeroAddendumRotator, { type HeroAddendumImage } from '../../shared/HeroAddendumRotator';
 
-type HeroProps = { trialHref: string; headline: string; subhead: string };
+type HeroProps = { trialHref: string; headline: string; subhead: string; images: HeroAddendumImage[] };
 
 // In-page anchors into Home B's own sections (the ZIP's original /product,
 // /compliance, /how-it-works, /pricing routes don't exist on this site).
@@ -17,7 +17,7 @@ const navigation = [
   { label: 'Pricing', href: '#pricing' },
 ];
 
-export default function Hero({ trialHref, headline, subhead }: HeroProps) {
+export default function Hero({ trialHref, headline, subhead, images }: HeroProps) {
   return (
     <section data-ab-section="hero" aria-labelledby="home-b-headline" className="relative isolate bg-[#0F2A52]">
       <header className="relative z-30 bg-white">
@@ -57,7 +57,7 @@ export default function Hero({ trialHref, headline, subhead }: HeroProps) {
           {/* Same four addendums, same order as the A hero's rotator; the tilt,
               shadow and white frame stay on this wrapper, unchanged. */}
           <div className="-rotate-2 rounded-xl bg-white p-2 shadow-2xl ring-1 ring-white/40">
-            <HeroAddendumRotator images={HERO_ADDENDUM_IMAGES} sizes="(max-width: 640px) 310px, (max-width: 1023px) 350px, 380px" />
+            <HeroAddendumRotator images={images} sizes="(max-width: 640px) 310px, (max-width: 1023px) 350px, 380px" />
           </div>
         </div>
       </div>

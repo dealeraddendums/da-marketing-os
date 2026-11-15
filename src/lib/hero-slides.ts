@@ -8,6 +8,7 @@
 
 import { unstable_cache } from 'next/cache'
 import { supabase } from '@/lib/supabase'
+import { HERO_ADDENDUM_FALLBACK, type HeroAddendumImage } from '@/lib/hero-addendum-images'
 
 export interface HeroSlide {
   id: string
@@ -43,3 +44,21 @@ export const getActiveHeroSlides = unstable_cache(
   ['hero-slides-active'],
   { revalidate: 60, tags: [HERO_SLIDES_TAG] },
 )
+
+// The hero rotator's image set on BOTH homepages (A's hero and Home B's hero),
+// admin-managed via the Hero Slides tab. Alt text = "{title} {description}"
+// (seeded as "{Dealer}" + "vehicle addendum printed with DealerAddendums").
+// Empty table or a DB hiccup → the hardcoded four, never an empty hero.
+// Same 60s cache + tag revalidation as getActiveHeroSlides, so an admin edit
+// shows on both variants within a minute without a deploy.
+export async function getHeroAddendumImages(): Promise<HeroAddendumImage[]> {
+  const slides = await getActiveHeroSlides()
+  const images = slides
+    .filter(s => typeof s.image_path === 'string' && s.image_path.length > 0)
+    .map(s => ({
+      src: s.image_path,
+      alt: [s.title, s.description].filter(Boolean).join(' ').trim()
+        || 'Vehicle addendum printed with DealerAddendums',
+    }))
+  return images.length > 0 ? images : HERO_ADDENDUM_FALLBACK
+}

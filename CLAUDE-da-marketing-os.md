@@ -562,8 +562,27 @@ the default and the control — with the split at 0 nobody ever sees B.**
   (`/api/ab-home`) reading all of it, plus the live `AB_HOME_B_PCT`.
   `channel_experiments` has a registry row `home_b_layout` (sentinel
   utm_source — measurement is via `ab_home`, not utm).
+- **Hero addendum rotator (2026-11-15, ADMIN-MANAGED since same day):** BOTH
+  homepage heroes (A's `marketing/HeroSection.tsx` and B's
+  `home-b/sections/Hero.tsx`) render the shared
+  `components/shared/HeroAddendumRotator.tsx` — one fixed 1200:3069 card,
+  600ms cross-fade every 4.5s, pauses on hover/hidden tab, reduced-motion =
+  static first slide. **The slide set comes from the `hero_slides` table**
+  (Admin → Hero Slides tab — add/reorder/activate/deactivate, max 4 active,
+  changes live ≤60s via `getHeroAddendumImages()` in `lib/hero-slides.ts`,
+  unstable_cache 60s + `hero-slides` tag revalidated on every admin write).
+  Alt text renders as `{title} {description}` — seed convention: title =
+  dealer name, description = "vehicle addendum printed with DealerAddendums".
+  Empty table / DB error → the hardcoded fallback four in
+  `lib/hero-addendum-images.ts` (never an empty hero). Current four scans:
+  `/public/hero/addendum-{honda-vannuys,bmw-dallas,lithia-boise,harbor-honda}.png`
+  (1200×3069 each), order Van Nuys → BMW → Lithia → Harbor. The old
+  admin HeroSlider component (image+text carousel) is retired from the
+  homepage; `hero_slides` rows pre-2026-11-15 are backed up at suite root
+  `hero-slides-backup-20261115.json`. Upload warns (never blocks) when an
+  image isn't portrait or is >5% off 1200:3069.
 - **Images:** `/public/home-b/` — ALL REAL as of 2026-11-14, no placeholders
-  remain: `honda-addendum.png` (1168×3036), `hero-dealership.jpg` (5000×2812,
+  remain: `hero-dealership.jpg` (5000×2812,
   16:9, rendered via `fill` + a navy gradient overlay for headline contrast),
   `dealeraddendums-logo.png` (1947×451 transparent wordmark — BLACK text, only
   render it on white/light backgrounds; header renders it 190×44), and the

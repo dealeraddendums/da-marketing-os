@@ -2,6 +2,7 @@ import { cookies, headers } from 'next/headers'
 import { Suspense } from 'react'
 import { CTX_HEADERS, buildSignals, type Device } from '@/lib/context-key'
 import { resolveHero, type HeroTracking } from '@/lib/hero-engine'
+import { getHeroAddendumImages } from '@/lib/hero-slides'
 import type { PersonalizationContext } from '@/lib/personalization'
 import HeroSection, { type WarmPayload } from '@/components/marketing/HeroSection'
 import FeaturesSection from '@/components/marketing/FeaturesSection'
@@ -39,6 +40,10 @@ function getString(v: string | string[] | undefined): string {
 export default async function HomePage({ searchParams }: PageProps) {
   const h = headers()
   const cookieStore = cookies()
+
+  // Hero rotator cards for BOTH variants — admin-managed (hero_slides table),
+  // cached 60s, falls back to the hardcoded four on empty/error.
+  const heroImages = await getHeroAddendumImages()
 
   // ── Home B layout test ──────────────────────────────────────────────────────
   // Bucket decided in middleware (cookie da_ab_home → x-ab-home request
@@ -82,7 +87,7 @@ export default async function HomePage({ searchParams }: PageProps) {
       <>
         <SiteJsonLd />
         <AbAssignmentTracker bucket="B" />
-        <HomeB trialHref="#signup" dealerCount="1,600+" logos={homeBLogos} tracking={homeBTracking} />
+        <HomeB trialHref="#signup" dealerCount="1,600+" logos={homeBLogos} tracking={homeBTracking} heroImages={heroImages} />
         <CTASection tracking={homeBTracking} resources={await getFooterPosts()} />
       </>
     )
@@ -173,7 +178,7 @@ export default async function HomePage({ searchParams }: PageProps) {
       <SiteJsonLd />
       <AbAssignmentTracker bucket="A" />
       <Suspense fallback={<HeroSkeleton />}>
-        <HeroSection hero={resolved.hero} tracking={tracking} warm={warm} />
+        <HeroSection hero={resolved.hero} tracking={tracking} warm={warm} images={heroImages} />
       </Suspense>
       <ProductTypesSection />
       <FeaturesSection />
