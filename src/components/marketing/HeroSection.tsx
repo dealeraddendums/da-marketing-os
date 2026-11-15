@@ -1,10 +1,9 @@
 'use client'
 import { useEffect, useRef } from 'react'
-import Image from 'next/image'
 import posthog from 'posthog-js'
 import type { HeroContent, HeroTracking } from '@/lib/hero-engine'
 import LoginMenu from './LoginMenu'
-import HeroSlider, { type HeroSliderSlide } from './HeroSlider'
+import HeroAddendumRotator, { HERO_ADDENDUM_IMAGES } from '../shared/HeroAddendumRotator'
 
 // Signals the client echoes back to /api/personalize to warm the hero cache
 // for this context (server recomputes the context key — never trusts ours).
@@ -18,8 +17,6 @@ interface Props {
   hero: HeroContent
   tracking: HeroTracking
   warm: WarmPayload | null
-  /** Active hero slider slides (admin-managed). Empty → static image pair. */
-  slides?: HeroSliderSlide[]
 }
 
 const NAV_LINKS = ['Features', 'Pricing', 'Testimonials']
@@ -73,7 +70,7 @@ export function abTrackOnce(guardKey: string, event: string, t?: Partial<HeroTra
   }).catch(() => {})
 }
 
-export default function HeroSection({ hero, tracking, warm, slides = [] }: Props) {
+export default function HeroSection({ hero, tracking, warm }: Props) {
   const fired = useRef(false)
 
   useEffect(() => {
@@ -328,73 +325,14 @@ export default function HeroSection({ hero, tracking, warm, slides = [] }: Props
             </p>
           </div>
 
-          {/* Right: the real product. Admin-managed slider when active slides
-              exist (one addendum at a time, title + description beside it);
-              falls back to the original static pair when the table is empty
-              or unreachable. Both paths paint in fixed-size frames: zero CLS. */}
-          <div className={slides.length > 0 ? 'hero-visual hero-visual--slider' : 'hero-visual'}>
-            {slides.length > 0 ? (
-              <HeroSlider slides={slides} />
-            ) : (
-            <div className="hero-visual-pair">
-              <figure className="hero-visual-item" style={{ margin: 0 }}>
-                <figcaption style={{
-                  display: 'block',
-                  background: 'rgba(255,165,0,0.15)',
-                  border: '1px solid rgba(255,165,0,0.4)',
-                  borderRadius: 4,
-                  padding: '6px 10px',
-                  fontSize: 11,
-                  fontWeight: 700,
-                  color: '#ffa500',
-                  letterSpacing: '0.03em',
-                  textTransform: 'uppercase' as const,
-                  textAlign: 'center' as const,
-                  lineHeight: 1.4,
-                  marginBottom: 10,
-                }}>
-                  Required (Fixed) Products — added to MSRP
-                </figcaption>
-                <Image
-                  src="/images/addendum-required.webp"
-                  alt="Real printed addendum with required fees and products added to MSRP, showing a Price with Fees & Additions total and a separate Optional Additions section"
-                  width={760}
-                  height={1968}
-                  priority
-                  sizes="(max-width: 860px) 260px, 220px"
-                  style={{ width: '100%', height: 'auto', display: 'block', borderRadius: 6, background: '#ffffff' }}
-                />
-              </figure>
-              <figure className="hero-visual-item" style={{ margin: 0 }}>
-                <figcaption style={{
-                  display: 'block',
-                  background: 'rgba(25,118,210,0.22)',
-                  border: '1px solid rgba(100,166,227,0.55)',
-                  borderRadius: 4,
-                  padding: '6px 10px',
-                  fontSize: 11,
-                  fontWeight: 700,
-                  color: '#9ec8f0',
-                  letterSpacing: '0.03em',
-                  textTransform: 'uppercase' as const,
-                  textAlign: 'center' as const,
-                  lineHeight: 1.4,
-                  marginBottom: 10,
-                }}>
-                  Suggested Products — optional, not required
-                </figcaption>
-                <Image
-                  src="/images/addendum-suggested.webp"
-                  alt="Real printed addendum presenting an optional dealer installed package in its own clearly labeled section on top of MSRP"
-                  width={760}
-                  height={1968}
-                  priority
-                  sizes="(max-width: 860px) 260px, 220px"
-                  style={{ width: '100%', height: 'auto', display: 'block', borderRadius: 6, background: '#ffffff' }}
-                />
-              </figure>
+          {/* Right: the real product — four real dealer addendums cross-fading
+              in one fixed-aspect card. The SAME rotator (same images, same
+              order) runs on Home B's hero. The card keeps the old slider
+              frame's size (260px, white, radius 6, no tilt/shadow). */}
+          <div className="hero-visual">
+            <div style={{ width: 260, maxWidth: '100%', margin: '0 auto' }}>
+              <HeroAddendumRotator images={HERO_ADDENDUM_IMAGES} sizes="260px" />
             </div>
-            )}
           </div>
         </div>
       </div>

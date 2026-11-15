@@ -1,16 +1,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import MobileNav from '../MobileNav';
-import Rotator, { type RotatorSlide } from '../Rotator';
-
-// Hero addendum crossfade variants. Slide 0 sizes the frame; the others are
-// near-identical tall-page ratios (≈0.385–0.386:1) shown object-cover.
-// Allan is supplying a set of 4 dedicated addendum variants — swap/extend here.
-const addendumSlides: RotatorSlide[] = [
-  { src: '/home-b/honda-addendum.png', width: 1168, height: 3036, alt: 'Example Honda CR-V dealership vehicle addendum showing branded vehicle images, pricing, and disclosures' },
-  { src: '/images/addendum-required.webp', width: 760, height: 1968, alt: 'Addendum with required fixed products added to MSRP and a price with fees and additions total' },
-  { src: '/images/addendum-suggested.webp', width: 760, height: 1968, alt: 'Addendum with a suggested dealer-installed package shown as clearly optional on top of MSRP' },
-];
+import HeroAddendumRotator, { HERO_ADDENDUM_IMAGES } from '../../shared/HeroAddendumRotator';
 
 type HeroProps = { trialHref: string; headline: string; subhead: string };
 
@@ -63,7 +54,11 @@ export default function Hero({ trialHref, headline, subhead }: HeroProps) {
           </ul>
         </div>
         <div className="relative z-10 mx-auto w-full max-w-[310px] sm:max-w-[350px] lg:col-span-5 lg:max-w-[380px] lg:justify-self-end">
-          <Rotator mode="fade" priority slides={addendumSlides} sizes="(max-width: 640px) 310px, (max-width: 1023px) 350px, 380px" className="-rotate-2 rounded-xl bg-white p-2 shadow-2xl ring-1 ring-white/40" />
+          {/* Same four addendums, same order as the A hero's rotator; the tilt,
+              shadow and white frame stay on this wrapper, unchanged. */}
+          <div className="-rotate-2 rounded-xl bg-white p-2 shadow-2xl ring-1 ring-white/40">
+            <HeroAddendumRotator images={HERO_ADDENDUM_IMAGES} sizes="(max-width: 640px) 310px, (max-width: 1023px) 350px, 380px" />
+          </div>
         </div>
       </div>
       <div aria-hidden="true" className="pointer-events-none absolute bottom-0 left-0 right-0 h-14 bg-white [clip-path:polygon(0_80%,100%_0,100%_100%,0_100%)] sm:h-20" />

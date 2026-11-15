@@ -1,4 +1,5 @@
 import DownloadPdfButton from '@/components/DownloadPdfButton'
+import CopyrightNotice from '@/components/shared/CopyrightNotice'
 
 // Branded shell for the marketing /terms and /privacy pages. Self-contained
 // (the marketing repo can't import DA Platform's auth shell), but mirrors its
@@ -137,6 +138,7 @@ export default function LegalShell({ title, children }: { title: string; childre
               <a href="/privacy">Privacy Policy</a>{'  ·  '}
               <a href="/">Home</a>
             </p>
+            <CopyrightNotice className="lp-doc-footer" style={{ marginTop: 6 }} />
           </article>
         </main>
       </div>

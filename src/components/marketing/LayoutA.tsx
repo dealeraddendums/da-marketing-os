@@ -6,6 +6,7 @@ import type { PersonalizationContext } from '@/lib/personalization'
 import { getAttribution, pushSignupEvent, getGaIds } from '@/lib/attribution'
 import Turnstile from './Turnstile'
 import LoginMenu from './LoginMenu'
+import CopyrightNotice from '../shared/CopyrightNotice'
 
 interface Props {
   personalization: PersonalizationContext
@@ -860,9 +861,7 @@ export default function LayoutA({ personalization }: Props) {
             </a>
           ))}
         </div>
-        <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', margin: 0 }}>
-          © 2025 DealerAddendums. All rights reserved.
-        </p>
+        <CopyrightNotice style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', margin: 0 }} />
       </div>
 
     </div>

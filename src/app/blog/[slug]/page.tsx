@@ -3,6 +3,7 @@ import { MDXRemote } from 'next-mdx-remote/rsc'
 import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
 import LoginMenu from '@/components/marketing/LoginMenu'
+import CopyrightNotice from '@/components/shared/CopyrightNotice'
 import PostBoilerplate from '@/components/blog/PostBoilerplate'
 import { getPost, getAllPosts, getRelatedPosts, getBlogRouteMap } from '@/lib/blog'
 import { deriveFaqFromBody } from '@/lib/blog-faq'
@@ -484,9 +485,7 @@ export default async function BlogPost({ params }: PageProps) {
         flexWrap: 'wrap',
         gap: 12,
       }}>
-        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>
-          © 2025 DealerAddendums. All rights reserved.
-        </span>
+        <CopyrightNotice as="span" style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }} />
         <div style={{ display: 'flex', gap: 20 }}>
           {[
             { label: 'Privacy Policy', href: '/privacy' },

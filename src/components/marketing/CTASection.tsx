@@ -6,6 +6,7 @@ import {
   getAttribution, pushSignupEvent, getGaIds, sendFormStartOncePerSession,
 } from '@/lib/attribution'
 import Turnstile from './Turnstile'
+import CopyrightNotice from '../shared/CopyrightNotice'
 import { capture, abTrackOnce } from './HeroSection'
 import type { HeroTracking } from '@/lib/hero-engine'
 
@@ -958,9 +959,7 @@ export default function CTASection({ tracking, resources }: Props) {
             </a>
           ))}
         </div>
-        <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', margin: 0 }}>
-          © 2025 DealerAddendums. All rights reserved.
-        </p>
+        <CopyrightNotice style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', margin: 0 }} />
       </div>
     </section>
   )

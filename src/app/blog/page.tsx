@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import LoginMenu from '@/components/marketing/LoginMenu'
+import CopyrightNotice from '@/components/shared/CopyrightNotice'
 import { getAllPosts } from '@/lib/blog'
 
 // ISR so a post published after the build (blog-save writes MDX at runtime)
@@ -315,9 +316,7 @@ export default async function BlogIndex() {
         flexWrap: 'wrap',
         gap: 12,
       }}>
-        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>
-          © 2025 DealerAddendums. All rights reserved.
-        </span>
+        <CopyrightNotice as="span" style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }} />
         <div style={{ display: 'flex', gap: 20 }}>
           {[
             { label: 'Privacy Policy', href: '/privacy' },
