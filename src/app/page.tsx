@@ -17,6 +17,7 @@ import SiteJsonLd from '@/components/marketing/SiteJsonLd'
 import AbAssignmentTracker from '@/components/marketing/AbAssignmentTracker'
 import HomeB from '@/components/home-b/HomeB'
 import { AB_HOME_HEADER, AB_HOME_NEW_HEADER, incrementAbHomeStat, parseBucket } from '@/lib/ab-home'
+import { parseHeroVariant, HERO_CONTROL } from '@/lib/ab-variants'
 import { getFooterPosts } from '@/lib/blog'
 
 function HeroSkeleton() {
@@ -88,7 +89,10 @@ export default async function HomePage({ searchParams }: PageProps) {
     )
   }
 
-  const abVariant     = cookieStore.get('da_hero_ab')?.value || 'personalized'
+  // Cookie is attacker-controlled: unknown values fall back to control
+  // (mirrors middleware); a missing cookie keeps the legacy default.
+  const abCookieRaw   = cookieStore.get('da_hero_ab')?.value
+  const abVariant     = parseHeroVariant(abCookieRaw) ?? (abCookieRaw ? HERO_CONTROL : 'personalized')
   // Layout test retired 2026-06-12 — everyone gets the new hero regardless of
   // stale da_layout cookies. LayoutA stays in the repo for a future
   // strong-vs-strong test; to re-enable, read the cookie here again.

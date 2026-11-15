@@ -15,7 +15,10 @@ export default function AbAssignmentTracker({ bucket }: { bucket: 'A' | 'B' }) {
     pushed.current = true
     const w = window as unknown as { dataLayer?: Array<Record<string, unknown>> }
     w.dataLayer = w.dataLayer || []
-    w.dataLayer.push({ event: 'ab_assignment', ab_home: bucket })
+    // Whitelist before the push — only the two defined buckets may ever reach
+    // GA4, whatever a future caller passes (bucket is typed, but the dataLayer
+    // write is the last line of defense).
+    w.dataLayer.push({ event: 'ab_assignment', ab_home: bucket === 'B' ? 'B' : 'A' })
   }, [bucket])
   return null
 }

@@ -637,7 +637,10 @@ function HomeBCard() {
         Homepage ("/") only. A = current homepage, B = Home B redesign. Preview with /?variant=B.
         Counts are first-party (assignment counters + marketing_leads), not GA4.
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+      {/* minmax(0,1fr): grid items default to min-width:auto, so without this
+          wide content in either bucket could force the pair past the card and
+          render as effectively stacked (one column per screen). */}
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 10 }}>
         {["A", "B"].map(bucket => (
           <div key={bucket} style={{
             padding: 12, borderRadius: 6,
@@ -751,11 +754,18 @@ function ABPanel() {
                 </div>
               </div>
 
-              <div style={{
-                display: "grid",
-                gridTemplateColumns: `repeat(${exp.variants.length}, 1fr)`,
-                gap: 10,
-              }}>
+              {/* The variant row scrolls INSIDE the card — with many variants
+                  a bare repeat(N, 1fr) grid (min-width:auto) used to force the
+                  whole page thousands of pixels wide (the Oct-26 scanner junk
+                  made this tab render full-bleed at 13,000+px). The API now
+                  caps variants to the defined arms; the scroll container is
+                  the layout-level guarantee either way. */}
+              <div style={{ overflowX: "auto", paddingBottom: 4 }}>
+                <div style={{
+                  display: "grid",
+                  gridTemplateColumns: `repeat(${exp.variants.length}, minmax(200px, 1fr))`,
+                  gap: 10,
+                }}>
                 {exp.variants.map((v, i) => (
                   <div key={i} style={{
                     padding: 12, borderRadius: 6,
@@ -784,6 +794,7 @@ function ABPanel() {
                     </div>
                   </div>
                 ))}
+                </div>
               </div>
 
               {exp.winner && exp.significance >= 90 && (

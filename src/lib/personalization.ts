@@ -313,7 +313,13 @@ export function buildPersonalizationContext(
   headerMap: Record<string, string>,
   termMap: Record<string, PersonalizationVariant> = STATIC_TERM_MAP
 ): PersonalizationContext {
-  const abVariant     = headerMap['x-ab-variant']     || 'generic'
+  // Header value may echo a client-supplied cookie — whitelist to the defined
+  // arms, control otherwise (see src/lib/ab-variants.ts; inlined to keep this
+  // module import-light): generic | personalized | dealertype only.
+  const rawAbVariant  = headerMap['x-ab-variant'] || ''
+  const abVariant     = ['generic', 'personalized', 'dealertype'].includes(rawAbVariant)
+    ? rawAbVariant
+    : 'generic'
   const layoutVariant = headerMap['x-layout-variant'] || 'b'
   const utmTerm       = headerMap['x-utm-term']       || ''
   const utmCampaign   = headerMap['x-utm-campaign']   || ''

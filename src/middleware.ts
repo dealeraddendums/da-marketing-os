@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { buildSignals, CTX_HEADERS } from '@/lib/context-key'
+import { parseHeroVariant, HERO_CONTROL } from '@/lib/ab-variants'
 
 // Static map keys for fast lookup (no import needed in middleware edge runtime)
 const STATIC_TERMS = new Set([
@@ -232,12 +233,17 @@ export async function middleware(request: NextRequest) {
     })
   }
 
-  // Sticky copy A/B variant via cookie (generic / personalized / dealertype)
-  const abCookie  = request.cookies.get('da_hero_ab')?.value
-  const abVariant = abCookie ?? weightedPick(
+  // Sticky copy A/B variant via cookie (generic / personalized / dealertype).
+  // The cookie is attacker-controlled input: only the defined arms are
+  // accepted. A present-but-unrecognized value (scanner probes were persisted
+  // as "variants" via this path until 2026-11-15) falls back to CONTROL and
+  // the cookie is overwritten, so the junk value never propagates anywhere.
+  const abCookieRaw = request.cookies.get('da_hero_ab')?.value
+  const abCookie    = parseHeroVariant(abCookieRaw)
+  const abVariant   = abCookie ?? (abCookieRaw ? HERO_CONTROL : weightedPick(
     ['generic', 'personalized', 'dealertype'],
     [0.33, 0.34, 0.33]
-  )
+  ))
   if (!abCookie) {
     response.cookies.set('da_hero_ab', abVariant, {
       maxAge: 60 * 60 * 24 * 30,

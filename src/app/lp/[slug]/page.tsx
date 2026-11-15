@@ -10,6 +10,7 @@ import LoginMenu from '@/components/marketing/LoginMenu'
 import { CTX_HEADERS, buildSignals, type Device } from '@/lib/context-key'
 import { resolveHero, type HeroContent, type HeroTracking } from '@/lib/hero-engine'
 import type { WarmPayload } from '@/components/marketing/HeroSection'
+import { parseHeroVariant, HERO_CONTROL } from '@/lib/ab-variants'
 
 // Dynamic Landing Engine: heroes vary per visitor context, so these pages
 // render per-request (was ISR). The mdx body itself is still the static base
@@ -49,7 +50,10 @@ export default async function LPPage({ params }: PageProps) {
 
   const h = headers()
   const cookieStore = cookies()
-  const abVariant     = cookieStore.get('da_hero_ab')?.value || 'personalized'
+  // Cookie is attacker-controlled: unknown values fall back to control
+  // (mirrors middleware); a missing cookie keeps the legacy default.
+  const abCookieRaw   = cookieStore.get('da_hero_ab')?.value
+  const abVariant     = parseHeroVariant(abCookieRaw) ?? (abCookieRaw ? HERO_CONTROL : 'personalized')
   const layoutVariant = cookieStore.get('da_layout')?.value  || 'b'
 
   const derived = buildSignals({

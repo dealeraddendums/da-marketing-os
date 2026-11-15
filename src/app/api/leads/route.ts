@@ -8,6 +8,7 @@ import { verifyTurnstile } from '@/lib/turnstile'
 import { provisionInDaPlatform, type ProvisionOutcome } from '@/lib/lead-confirm'
 import { normalizeWebsiteUrl } from '@/lib/website-url'
 import { AB_HOME_COOKIE, parseBucket } from '@/lib/ab-home'
+import { AB_EVENT_VARIANTS, inSet } from '@/lib/ab-variants'
 
 const ATTR_FIELDS = [
   'utm_source', 'utm_medium', 'utm_campaign', 'utm_term',
@@ -151,8 +152,11 @@ Based on the dealership name and email domain, provide a brief intelligence summ
     status: 'new',
     context_key: contextKey,
     variation_id: variationId,
-    ab_variant: (body.abVariant as string) || null,
-    headline_seen: (body.headlineSeen as string) || null,
+    // Whitelisted: a variant id that isn't a defined arm is never written.
+    ab_variant: inSet(body.abVariant as string, AB_EVENT_VARIANTS),
+    headline_seen: typeof body.headlineSeen === 'string'
+      ? (body.headlineSeen as string).slice(0, 300) || null
+      : null,
     // One-email flow (2026-11-01): no confirmation link anymore. The platform
     // gate runs below, at THIS submit, and sends the single setup-code email;
     // nothing is provisioned until the applicant enters that code. 'submitted'

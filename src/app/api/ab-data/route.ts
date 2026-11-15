@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { isAdminAuthed } from '@/lib/reputation'
+import { HERO_VARIANTS } from '@/lib/ab-variants'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,11 +23,18 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
   try {
-    const { data: rates, error } = await supabase
+    const { data: allRates, error } = await supabase
       .from('ab_conversion_rates')
       .select('*')
 
-    if (error || !rates?.length) {
+    // Only the experiment's defined arms are variants. Anything else in the
+    // view (historic scanner junk, null buckets) is not part of the test and
+    // must not render as a card or feed the significance math.
+    const rates = (allRates || []).filter(
+      (r: any) => (HERO_VARIANTS as readonly string[]).includes(r.ab_variant),
+    )
+
+    if (error || !rates.length) {
       return NextResponse.json({ live: false, experiments: [] })
     }
 
