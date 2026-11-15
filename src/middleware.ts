@@ -40,8 +40,13 @@ const AB_HOME_COOKIE = 'da_ab_home'
 const AB_HOME_COOKIE_MAX_AGE = 60 * 60 * 24 * 30 // 30 days
 // Known bots always get A and never get a cookie: crawlers must index the
 // stable control, and their traffic must not dilute the experiment counters.
-// Googlebot/bingbot/duckduckbot etc. all match /bot/.
-const AB_BOT_RE = /bot|crawl|spider|slurp|bingpreview|facebookexternalhit|ia_archiver|whatsapp|telegram|lighthouse|gtmetrix|pingdom|headlesschrome|phantomjs|prerender/i
+// Googlebot/bingbot/duckduckbot etc. all match /bot/. Widened 2026-11-15:
+// a 24h nginx-log audit showed ~81% of assigned "visitors" were uptime
+// monitors (StackMonitor ~1,400 hits/day, KibaPublicMonitor, Infrawatch) and
+// CLI tools (curl/python/wget) that keep no cookies, so each hit minted a new
+// visitor. "monitor|uptime|scan" + the HTTP-client tokens catch them; no real
+// browser UA contains any of these.
+const AB_BOT_RE = /bot|crawl|spider|slurp|bingpreview|facebookexternalhit|ia_archiver|whatsapp|telegram|lighthouse|gtmetrix|pingdom|headlesschrome|phantomjs|prerender|monitor|uptime|statuscake|infrawatch|scan|probe|curl|wget|python|httpx|aiohttp|go-http|okhttp|axios|node-fetch|libwww|scrapy|java\//i
 
 function abHomeBPct(): number {
   const n = parseInt(process.env.AB_HOME_B_PCT || '0', 10)
@@ -115,7 +120,8 @@ export async function middleware(request: NextRequest) {
   let abHomeAssigned = false // just assigned this request → set cookie + count a visitor
   if (isHome) {
     const ua = request.headers.get('user-agent') || ''
-    const isBot = AB_BOT_RE.test(ua)
+    // No UA at all is a script, not a person — treat like a bot.
+    const isBot = !ua || AB_BOT_RE.test(ua)
 
     // Team preview: /?variant=A|B pins the cookie and redirects back to /
     // without the variant param (other params, e.g. UTMs, are preserved so a

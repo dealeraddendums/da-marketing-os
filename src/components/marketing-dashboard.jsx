@@ -629,7 +629,7 @@ function HomeBCard() {
           loading
             ? <Badge variant="neutral">Loading…</Badge>
             : pct > 0
-              ? <Badge variant="success">Live — {pct}% of new visitors get B</Badge>
+              ? <Badge variant="success">Running — {pct}/{100 - pct}{data?.startDate ? ` since ${data.startDate}` : ""}</Badge>
               : <Badge variant="neutral">Draft — AB_HOME_B_PCT=0, everyone sees A</Badge>
         }
       >Home B Layout Test</SectionTitle>

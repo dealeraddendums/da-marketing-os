@@ -23,8 +23,16 @@ export async function GET() {
   const empty = (): BucketStats => ({ visitors: 0, formStarts: 0, submits: 0, signups: 0 })
   const buckets: Record<'A' | 'B', BucketStats> = { A: empty(), B: empty() }
   let live = false
+  let startDate: string | null = null
 
   try {
+    // Experiment registry row — the card's "Running since" date.
+    const { data: exp } = await supabase
+      .from('channel_experiments')
+      .select('start_date')
+      .eq('name', 'home_b_layout')
+      .maybeSingle()
+    startDate = (exp as { start_date?: string } | null)?.start_date ?? null
     const { data: stats, error: statsErr } = await supabase
       .from('ab_home_stats')
       .select('bucket, metric, count')
@@ -58,5 +66,5 @@ export async function GET() {
     console.error('ab-home stats error:', e)
   }
 
-  return NextResponse.json({ live, pct: abHomeBPct(), buckets })
+  return NextResponse.json({ live, pct: abHomeBPct(), startDate, buckets })
 }
