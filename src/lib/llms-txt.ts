@@ -11,7 +11,7 @@ export function buildLlmsHeader(): string {
     '> DealerAddendums is B2B SaaS that lets franchise car dealerships create, manage and print ' +
     'vehicle addendums (window-sticker add-on labels), FTC Buyers Guides (English and Spanish) and ' +
     'info sheets directly from their live inventory feed. Required products are added to MSRP and ' +
-    'suggested products are clearly marked as optional — compliant by design. Used by 2,100+ ' +
+    'suggested products are clearly marked as optional — compliant by design. Used by 1,600+ ' +
     'dealerships; month-to-month subscriptions with a free trial, no contracts.',
     '',
     '## Product',

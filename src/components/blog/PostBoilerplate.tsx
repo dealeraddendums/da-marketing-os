@@ -1,6 +1,6 @@
 // The standard "About DealerAddendums" block appended to every blog post.
 // One component, not pasted text, so the facts (dealer count, feature list)
-// change in exactly one place. Dealer count 2,100+ confirmed by Allan
+// change in exactly one place. Dealer count 1,600+ confirmed by Allan
 // 2026-11-09 and matches the live homepage.
 export default function PostBoilerplate() {
   return (
@@ -23,7 +23,7 @@ export default function PostBoilerplate() {
         addendums, Buyers Guides, and info sheets. Set a product once with rules — make, model,
         trim, year, body style, mileage, fuel type — and it applies automatically to every
         matching vehicle. Month-to-month, no setup fees, US-based support, in business since
-        2014, trusted by 2,100+ dealerships.
+        2014, trusted by 1,600+ dealerships.
       </p>
       <p style={{ fontSize: 15, lineHeight: 1.7, color: '#404347', margin: 0 }}>
         <a href="/#signup" style={{ color: '#1976d2', textDecoration: 'none', fontWeight: 600 }}>

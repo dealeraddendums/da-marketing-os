@@ -129,7 +129,7 @@ export default async function BlogPost({ params }: PageProps) {
 
   const ctaText =
     fm.cta?.trim() ||
-    'Month-to-month, no setup fees. Join 2,100+ dealerships using DealerAddendums.'
+    'Month-to-month, no setup fees. Join 1,600+ dealerships using DealerAddendums.'
   const ctaHref = `/?utm_source=blog&utm_medium=cta&utm_campaign=${encodeURIComponent(params.slug)}#signup`
 
   // FAQPage: the explicit frontmatter faq wins; otherwise derive from the
@@ -453,7 +453,7 @@ export default async function BlogPost({ params }: PageProps) {
           Ready to streamline your dealership's paperwork?
         </h3>
         <p style={{ fontSize: 15, color: 'rgba(255,255,255,0.7)', margin: '0 0 24px' }}>
-          Join 2,100+ dealerships using DealerAddendums. Month-to-month. No credit card required.
+          Join 1,600+ dealerships using DealerAddendums. Month-to-month. No credit card required.
         </p>
         <a
           href="/#signup"

@@ -10,9 +10,9 @@ export interface PersonalizationVariant {
 export const STATIC_TERM_MAP: Record<string, PersonalizationVariant> = {
   'car dealer addendum software': {
     headline: 'The #1 Addendum Software for Car Dealers',
-    subheadline: 'Stop printing addendums by hand. 2,100+ dealers automate it in seconds.',
+    subheadline: 'Stop printing addendums by hand. 1,600+ dealers automate it in seconds.',
     cta: 'Start Free Trial',
-    socialProof: 'Trusted by 2,100+ dealerships since 2014',
+    socialProof: 'Trusted by 1,600+ dealerships since 2014',
     heroStat: '3.6M+ addendums printed',
   },
   'vehicle addendum': {
@@ -57,7 +57,7 @@ export const STATIC_TERM_MAP: Record<string, PersonalizationVariant> = {
     headline: 'Used Car Buyers Guides — Fast & Compliant',
     subheadline: 'One-click FTC Buyers Guides for your entire used inventory.',
     cta: 'Try It Free',
-    socialProof: '2,100+ dealers print buyers guides with us',
+    socialProof: '1,600+ dealers print buyers guides with us',
     testimonialFilter: 'used-car',
   },
   'new car dealer addendum': {
@@ -105,7 +105,7 @@ export const STATIC_TERM_MAP: Record<string, PersonalizationVariant> = {
     headline: 'Ford Dealer Addendums — Done Right',
     subheadline: 'Ford-compliant addendum templates with your dealer branding and preloaded F&I products.',
     cta: 'Start Free Trial',
-    socialProof: '2,100+ dealers trust DealerAddendums',
+    socialProof: '1,600+ dealers trust DealerAddendums',
     testimonialFilter: 'ford',
   },
   'toyota dealer addendum': {
@@ -143,11 +143,11 @@ export const STATIC_TERM_MAP: Record<string, PersonalizationVariant> = {
     headline: "Compliance That Doesn't Slow You Down",
     subheadline: 'FTC-compliant addendums and buyers guides printed in seconds, not hours.',
     cta: 'Start Free Trial',
-    socialProof: 'Trusted by 2,100+ dealers',
+    socialProof: 'Trusted by 1,600+ dealers',
   },
   'dealeraddendums alternative': {
     headline: 'You Found the Original. Welcome.',
-    subheadline: 'DealerAddendums has been the #1 addendum platform since 2014. See why 2,100+ dealers agree.',
+    subheadline: 'DealerAddendums has been the #1 addendum platform since 2014. See why 1,600+ dealers agree.',
     cta: 'Start Free Trial',
     socialProof: '3.6M+ addendums printed',
   },
@@ -173,7 +173,7 @@ export const STATIC_TERM_MAP: Record<string, PersonalizationVariant> = {
     headline: 'Put Your Addendums to Work Online',
     subheadline: 'The Magic Button shows shoppers the exact PDF addendum from the lot right on your VDP — the same disclosures online as on the printed sticker.',
     cta: 'See How It Works',
-    socialProof: 'Trusted by 2,100+ dealerships since 2014',
+    socialProof: 'Trusted by 1,600+ dealerships since 2014',
   },
   'dealer inventory feed': {
     headline: '2-Way Inventory Data. Zero Manual Work.',
@@ -210,7 +210,7 @@ export const DEALERTYPE_COPY: Record<string, PersonalizationVariant> = {
     headline: 'Ford Dealer Paperwork — Automated',
     subheadline: 'Ford-compliant addendum templates with your dealer branding, preloaded F&I products, and instant printing.',
     cta: 'Start Free Trial',
-    socialProof: '2,100+ dealers choose DealerAddendums',
+    socialProof: '1,600+ dealers choose DealerAddendums',
     testimonialFilter: 'franchise',
   },
   toyota: {
@@ -274,7 +274,7 @@ export const DEALERTYPE_COPY: Record<string, PersonalizationVariant> = {
     headline: 'The Professional Addendum Platform for Car Dealers',
     subheadline: 'Vehicle addendums, buyers guides, and info sheets — professional, compliant, and fast.',
     cta: 'Start Free Trial',
-    socialProof: 'Trusted by 2,100+ dealerships since 2014',
+    socialProof: 'Trusted by 1,600+ dealerships since 2014',
   },
 }
 
@@ -285,7 +285,7 @@ export const GENERIC_COPY: PersonalizationVariant = {
   headline: 'Create · Manage · Print Addendums.\nCompliant by Design.',
   subheadline: "One addendum that shows the buyer what's in the price and what's optional — required products added to MSRP, suggested products clearly marked, printed from your inventory in seconds.",
   cta: 'Start Free Trial',
-  socialProof: 'Trusted by 2,100+ dealerships since 2014',
+  socialProof: 'Trusted by 1,600+ dealerships since 2014',
 }
 
 export interface PersonalizationContext {

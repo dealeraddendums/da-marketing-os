@@ -229,7 +229,7 @@ export default function HeroSection({ hero, tracking, warm }: Props) {
             }}>
               {(tracking.heroSource === 'cache' || tracking.heroSource === 'static-term') && tracking.keyword
                 ? `Personalized for ${tracking.keyword}`
-                : '2,100+ Dealerships · $800M+ in Addendums'}
+                : '1,600+ Dealerships · $800M+ in Addendums'}
             </div>
 
             <h1
