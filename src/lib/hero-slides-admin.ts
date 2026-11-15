@@ -9,7 +9,9 @@ export function validateSlideFields(title: unknown, description: unknown, imageP
   if (title.length > TITLE_MAX) return `Title must be ${TITLE_MAX} characters or fewer`
   if (typeof description !== 'string' || !description.trim()) return 'Description is required'
   if (description.length > DESC_MAX) return `Description must be ${DESC_MAX} characters or fewer`
-  if (typeof imagePath !== 'string' || !/^\/images\/(hero\/)?[\w.-]+\.(png|jpe?g|webp)$/i.test(imagePath)) {
+  // Admin uploads land in /images/hero/; the repo-committed rotator scans live
+  // in /hero/ — both are valid slide images.
+  if (typeof imagePath !== 'string' || !/^\/(images\/(hero\/)?|hero\/)[\w.-]+\.(png|jpe?g|webp)$/i.test(imagePath)) {
     return 'Image is required — upload one first'
   }
   return null
