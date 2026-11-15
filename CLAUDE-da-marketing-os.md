@@ -566,9 +566,13 @@ the default and the control — with the split at 0 nobody ever sees B.**
   remain: `honda-addendum.png` (1168×3036), `hero-dealership.jpg` (5000×2812,
   16:9, rendered via `fill` + a navy gradient overlay for headline contrast),
   `dealeraddendums-logo.png` (1947×451 transparent wordmark — BLACK text, only
-  render it on white/light backgrounds; header renders it 190×44), and
-  `platform-screenshot.png` (2880×1800, downscaled from a 6001×3750 original
-  that is NOT committed). Partner-group logos SUPPLIED 2026-11-14:
+  render it on white/light backgrounds; header renders it 190×44), and the
+  three PlatformShowcase step screenshots `platform-builder.png` /
+  `platform-inventory.png` / `platform-preview.png` (each 2400×1500, 16:10,
+  downscaled from ~6001×3750 originals that are NOT committed; they replaced
+  the single `platform-screenshot.png` on 2026-11-15 when the section became
+  a numbered three-step Create/Manage/Print strip — the old file is deleted).
+  Partner-group logos SUPPLIED 2026-11-14:
   `/public/home-b/logos/` holds six 400×160 transparent PNGs (lithia,
   autonation, penske-automotive, group-1-automotive, asbury-automotive-group,
   sonic-automotive — trimmed marks fitted into a 340×110 content box so visual
