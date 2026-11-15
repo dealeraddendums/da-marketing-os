@@ -61,7 +61,7 @@ export default function Features() {
     <section id="features" data-ab-section="features" aria-labelledby="home-b-features-title" className="scroll-mt-20 bg-white py-16 sm:py-20">
       <div className="mx-auto max-w-7xl px-5 sm:px-8 lg:px-10">
         <div className="mx-auto max-w-3xl text-center">
-          <h2 id="home-b-features-title" className="text-4xl font-black uppercase leading-[1.05] tracking-tight text-[#0F2A52] sm:text-5xl">Everything Your <span className="text-[#E68A13]">Dealership Needs</span></h2>
+          <h2 id="home-b-features-title" className="text-4xl font-black uppercase leading-[1.05] tracking-tight text-[#0F2A52] sm:text-5xl">Everything Your<br /><span className="text-[#E68A13]">Dealership Needs</span></h2>
           <p className="mt-5 text-lg leading-relaxed text-slate-700">From automatic inventory to one-click printing — DealerAddendums handles the paperwork.</p>
         </div>
         <div className="mt-12 grid gap-10 sm:grid-cols-2 lg:grid-cols-3 lg:gap-x-8 lg:gap-y-12">
