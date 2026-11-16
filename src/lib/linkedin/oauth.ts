@@ -11,7 +11,7 @@
 // NOTHING here is exposed to the browser. Tokens never leave the server; the
 // client only ever sees the connection STATUS.
 
-import { supabase } from '@/lib/supabase'
+import { createClient } from '@supabase/supabase-js'
 import { seal, open, type Sealed } from './crypto'
 import {
   linkedinEnv, LINKEDIN_SCOPES, linkedinRedirectUri, linkedinConfigured,
@@ -20,6 +20,19 @@ import {
 const AUTH_URL  = 'https://www.linkedin.com/oauth/v2/authorization'
 const TOKEN_URL = 'https://www.linkedin.com/oauth/v2/accessToken'
 const USERINFO  = 'https://api.linkedin.com/v2/userinfo'
+
+// Own supabase client, NOT the shared one from lib/supabase: every call forces
+// cache:'no-store'. Found live 2026-11-16: Next's persisted data cache
+// (.next/cache/fetch-cache) had stored a BUILD-TIME read of
+// linkedin_connections — made when the table existed but no one had connected
+// yet — and kept serving that empty result at runtime, so the status endpoint
+// said "not connected" while Allan's grant sat in the database. Credential
+// reads must never be served from a cache in any case.
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  { global: { fetch: (url, init) => fetch(url, { ...(init || {}), cache: 'no-store' }) } },
+)
 
 /** How close to expiry a stored access token still counts as usable. */
 const EXPIRY_SLACK_MS = 5 * 60 * 1000
