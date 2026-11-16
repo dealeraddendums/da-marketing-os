@@ -1,6 +1,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import MobileNav from '../MobileNav';
+import LoginMenu from '../../marketing/LoginMenu';
 import HeroAddendumRotator, { type HeroAddendumImage } from '../../shared/HeroAddendumRotator';
 
 type HeroProps = { trialHref: string; headline: string; subhead: string; images: HeroAddendumImage[] };
@@ -31,6 +32,17 @@ export default function Hero({ trialHref, headline, subhead, images }: HeroProps
               <Link key={item.href} href={item.href} className="text-sm font-semibold text-[#0F2A52] transition-colors hover:text-[#C47A0D] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#0F2A52]">{item.label}</Link>
             ))}
           </nav>
+          {/* Log In — the SAME chooser homepage A uses (5.0 + 4.0 logins +
+              trial), so existing dealers on either platform can reach their
+              app from this variant. Nav order: …Pricing · Log In · [trial]. */}
+          <span className="hidden shrink-0 lg:inline-block">
+            <LoginMenu
+              variant="light"
+              dataAbCta="nav_login"
+              triggerHoverColor="#C47A0D"
+              triggerStyle={{ fontSize: 14, fontWeight: 600, color: '#0F2A52', fontFamily: 'inherit', padding: '6px 4px' }}
+            />
+          </span>
           <Link href={trialHref} data-ab-cta="nav_trial" className="hidden shrink-0 rounded-md bg-[#F5A623] px-5 py-3 text-sm font-bold text-[#0F2A52] transition-colors hover:bg-[#e99512] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#0F2A52] lg:inline-flex">Start Free Trial</Link>
           <MobileNav trialHref={trialHref} />
         </div>

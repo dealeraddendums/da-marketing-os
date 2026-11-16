@@ -30,6 +30,13 @@ interface Props {
   triggerStyle?: React.CSSProperties
   // Which trigger edge the popover hangs from
   align?: 'left' | 'right'
+  // 'up' opens the popover above the trigger — for footer placements inside an
+  // overflow-hidden section, where a downward menu would be clipped.
+  openDirection?: 'down' | 'up'
+  // Hover color override (Home B hovers its own amber, not A's blue/white)
+  triggerHoverColor?: string
+  // Home B CTA click-tracking marker, rendered as data-ab-cta on the trigger
+  dataAbCta?: string
 }
 
 export default function LoginMenu({
@@ -37,6 +44,9 @@ export default function LoginMenu({
   triggerLabel = 'Log In',
   triggerStyle,
   align = 'right',
+  openDirection = 'down',
+  triggerHoverColor,
+  dataAbCta,
 }: Props) {
   const [open, setOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -57,8 +67,13 @@ export default function LoginMenu({
     }
   }, [open])
 
-  const triggerColor = variant === 'dark' ? 'rgba(255,255,255,0.8)' : '#555555'
-  const triggerHover = variant === 'dark' ? '#ffffff' : '#1976d2'
+  // A triggerStyle color override is the resting color — mouseLeave must
+  // restore IT, not the variant default, or hovering permanently recolors
+  // the trigger to the wrong palette.
+  const triggerColor = (triggerStyle?.color as string)
+    || (variant === 'dark' ? 'rgba(255,255,255,0.8)' : '#555555')
+  const triggerHover = triggerHoverColor
+    || (variant === 'dark' ? '#ffffff' : '#1976d2')
 
   return (
     <div ref={wrapRef} style={{ position: 'relative', display: 'inline-block' }}>
@@ -67,6 +82,7 @@ export default function LoginMenu({
         onClick={() => setOpen(o => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
+        {...(dataAbCta ? { 'data-ab-cta': dataAbCta } : {})}
         style={{
           background: 'none',
           border: 'none',
@@ -94,7 +110,9 @@ export default function LoginMenu({
           role="menu"
           style={{
             position: 'absolute',
-            top: 'calc(100% + 6px)',
+            ...(openDirection === 'up'
+              ? { bottom: 'calc(100% + 6px)' }
+              : { top: 'calc(100% + 6px)' }),
             ...(align === 'right' ? { right: 0 } : { left: 0 }),
             background: '#ffffff',
             border: '1px solid #e0e0e0',
