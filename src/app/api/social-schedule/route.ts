@@ -20,8 +20,8 @@ export const dynamic = 'force-dynamic'
 
 interface PlatformSpec {
   /** Writing instructions for this platform's voice. The link is NOT part of
-   *  the prompt — it is appended deterministically so the UTM tags are never
-   *  at the model's mercy. */
+   *  the prompt — it is stored on the row's url column (UTMs never at the
+   *  model's mercy) and becomes the LinkedIn article card at publish time. */
   prompt: (title: string, excerpt: string) => string
   maxTokens: number
 }
@@ -39,7 +39,7 @@ Write ONE LinkedIn post promoting this blog post to dealer principals and F&I ma
 - 2-3 sentences, professional but not stiff.
 - Open with a hook: a concrete pain point, stat, or insight — never "We're excited to share".
 - No superlatives ("the only", "#1", "the best"). No competitor names. No hashtag spam (at most 2 hashtags, or none).
-- Do NOT include any URL or "link in comments" line — the link is appended automatically.
+- Do NOT include any URL or "link in comments" line — the blog link is attached automatically as a LinkedIn link card.
 
 Respond with ONLY the post text. No quotes, no preamble, no explanation.`,
   },
@@ -91,10 +91,14 @@ export async function POST(req: NextRequest) {
       continue
     }
 
+    // The URL is stored on its own column ONLY — never pasted into the post
+    // text. At publish time it rides in the rest/posts article content block,
+    // which is what makes LinkedIn render a link card; a raw URL in the
+    // commentary would render as plain text beside a second link.
     const url = `${siteUrl}/blog/${slug}?utm_source=${platform}&utm_medium=social&utm_campaign=${encodeURIComponent(slug)}`
     const row = await dbInsertSocialPost({
       platform,
-      content: `${text}\n\n${url}`,
+      content: text,
       post_slug: slug,
       url,
       scheduled_for: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),

@@ -1259,3 +1259,63 @@ UI: Admin → Blog & Social → Blog Queue (overdue-review section on top,
 Edit/Preview/Publish/Archive per row, collapsible Archived section with
 Restore) + the inline editor (meta counts, update notice, editor note,
 review-by, change summary, revision history).
+
+## Social Queue → LinkedIn posting (member profile, 2026-11-15)
+
+The Social Queue publishes to LinkedIn directly — **as Allan's member profile
+only**. The organization scope was deliberately not requested (Community
+Management API access was skipped), so nothing here can post as the
+DealerAddendums company page; posted items carry a "Reshare to company page"
+note (manual repost from the page).
+
+### Connection (mirrors the Google pattern)
+
+- **Singleton row** in `linkedin_connections` (migration 028), tokens
+  **encrypted at rest** (AES-256-GCM; key = `LINKEDIN_TOKEN_ENC_KEY`, falling
+  back to `GOOGLE_TOKEN_ENC_KEY` — the live box uses the fallback). Unlike
+  Google, the ACCESS token itself is persisted: LinkedIn access tokens live
+  ~60 days and there is no refresh-per-call.
+- **OAuth**: `/api/linkedin/oauth/start` (admin-gated, canonical-host bounce,
+  state cookie `da_linkedin_oauth_state`) → LinkedIn consent → registered
+  redirect `https://www.dealeraddendums.com/api/linkedin/oauth/callback`
+  (state-cookie gated, NOT admin-cookie gated — same SameSite=Strict reasoning
+  as the Google callback). Scopes: `openid profile w_member_social`. Member
+  URN = `urn:li:person:{sub}` from `/v2/userinfo`.
+- **Refresh**: handled when LinkedIn issues a refresh token (programmatic
+  refresh apps only). Without one the grant ages out at `expires_at`; the
+  Social Queue badge shows "connected as {name} · expires {date}" and turns
+  amber at ≤14 days ("reconnect soon"). Connect/Reconnect button lives on the
+  Social Queue header. Env: `LINKEDIN_CLIENT_ID` / `LINKEDIN_CLIENT_SECRET`
+  (never log the secret).
+
+### Posting — Approve IS the posting moment
+
+- `PATCH /api/social-queue {action:'approve'}` publishes via
+  `POST https://api.linkedin.com/rest/posts` (`LinkedIn-Version` = current
+  YYYYMM, one retry on the previous month for the new-month edge;
+  `X-Restli-Protocol-Version: 2.0.0`). There is **no cron and no background
+  publisher** — `/api/social-publish` (the old never-scheduled Buffer route)
+  is retired to a 410 tombstone so a second posting path cannot exist.
+- **Commentary = post text WITHOUT the raw URL** (Little-Text-Format reserved
+  chars escaped, `#` kept for hashtags); the blog URL with UTMs rides in the
+  `content.article` block (source + title + description from the blog post),
+  which is what makes LinkedIn render a link card. The generator
+  (`/api/social-schedule`) stores the URL on the row's `url` column only —
+  never pasted into `content` (the two pre-existing pending posts that had it
+  inline were fixed in place 2026-11-15; backup
+  `social-posts-url-fix-backup-20261115.json` in the suite root).
+- Results on `social_posts`: success → status `published` + `post_urn`
+  (x-restli-id) + `permalink`; failure → status **`failed`** + `post_error`
+  (shown red in admin, "Retry post" button). A 401 from LinkedIn marks the
+  connection `revoked` → badge flips to Reconnect.
+- **`LINKEDIN_POSTING_ENABLED=false`** (current state): Approve composes the
+  exact rest/posts payload and shows it in the admin as a DRY RUN — nothing is
+  sent; the row still moves to `approved`, and once the flag is `true` the row
+  posts via its "Post to LinkedIn" button. Nothing ever posts without an
+  explicit click.
+
+Files: `lib/linkedin/{config,crypto,oauth,posts}.ts`,
+`api/linkedin/{oauth/start,oauth/callback,status}`, `api/social-queue`
+(publish-on-approve), `api/social-schedule` (no inline URL),
+`api/social-publish` (410), `lib/social-store.ts`, SocialQueue in
+`marketing-dashboard.jsx`, migration `028_linkedin_connection.sql`.

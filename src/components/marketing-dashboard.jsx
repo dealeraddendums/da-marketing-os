@@ -1651,6 +1651,8 @@ function SocialQueue() {
   const [editId, setEditId] = useState(null);
   const [editText, setEditText] = useState("");
   const [msg, setMsg] = useState(null);
+  const [msgTone, setMsgTone] = useState("error"); // "error" | "info"
+  const [dryRuns, setDryRuns] = useState({});      // post id → composed rest/posts payload
 
   const load = () => {
     fetch("/api/social-queue")
@@ -1660,13 +1662,23 @@ function SocialQueue() {
   };
   useEffect(() => {
     load();
+    // Surface the OAuth callback's outcome (/admin?linkedin=connected|error).
+    const params = new URLSearchParams(window.location.search);
+    const li = params.get("linkedin");
+    if (li === "connected") {
+      setMsgTone("info");
+      setMsg(`LinkedIn connected${params.get("account") ? ` as ${params.get("account")}` : ""}.`);
+    } else if (li === "error") {
+      setMsgTone("error");
+      setMsg(`LinkedIn connect failed — ${params.get("reason") || "unknown error"}`);
+    }
     // The Blog Queue's "LinkedIn post" button announces new rows.
     window.addEventListener("da-social-queue-changed", load);
     return () => window.removeEventListener("da-social-queue-changed", load);
   }, []);
 
   const act = async (id, action, content) => {
-    setBusyId(id); setMsg(null);
+    setBusyId(id); setMsg(null); setMsgTone("error");
     try {
       const res = await fetch("/api/social-queue", {
         method: "PATCH", headers: { "Content-Type": "application/json" },
@@ -1674,6 +1686,16 @@ function SocialQueue() {
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok || d.error) throw new Error(d.error || `HTTP ${res.status}`);
+      if (d.dryRun) {
+        setDryRuns(prev => ({ ...prev, [id]: d.dryRun }));
+        setMsgTone("info");
+        setMsg("Dry run — payload composed below, nothing was sent to LinkedIn (LINKEDIN_POSTING_ENABLED=false).");
+      } else if (d.warning) {
+        setMsgTone("info");
+        setMsg(d.warning);
+      } else if (d.publishError) {
+        setMsg(`LinkedIn publish failed — ${d.publishError}`);
+      }
       setEditId(null);
       load();
     } catch (e) {
@@ -1684,29 +1706,51 @@ function SocialQueue() {
 
   const posts = data?.posts || [];
   const posting = data?.posting;
+  const connectHref = "/api/linkedin/oauth/start";
+  const expiryDate = posting?.expiresAt
+    ? new Date(posting.expiresAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+    : null;
   const statusBadge = (s) =>
     s === "approved" ? <Badge variant="success">Approved</Badge>
     : s === "published" ? <Badge variant="info">Published</Badge>
     : s === "rejected" ? <Badge variant="neutral">Rejected</Badge>
+    : s === "failed" ? <Badge variant="error">Failed</Badge>
     : <Badge variant="warning">Pending</Badge>;
 
   return (
     <Card>
       <SectionTitle
         action={
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            {/* Honest posting status: queued ≠ will post. */}
-            <Badge variant={posting?.connected ? "success" : "neutral"}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+            {/* Honest posting status: queued ≠ will post. Member connection
+                (migration 028) — warns 14 days before the 60-day token dies. */}
+            <Badge variant={
+              loading || !posting ? "neutral"
+              : posting.connected ? (posting.expiresSoon ? "warning" : "success")
+              : posting.needsReconnect ? "error"
+              : "neutral"
+            }>
               {loading ? "Loading…"
                 : !posting ? "Posting: unknown"
-                : posting.connected ? `Posting: connected, ${posting.approvedPending} approved pending`
+                : posting.connected
+                  ? `Posting: connected as ${posting.name || "LinkedIn member"} · expires ${expiryDate}${posting.expiresSoon ? ` — ${posting.daysLeft}d left, reconnect soon` : ""}`
+                : posting.needsReconnect
+                  ? `Posting: connection ${posting.status || "expired"} — reconnect`
                 : "Posting: not connected"}
             </Badge>
+            {posting && posting.connected && !posting.postingEnabled && (
+              <Badge variant="neutral">Dry-run — posting disabled</Badge>
+            )}
+            {posting && posting.configured !== false && (
+              <SmallButton onClick={() => { window.location.href = connectHref; }}>
+                {posting.connected || posting.needsReconnect ? "Reconnect LinkedIn" : "Connect LinkedIn"}
+              </SmallButton>
+            )}
             <Badge variant="info">{posts.filter(p => p.status === "pending" || p.status === "approved").length} queued</Badge>
           </div>
         }
       >Social Queue</SectionTitle>
-      {msg && <div style={{ fontSize: 12, color: C.error, marginBottom: 8 }}>{msg}</div>}
+      {msg && <div style={{ fontSize: 12, color: msgTone === "info" ? C.textMuted : C.error, marginBottom: 8 }}>{msg}</div>}
       {posts.length === 0 && (
         <div style={{ fontSize: 13, color: C.textMuted, padding: "16px 0", textAlign: "center" }}>
           No posts queued. Use “LinkedIn post” on a published post in the Blog Queue.
@@ -1738,7 +1782,7 @@ function SocialQueue() {
                     <SmallButton variant="primary" disabled={busyId === post.id}
                       onClick={() => act(post.id, "edit", editText)}>Save</SmallButton>
                     <SmallButton onClick={() => setEditId(null)}>Cancel</SmallButton>
-                    {post.status === "approved" && (
+                    {(post.status === "approved" || post.status === "failed") && (
                       <span style={{ fontSize: 11, color: C.textMuted, alignSelf: "center" }}>
                         Saving an edit sends it back to Pending for re-approval.
                       </span>
@@ -1755,14 +1799,52 @@ function SocialQueue() {
                 {post.scheduled_for ? ` · earliest ${new Date(post.scheduled_for).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : ""}
                 {post.published_at ? ` · posted ${new Date(post.published_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : ""}
               </div>
+              {post.status === "failed" && post.post_error && (
+                <div style={{ fontSize: 12, color: C.error, marginTop: 4, wordBreak: "break-word" }}>
+                  LinkedIn error: {post.post_error}
+                </div>
+              )}
+              {post.status === "published" && (
+                <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>
+                  {post.permalink && (
+                    <>
+                      <a href={post.permalink} target="_blank" rel="noopener noreferrer"
+                        style={{ color: C.blue, textDecoration: "none" }}>View on LinkedIn ↗</a>
+                      {" · "}
+                    </>
+                  )}
+                  Reshare to company page: open the post on LinkedIn and Repost it from the
+                  DealerAddendums page (manual for now — no organization scope).
+                </div>
+              )}
+              {dryRuns[post.id] && (
+                <div style={{ marginTop: 6 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, marginBottom: 2 }}>
+                    DRY RUN — {dryRuns[post.id].endpoint} (nothing sent)
+                  </div>
+                  <pre style={{
+                    margin: 0, padding: 8, fontSize: 11, lineHeight: 1.45,
+                    background: C.bgSubtle, border: `1px solid ${C.border}`, borderRadius: 4,
+                    whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: 260, overflow: "auto",
+                  }}>{JSON.stringify(dryRuns[post.id].payload, null, 2)}</pre>
+                </div>
+              )}
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end", flexShrink: 0 }}>
               {statusBadge(post.status)}
-              {editId !== post.id && (post.status === "pending" || post.status === "approved") && (
+              {editId !== post.id && (post.status === "pending" || post.status === "approved" || post.status === "failed") && (
                 <div style={{ display: "flex", gap: 6 }}>
                   {post.status === "pending" && (
                     <SmallButton variant="primary" disabled={busyId === post.id}
                       onClick={() => act(post.id, "approve")}>Approve</SmallButton>
+                  )}
+                  {post.status === "approved" && post.platform === "linkedin" && (
+                    <SmallButton variant="primary" disabled={busyId === post.id}
+                      onClick={() => act(post.id, "approve")}>Post to LinkedIn</SmallButton>
+                  )}
+                  {post.status === "failed" && (
+                    <SmallButton variant="primary" disabled={busyId === post.id}
+                      onClick={() => act(post.id, "approve")}>Retry post</SmallButton>
                   )}
                   <SmallButton onClick={() => { setEditId(post.id); setEditText(post.content); }}>Edit</SmallButton>
                   <SmallButton variant="danger" disabled={busyId === post.id}

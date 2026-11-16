@@ -1,34 +1,63 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { isAdminRequest } from '@/lib/admin-auth'
+import { getPost } from '@/lib/blog'
 import {
   ACTIVE_PLATFORMS,
   dbGetSocialPost,
   dbListSocialPosts,
   dbUpdateSocialPost,
-  platformConnected,
+  type SocialPostRow,
 } from '@/lib/social-store'
+import { getLinkedinStatus } from '@/lib/linkedin/oauth'
+import { linkedinEnv } from '@/lib/linkedin/config'
+import { composePostPayload, publishToLinkedin, type PostPayload } from '@/lib/linkedin/posts'
 
 export const dynamic = 'force-dynamic'
 
 // The Social Queue (admin-gated — it exposes unpublished copy):
-//   GET   → every queued post + honest posting status: whether a posting
-//           integration is actually configured, and how many approved posts
-//           are waiting on it.
+//   GET   → every queued post + the LinkedIn connection status for the badge.
 //   PATCH → { id, action: 'approve' | 'reject' | 'edit', content? }.
-// Approve is the ONLY path to 'approved', and the publisher only reads
-// 'approved' rows — queued never means "will post".
+//
+// APPROVE IS THE POSTING MOMENT (since migration 028): a LinkedIn post is
+// published via rest/posts the instant it is approved — there is no cron, no
+// background publisher, no other path to LinkedIn. While
+// LINKEDIN_POSTING_ENABLED=false, Approve composes the exact rest/posts
+// payload and returns it as a dry-run instead of calling LinkedIn; the row
+// still moves to 'approved' so flipping the flag later only needs a "Post to
+// LinkedIn" click (approve again), never an automatic send.
+//
+// approve is accepted from: pending (first approval), approved (post a row
+// approved during dry-run / while disconnected), failed (retry). Success →
+// 'published' + post_urn + permalink; a LinkedIn error → 'failed' + post_error
+// (both visible in the admin).
 
 export async function GET(req: NextRequest) {
   if (!isAdminRequest(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const posts = await dbListSocialPosts()
-  const connected = ACTIVE_PLATFORMS.some(p => platformConnected(p))
+  const linkedin = await getLinkedinStatus()
   const approvedPending = posts.filter(p => p.status === 'approved').length
   return NextResponse.json({
     posts,
     count: posts.length,
-    posting: { connected, approvedPending, platforms: ACTIVE_PLATFORMS },
+    posting: { ...linkedin, approvedPending, platforms: ACTIVE_PLATFORMS },
   })
+}
+
+/** Compose the rest/posts payload for a queued row — shared by the real
+ *  publish and the dry-run so what the admin sees IS what would be sent. */
+async function payloadFor(row: SocialPostRow, memberUrn: string): Promise<PostPayload> {
+  // Article title/description for the link card, best-effort from the blog post.
+  let title: string | null = null
+  let description: string | null = null
+  try {
+    const post = await getPost(row.post_slug, true)
+    if (post) {
+      title = post.frontmatter.title || null
+      description = post.frontmatter.metaDescription || post.frontmatter.excerpt || null
+    }
+  } catch { /* the card still renders from the URL alone */ }
+  return composePostPayload({ memberUrn, content: row.content, url: row.url, title, description })
 }
 
 export async function PATCH(req: NextRequest) {
@@ -46,19 +75,75 @@ export async function PATCH(req: NextRequest) {
   }
 
   if (action === 'approve') {
-    if (row.status !== 'pending') return NextResponse.json({ error: `Only a pending post can be approved (this one is ${row.status})` }, { status: 409 })
-    return NextResponse.json({ post: await dbUpdateSocialPost(id, { status: 'approved' }) })
+    if (!['pending', 'approved', 'failed'].includes(row.status)) {
+      return NextResponse.json({ error: `A ${row.status} post cannot be approved` }, { status: 409 })
+    }
+
+    // Non-LinkedIn rows (legacy twitter/facebook drafts): approval is just the
+    // status flip — no posting integration exists for them.
+    if (row.platform !== 'linkedin') {
+      return NextResponse.json({
+        post: await dbUpdateSocialPost(id, { status: 'approved' }),
+        warning: `${row.platform} has no posting integration — approved only.`,
+      })
+    }
+
+    const linkedin = await getLinkedinStatus()
+
+    // Dry-run: posting disabled by env. Compose and SHOW, send nothing.
+    if (!linkedinEnv.postingEnabled) {
+      const payload = await payloadFor(row, linkedin.memberUrn || 'urn:li:person:(connect-to-resolve)')
+      const post = row.status === 'pending' ? await dbUpdateSocialPost(id, { status: 'approved' }) : row
+      return NextResponse.json({
+        post,
+        dryRun: {
+          endpoint: 'POST https://api.linkedin.com/rest/posts',
+          note: 'LINKEDIN_POSTING_ENABLED=false — payload composed, NOTHING was sent to LinkedIn.',
+          payload,
+        },
+      })
+    }
+
+    // Posting enabled but no usable connection: approve, tell the operator.
+    if (!linkedin.connected) {
+      const post = row.status === 'pending' ? await dbUpdateSocialPost(id, { status: 'approved' }) : row
+      return NextResponse.json({
+        post,
+        warning: 'Approved, but LinkedIn is not connected — click Connect LinkedIn, then "Post to LinkedIn" on this row.',
+      })
+    }
+
+    // The real thing. Failure is recorded on the row (visible in admin) and
+    // returned as publishError — the row lands on 'failed' and offers Retry.
+    try {
+      const payload = await payloadFor(row, linkedin.memberUrn!)
+      const { urn, permalink } = await publishToLinkedin(payload)
+      const post = await dbUpdateSocialPost(id, {
+        status: 'published',
+        published_at: new Date().toISOString(),
+        post_urn: urn,
+        permalink,
+        post_error: null,
+      })
+      return NextResponse.json({ post })
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'publish failed'
+      console.error(`[social-queue] LinkedIn publish failed for ${id}: ${message}`)
+      const post = await dbUpdateSocialPost(id, { status: 'failed', post_error: message })
+      return NextResponse.json({ post, publishError: message })
+    }
   }
+
   if (action === 'reject') {
     return NextResponse.json({ post: await dbUpdateSocialPost(id, { status: 'rejected' }) })
   }
   if (action === 'edit') {
     const text = (content || '').trim()
     if (!text) return NextResponse.json({ error: 'content is required for edit' }, { status: 400 })
-    // An edit to an approved post sends it back to pending — what was approved
-    // is no longer what would be posted.
-    const patch = row.status === 'approved'
-      ? { content: text, status: 'pending' as const }
+    // An edit to an approved/failed post sends it back to pending — what was
+    // approved is no longer what would be posted.
+    const patch = (row.status === 'approved' || row.status === 'failed')
+      ? { content: text, status: 'pending' as const, post_error: null }
       : { content: text }
     return NextResponse.json({ post: await dbUpdateSocialPost(id, patch) })
   }
