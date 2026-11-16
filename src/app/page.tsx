@@ -52,8 +52,12 @@ export default async function HomePage({ searchParams }: PageProps) {
   // here changes A's caching behavior.
   const abHome = parseBucket(h.get(AB_HOME_HEADER)) ?? 'A'
   if (h.get(AB_HOME_NEW_HEADER) === '1') {
-    // First-party "visitors" counter: counted once, at assignment time only.
-    void incrementAbHomeStat(abHome, 'visitors')
+    // Raw assignment counter — every bucket minted at the middleware,
+    // including crawlers that slip the UA gate. The "visitors" metric is NOT
+    // counted here any more: it comes from the client-side beacon
+    // (/api/ab/seen, fired by AbAssignmentTracker), which a no-JS crawler
+    // never reaches. visitors ÷ assigned_raw = the human share.
+    void incrementAbHomeStat(abHome, 'assigned_raw')
   }
 
   if (abHome === 'B') {

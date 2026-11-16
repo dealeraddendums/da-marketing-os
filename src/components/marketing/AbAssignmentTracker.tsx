@@ -19,6 +19,16 @@ export default function AbAssignmentTracker({ bucket }: { bucket: 'A' | 'B' }) {
     // GA4, whatever a future caller passes (bucket is typed, but the dataLayer
     // write is the last line of defense).
     w.dataLayer.push({ event: 'ab_assignment', ab_home: bucket === 'B' ? 'B' : 'A' })
+    // First-party visitor beacon: reaching /api/ab/seen requires having run
+    // this JS, which the UA-spoofing crawlers never do — that endpoint is what
+    // increments the trusted "visitors" counter (deduped server-side to one
+    // count per browser per 24h via cookie; team preview browsers excluded).
+    // No body: the bucket is read from the server-set cookie, never sent.
+    try {
+      if (!navigator.sendBeacon?.('/api/ab/seen')) {
+        void fetch('/api/ab/seen', { method: 'POST', keepalive: true, credentials: 'same-origin' })
+      }
+    } catch { /* counting must never break the page */ }
   }, [bucket])
   return null
 }

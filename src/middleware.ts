@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { buildSignals, CTX_HEADERS } from '@/lib/context-key'
 import { parseHeroVariant, HERO_CONTROL } from '@/lib/ab-variants'
+import { abIsBot } from '@/lib/ab-bot'
 
 // Static map keys for fast lookup (no import needed in middleware edge runtime)
 const STATIC_TERMS = new Set([
@@ -46,7 +47,7 @@ const AB_HOME_COOKIE_MAX_AGE = 60 * 60 * 24 * 30 // 30 days
 // CLI tools (curl/python/wget) that keep no cookies, so each hit minted a new
 // visitor. "monitor|uptime|scan" + the HTTP-client tokens catch them; no real
 // browser UA contains any of these.
-const AB_BOT_RE = /bot|crawl|spider|slurp|bingpreview|facebookexternalhit|ia_archiver|whatsapp|telegram|lighthouse|gtmetrix|pingdom|headlesschrome|phantomjs|prerender|monitor|uptime|statuscake|infrawatch|scan|probe|curl|wget|python|httpx|aiohttp|go-http|okhttp|axios|node-fetch|libwww|scrapy|java\//i
+// Bot classification moved to lib/ab-bot.ts (shared with /api/ab/seen).
 
 function abHomeBPct(): number {
   const n = parseInt(process.env.AB_HOME_B_PCT || '0', 10)
@@ -120,8 +121,10 @@ export async function middleware(request: NextRequest) {
   let abHomeAssigned = false // just assigned this request → set cookie + count a visitor
   if (isHome) {
     const ua = request.headers.get('user-agent') || ''
-    // No UA at all is a script, not a person — treat like a bot.
-    const isBot = !ua || AB_BOT_RE.test(ua)
+    // Bot = empty UA, UA-regex match, or no Accept-Language header (every real
+    // browser sends one on a document navigation; the crawlers that carry a
+    // perfect Chrome UA string usually don't). See lib/ab-bot.ts.
+    const isBot = abIsBot(ua, request.headers.get('accept-language'))
 
     // Team preview: /?variant=A|B pins the cookie and redirects back to /
     // without the variant param (other params, e.g. UTMs, are preserved so a
@@ -133,6 +136,15 @@ export async function middleware(request: NextRequest) {
       const redirect = NextResponse.redirect(url)
       redirect.cookies.set(AB_HOME_COOKIE, variantParam, {
         maxAge: AB_HOME_COOKIE_MAX_AGE,
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+      })
+      // Mark this browser internal for 30 days: a teammate who has ever used a
+      // ?variant= preview must not be counted by the /api/ab/seen beacon — not
+      // on the preview, and not on their ordinary visits afterwards.
+      redirect.cookies.set('da_ab_internal', '1', {
+        maxAge: 60 * 60 * 24 * 30,
         httpOnly: true,
         sameSite: 'lax',
         path: '/',

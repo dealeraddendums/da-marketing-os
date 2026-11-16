@@ -10,7 +10,8 @@ export const dynamic = 'force-dynamic'
 // middleware/form-start counters) and signups from marketing_leads.ab_home.
 
 interface BucketStats {
-  visitors: number
+  visitors: number     // beacon-verified (JS ran; once per browser per 24h)
+  assignedRaw: number  // every middleware assignment, UA-passing bots included
   formStarts: number
   submits: number
   signups: number // confirmed (provisioned) trials — the success metric
@@ -20,7 +21,7 @@ export async function GET() {
   if (!isAdminAuthed()) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  const empty = (): BucketStats => ({ visitors: 0, formStarts: 0, submits: 0, signups: 0 })
+  const empty = (): BucketStats => ({ visitors: 0, assignedRaw: 0, formStarts: 0, submits: 0, signups: 0 })
   const buckets: Record<'A' | 'B', BucketStats> = { A: empty(), B: empty() }
   let live = false
   let startDate: string | null = null
@@ -42,6 +43,7 @@ export async function GET() {
         const b = buckets[row.bucket]
         if (!b) continue
         if (row.metric === 'visitors') b.visitors = row.count
+        if (row.metric === 'assigned_raw') b.assignedRaw = row.count
         if (row.metric === 'form_start') b.formStarts = row.count
       }
     }

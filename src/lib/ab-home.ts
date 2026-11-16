@@ -19,9 +19,15 @@ export const AB_HOME_COOKIE = 'da_ab_home'
 export const AB_HOME_HEADER = 'x-ab-home'
 /** Set to '1' by middleware ONLY on the request that first assigned a bucket
  *  (not on bot traffic, not on ?variant= previews, not on returning visitors)
- *  — the page increments the first-party "visitors" counter off it. */
+ *  — the page increments the first-party "assigned_raw" counter off it. */
 export const AB_HOME_NEW_HEADER = 'x-ab-home-new'
 export const AB_HOME_COOKIE_MAX_AGE = 60 * 60 * 24 * 30 // 30 days
+/** Set by /api/ab/seen after a beacon-counted visit; while present (24h) the
+ *  endpoint no-ops, so one browser counts at most one visitor per day. */
+export const AB_SEEN_COOKIE = 'da_ab_seen'
+/** Set by the ?variant= preview redirect (30d): this browser belongs to the
+ *  team and must never be beacon-counted. */
+export const AB_INTERNAL_COOKIE = 'da_ab_internal'
 
 export function parseBucket(v: string | undefined | null): AbHomeBucket | null {
   return v === 'A' || v === 'B' ? v : null
@@ -42,7 +48,10 @@ export function abHomeBPct(): number {
  */
 export async function incrementAbHomeStat(
   bucket: AbHomeBucket,
-  metric: 'visitors' | 'form_start',
+  // visitors     = beacon-verified (client JS ran, once per browser per 24h)
+  // assigned_raw = every middleware assignment, bots-that-pass-the-UA-gate
+  //                included — the honest denominator for judging bot share
+  metric: 'visitors' | 'form_start' | 'assigned_raw',
 ): Promise<void> {
   try {
     const { error } = await supabase.rpc('increment_ab_home_stat', {

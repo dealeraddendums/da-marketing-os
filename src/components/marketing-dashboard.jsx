@@ -616,7 +616,8 @@ function HomeBCard() {
   const pct = data?.pct ?? 0;
   const buckets = data?.buckets || { A: {}, B: {} };
   const rows = [
-    { label: "Visitors (assigned)", key: "visitors" },
+    { label: "Visitors (beacon-verified)", key: "visitors" },
+    { label: "Assigned (raw, incl. bots)", key: "assignedRaw" },
     { label: "Trial form starts", key: "formStarts" },
     { label: "Form submits", key: "submits" },
     { label: "Trial signups (confirmed)", key: "signups" },
@@ -635,7 +636,9 @@ function HomeBCard() {
       >Home B Layout Test</SectionTitle>
       <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12 }}>
         Homepage ("/") only. A = current homepage, B = Home B redesign. Preview with /?variant=B.
-        Counts are first-party (assignment counters + marketing_leads), not GA4.
+        Counts are first-party, not GA4. Visitors = the client-side beacon fired (real browser,
+        once per 24h); Assigned (raw) = every middleware assignment — the gap between them is bots
+        that pass the UA gate. Judge the test on Visitors.
       </div>
       {/* minmax(0,1fr): grid items default to min-width:auto, so without this
           wide content in either bucket could force the pair past the card and
