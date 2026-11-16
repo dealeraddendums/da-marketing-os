@@ -254,8 +254,18 @@ export async function getLinkedinStatus(): Promise<LinkedinStatus> {
   const base = { configured: linkedinConfigured, postingEnabled: linkedinEnv.postingEnabled }
   if (!linkedinConfigured) return { ...base, connected: false }
   let row: ConnectionRow | null = null
-  try { row = await readRow() } catch { return { ...base, connected: false } }
-  if (!row) return { ...base, connected: false }
+  try {
+    row = await readRow()
+  } catch (e) {
+    // Status must never 500 the admin page, but a swallowed read error looks
+    // exactly like "not connected" — log it so the two are distinguishable.
+    console.warn('[linkedin-status] read failed:', e instanceof Error ? e.message : e)
+    return { ...base, connected: false }
+  }
+  if (!row) {
+    console.warn('[linkedin-status] no connection row found')
+    return { ...base, connected: false }
+  }
 
   const expiresAt = new Date(row.expires_at).getTime()
   const daysLeft = Math.floor((expiresAt - Date.now()) / 86400000)
