@@ -65,19 +65,37 @@ export async function dbLiveSocialPostsFor(slug: string, platform: SocialPlatfor
 }
 
 export async function dbInsertSocialPost(row: {
-  platform: SocialPlatform
   content: string
   post_slug: string
   url: string | null
   scheduled_for: string | null
 }): Promise<SocialPostRow> {
+  // LinkedIn-only as of 2026-11-12: the channel is set HERE, on the single
+  // write path — no caller can create a twitter/facebook row. The old rows
+  // keep their platform value (type + DB check unchanged) for history.
   const { data, error } = await supabase
     .from('social_posts')
-    .insert({ ...row, status: 'pending' })
+    .insert({ ...row, platform: 'linkedin', status: 'pending' })
     .select()
     .single()
   if (error) throw new Error(`[social-store] insert: ${error.message}`)
   return data as SocialPostRow
+}
+
+/** When the most recent LinkedIn post actually went out — the 24h pacing
+ *  soft guard reads this (warn, never block). */
+export async function dbLastLinkedinPublishedAt(): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('social_posts')
+    .select('published_at')
+    .eq('platform', 'linkedin')
+    .eq('status', 'published')
+    .not('published_at', 'is', null)
+    .order('published_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw new Error(`[social-store] lastPublished: ${error.message}`)
+  return data?.published_at || null
 }
 
 export async function dbUpdateSocialPost(

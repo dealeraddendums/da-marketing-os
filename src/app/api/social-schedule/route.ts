@@ -2,35 +2,24 @@ import { NextRequest, NextResponse } from 'next/server'
 import { isAdminRequest } from '@/lib/admin-auth'
 import { generateText } from '@/lib/ai'
 import { getPost } from '@/lib/blog'
-import {
-  ACTIVE_PLATFORMS,
-  dbInsertSocialPost,
-  dbLiveSocialPostsFor,
-  type SocialPlatform,
-} from '@/lib/social-store'
+import { dbInsertSocialPost, dbLiveSocialPostsFor } from '@/lib/social-store'
 
 export const dynamic = 'force-dynamic'
 
-// Generate social posts for a PUBLISHED blog post into the approval queue.
+// Generate a LinkedIn post for a PUBLISHED blog post into the approval queue.
 // Admin-gated (same gate as /api/blog-generate — this endpoint spends model
-// tokens and was previously open). One post per active platform (LinkedIn only
-// today; the registry in lib/social-store.ts is where a platform comes back).
+// tokens and was previously open). LinkedIn-only as of 2026-11-12 — the
+// channel is hard-coded; this route can never produce a twitter/facebook row.
 // Rows are born 'pending' — nothing posts without an explicit Approve in the
 // Social Queue, and the publisher only ever reads 'approved' rows.
 
-interface PlatformSpec {
-  /** Writing instructions for this platform's voice. The link is NOT part of
-   *  the prompt — it is stored on the row's url column (UTMs never at the
-   *  model's mercy) and becomes the LinkedIn article card at publish time. */
-  prompt: (title: string, excerpt: string) => string
-  maxTokens: number
-}
+const LINKEDIN_MAX_TOKENS = 400
 
-const PLATFORM_SPECS: Record<SocialPlatform, PlatformSpec> = {
-  linkedin: {
-    maxTokens: 400,
-    prompt: (title, excerpt) =>
-      `You are a social media manager for DealerAddendums.com, a B2B SaaS platform for car dealerships.
+/** Writing instructions for LinkedIn's voice. The link is NOT part of the
+ *  prompt — it is stored on the row's url column (UTMs never at the model's
+ *  mercy) and becomes the LinkedIn article card at publish time. */
+const linkedinPrompt = (title: string, excerpt: string) =>
+  `You are a social media manager for DealerAddendums.com, a B2B SaaS platform for car dealerships.
 
 Blog post: "${title}"
 Excerpt: "${excerpt}"
@@ -41,13 +30,7 @@ Write ONE LinkedIn post promoting this blog post to dealer principals and F&I ma
 - No superlatives ("the only", "#1", "the best"). No competitor names. No hashtag spam (at most 2 hashtags, or none).
 - Do NOT include any URL or "link in comments" line — the blog link is attached automatically as a LinkedIn link card.
 
-Respond with ONLY the post text. No quotes, no preamble, no explanation.`,
-  },
-  // Retired from generation 2026-11-12 (LinkedIn-only decision). Re-adding a
-  // platform = a spec here + ACTIVE_PLATFORMS + its posting credentials.
-  twitter: { maxTokens: 300, prompt: () => { throw new Error('twitter generation is retired') } },
-  facebook: { maxTokens: 300, prompt: () => { throw new Error('facebook generation is retired') } },
-}
+Respond with ONLY the post text. No quotes, no preamble, no explanation.`
 
 export async function POST(req: NextRequest) {
   if (!isAdminRequest(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -73,38 +56,32 @@ export async function POST(req: NextRequest) {
   const title = post.frontmatter.title
   const excerpt = post.frontmatter.metaDescription || post.frontmatter.excerpt || ''
 
-  const created = []
-  const skipped = []
-  for (const platform of ACTIVE_PLATFORMS) {
-    // Duplicate guard: one live (pending/approved) post per platform per blog
-    // post. Reject or publish the existing one to regenerate.
-    const live = await dbLiveSocialPostsFor(slug, platform)
-    if (live.length) {
-      skipped.push({ platform, reason: `a ${live[0].status} ${platform} post for this blog post is already in the queue` })
-      continue
-    }
-
-    const spec = PLATFORM_SPECS[platform]
-    const text = (await generateText(spec.prompt(title, excerpt), spec.maxTokens)).trim()
-    if (!text) {
-      skipped.push({ platform, reason: 'AI returned empty text' })
-      continue
-    }
-
-    // The URL is stored on its own column ONLY — never pasted into the post
-    // text. At publish time it rides in the rest/posts article content block,
-    // which is what makes LinkedIn render a link card; a raw URL in the
-    // commentary would render as plain text beside a second link.
-    const url = `${siteUrl}/blog/${slug}?utm_source=${platform}&utm_medium=social&utm_campaign=${encodeURIComponent(slug)}`
-    const row = await dbInsertSocialPost({
-      platform,
-      content: text,
-      post_slug: slug,
-      url,
-      scheduled_for: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+  // Duplicate guard: one live (pending/approved) LinkedIn post per blog post.
+  // Reject or publish the existing one to regenerate.
+  const live = await dbLiveSocialPostsFor(slug, 'linkedin')
+  if (live.length) {
+    return NextResponse.json({
+      created: [],
+      skipped: [{ platform: 'linkedin', reason: `a ${live[0].status} linkedin post for this blog post is already in the queue` }],
     })
-    created.push(row)
   }
 
-  return NextResponse.json({ created, skipped })
+  const text = (await generateText(linkedinPrompt(title, excerpt), LINKEDIN_MAX_TOKENS)).trim()
+  if (!text) {
+    return NextResponse.json({ created: [], skipped: [{ platform: 'linkedin', reason: 'AI returned empty text' }] })
+  }
+
+  // The URL is stored on its own column ONLY — never pasted into the post
+  // text. At publish time it rides in the rest/posts article content block,
+  // which is what makes LinkedIn render a link card; a raw URL in the
+  // commentary would render as plain text beside a second link.
+  const url = `${siteUrl}/blog/${slug}?utm_source=linkedin&utm_medium=social&utm_campaign=${encodeURIComponent(slug)}`
+  const row = await dbInsertSocialPost({
+    content: text,
+    post_slug: slug,
+    url,
+    scheduled_for: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+  })
+
+  return NextResponse.json({ created: [row], skipped: [] })
 }

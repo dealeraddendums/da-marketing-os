@@ -4,6 +4,7 @@ import { getPost } from '@/lib/blog'
 import {
   ACTIVE_PLATFORMS,
   dbGetSocialPost,
+  dbLastLinkedinPublishedAt,
   dbListSocialPosts,
   dbUpdateSocialPost,
   type SocialPostRow,
@@ -37,10 +38,18 @@ export async function GET(req: NextRequest) {
   const posts = await dbListSocialPosts()
   const linkedin = await getLinkedinStatus()
   const approvedPending = posts.filter(p => p.status === 'approved').length
+  // When the last LinkedIn post actually went out — the admin's 24h pacing
+  // soft guard (warn before posting, never block). Computed from the rows
+  // already in hand; rows with no platform count as LinkedIn.
+  const lastPublishedAt = posts
+    .filter(p => (p.platform || 'linkedin') === 'linkedin' && p.status === 'published' && p.published_at)
+    .map(p => p.published_at as string)
+    .sort()
+    .pop() || null
   return NextResponse.json({
     posts,
     count: posts.length,
-    posting: { ...linkedin, approvedPending, platforms: ACTIVE_PLATFORMS },
+    posting: { ...linkedin, approvedPending, platforms: ACTIVE_PLATFORMS, lastPublishedAt },
   })
 }
 
@@ -79,12 +88,14 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: `A ${row.status} post cannot be approved` }, { status: 409 })
     }
 
-    // Non-LinkedIn rows (legacy twitter/facebook drafts): approval is just the
+    // A row with no channel set is a LinkedIn row (LinkedIn-only since
+    // 2026-11-12). Legacy twitter/facebook drafts: approval is just the
     // status flip — no posting integration exists for them.
-    if (row.platform !== 'linkedin') {
+    const platform = row.platform || 'linkedin'
+    if (platform !== 'linkedin') {
       return NextResponse.json({
         post: await dbUpdateSocialPost(id, { status: 'approved' }),
-        warning: `${row.platform} has no posting integration — approved only.`,
+        warning: `${platform} has no posting integration — approved only. The queue is LinkedIn-only as of 2026-11-12; Reject this row.`,
       })
     }
 
@@ -113,6 +124,18 @@ export async function PATCH(req: NextRequest) {
       })
     }
 
+    // Soft pacing guard: note (never block) when another LinkedIn post went
+    // out in the last 24h. Checked before the publish so the warning reflects
+    // the post that was already live, not this one.
+    let pacingWarning: string | null = null
+    try {
+      const lastAt = await dbLastLinkedinPublishedAt()
+      if (lastAt && Date.now() - new Date(lastAt).getTime() < 24 * 60 * 60 * 1000) {
+        const hours = Math.max(1, Math.round((Date.now() - new Date(lastAt).getTime()) / 3600000))
+        pacingWarning = `Posted — note: another LinkedIn post went out ${hours}h ago (within 24h).`
+      }
+    } catch { /* the guard is advisory — never let it break posting */ }
+
     // The real thing. Failure is recorded on the row (visible in admin) and
     // returned as publishError — the row lands on 'failed' and offers Retry.
     try {
@@ -125,7 +148,7 @@ export async function PATCH(req: NextRequest) {
         permalink,
         post_error: null,
       })
-      return NextResponse.json({ post })
+      return NextResponse.json(pacingWarning ? { post, warning: pacingWarning } : { post })
     } catch (e) {
       const message = e instanceof Error ? e.message : 'publish failed'
       console.error(`[social-queue] LinkedIn publish failed for ${id}: ${message}`)

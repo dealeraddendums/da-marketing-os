@@ -108,11 +108,13 @@ const MiniBar = ({ pct, color = C.blue, height = 6 }) => (
 
 const PlatformIcon = ({ platform }) => {
   const map = {
-    LinkedIn: { label: "in", color: "#0077b5" },
-    Twitter:  { label: "𝕏",  color: "#1da1f2" },
-    Facebook: { label: "f",  color: "#1877f2" },
+    linkedin: { label: "in", color: "#0077b5" },
+    twitter:  { label: "𝕏",  color: "#1da1f2" },
+    facebook: { label: "f",  color: "#1877f2" },
   };
-  const { label, color } = map[platform] || { label: "?", color: C.textMuted };
+  // LinkedIn-only since 2026-11-12: a missing/unknown channel IS LinkedIn
+  // (twitter/facebook stay mapped so rejected legacy rows keep their icon).
+  const { label, color } = map[(platform || "").toLowerCase()] || map.linkedin;
   return (
     <span style={{
       display: "inline-flex", alignItems: "center", justifyContent: "center",
@@ -1709,6 +1711,26 @@ function SocialQueue() {
 
   const posts = data?.posts || [];
   const posting = data?.posting;
+
+  // Soft pacing guard: when this click would REALLY post (posting enabled +
+  // connected) and another LinkedIn post went out inside 24h, warn first —
+  // but never block (OK proceeds). Dry-run / disconnected approvals skip it:
+  // nothing is sent then.
+  const approve = (post) => {
+    const wouldPost = posting?.postingEnabled && posting?.connected
+      && (post.platform || "linkedin") === "linkedin";
+    if (wouldPost && posting?.lastPublishedAt) {
+      const ms = Date.now() - new Date(posting.lastPublishedAt).getTime();
+      if (ms >= 0 && ms < 24 * 60 * 60 * 1000) {
+        const hours = Math.max(1, Math.round(ms / 3600000));
+        if (!window.confirm(
+          `Heads up: a LinkedIn post already went out ${hours}h ago — pacing is roughly one per day.\n\nPost this one anyway?`
+        )) return;
+      }
+    }
+    act(post.id, "approve");
+  };
+
   const connectHref = "/api/linkedin/oauth/start";
   const expiryDate = posting?.expiresAt
     ? new Date(posting.expiresAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
@@ -1767,7 +1789,7 @@ function SocialQueue() {
             borderBottom: i < posts.length - 1 ? `1px solid ${C.border}` : "none",
             opacity: post.status === "rejected" ? 0.55 : 1,
           }}>
-            <PlatformIcon platform={(post.platform || "").charAt(0).toUpperCase() + (post.platform || "").slice(1)} />
+            <PlatformIcon platform={post.platform} />
             <div style={{ flex: 1, minWidth: 0 }}>
               {editId === post.id ? (
                 <div>
@@ -1839,15 +1861,15 @@ function SocialQueue() {
                 <div style={{ display: "flex", gap: 6 }}>
                   {post.status === "pending" && (
                     <SmallButton variant="primary" disabled={busyId === post.id}
-                      onClick={() => act(post.id, "approve")}>Approve</SmallButton>
+                      onClick={() => approve(post)}>Approve</SmallButton>
                   )}
-                  {post.status === "approved" && post.platform === "linkedin" && (
+                  {post.status === "approved" && (post.platform || "linkedin") === "linkedin" && (
                     <SmallButton variant="primary" disabled={busyId === post.id}
-                      onClick={() => act(post.id, "approve")}>Post to LinkedIn</SmallButton>
+                      onClick={() => approve(post)}>Post to LinkedIn</SmallButton>
                   )}
                   {post.status === "failed" && (
                     <SmallButton variant="primary" disabled={busyId === post.id}
-                      onClick={() => act(post.id, "approve")}>Retry post</SmallButton>
+                      onClick={() => approve(post)}>Retry post</SmallButton>
                   )}
                   <SmallButton onClick={() => { setEditId(post.id); setEditText(post.content); }}>Edit</SmallButton>
                   <SmallButton variant="danger" disabled={busyId === post.id}
