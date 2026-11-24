@@ -532,7 +532,7 @@ export default function CTASection({ tracking, resources }: Props) {
                   {existing ? (
                     <>It looks like an account already exists for this email. <a href="https://app.dealeraddendums.com" style={{ color: '#1976d2' }}>Log in here</a>.</>
                   ) : (
-                    <>We just emailed you an <strong>8-digit setup code</strong>. Enter it on the next screen (or tap the button in the email) and your free trial opens right away — your account is created the moment you enter it.</>
+                    <>We just emailed you an <strong>8-digit setup code</strong>. Enter it on the next screen (or tap the button in the email) to verify your email address. Most trials open right away; some get a quick review from our team first — if yours does, we&apos;ll email you once you&apos;re set up.</>
                   )}
                 </p>
                 {!existing && (

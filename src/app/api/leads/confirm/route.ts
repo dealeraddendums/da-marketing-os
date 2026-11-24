@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     case 'existing':
       return NextResponse.json({ ok: true, status: 'existing', message: 'You already have an account — head to app.dealeraddendums.com to sign in.' })
     case 'pending_review':
-      return NextResponse.json({ ok: true, status: 'pending_review', message: outcome.message ?? "Thanks — we're reviewing your details and will activate your account shortly." })
+      return NextResponse.json({ ok: true, status: 'pending_review', message: outcome.message ?? "Thanks — our team is reviewing your details. If we can set you up, you'll get an email from us." })
     case 'after_hours':
       return NextResponse.json({ ok: true, status: 'after_hours', message: outcome.message ?? 'Sign-ups are open 5 AM–9 PM Pacific — please try again during business hours.' })
     case 'rejected':
