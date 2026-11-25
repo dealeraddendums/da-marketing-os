@@ -44,39 +44,54 @@ export async function GET() {
       dealertype: 'Dealer Type',
     }
 
-    const variants = rates.map((r: any) => ({
-      name: variantLabel[r.ab_variant] || r.ab_variant,
-      ab_variant: r.ab_variant,
-      visitors: r.impressions || 0,
-      conversions: r.conversions || 0,
-      rate: parseFloat(r.conversion_rate || '0'),
-    }))
+    // Since mig 030 the view counts real signups from marketing_leads
+    // (submits + emailed-confirm conversions), in two windows: all time and
+    // since the Home B layout test ended (it halved hero-test traffic while
+    // it overlapped, 2026-11-16 → 2026-11-25).
+    const buildWindow = (suffix: '' | '_since') => {
+      const variants = rates.map((r: any) => ({
+        name: variantLabel[r.ab_variant] || r.ab_variant,
+        ab_variant: r.ab_variant,
+        visitors: r[`impressions${suffix}`] || 0,
+        submits: r[`submits${suffix}`] || 0,
+        conversions: r[`conversions${suffix}`] || 0,
+        rate: parseFloat(r[`conversion_rate${suffix}`] || '0'),
+      }))
+      const sorted = [...variants].sort((a, b) => b.rate - a.rate)
+      const winner = sorted[0]
+      const control = variants.find(v => v.ab_variant === 'generic') || variants[0]
+      const significance = winner && control && winner !== control
+        ? calcSignificance(control.visitors, control.conversions, winner.visitors, winner.conversions)
+        : 0
+      return { variants, significance, winner: significance >= 90 ? winner?.name : null }
+    }
 
-    const sorted = [...variants].sort((a, b) => b.rate - a.rate)
-    const winner = sorted[0]
-    const control = variants.find(v => v.ab_variant === 'generic') || variants[0]
-
-    const significance = winner && control && winner !== control
-      ? calcSignificance(control.visitors, control.conversions, winner.visitors, winner.conversions)
-      : 0
+    const fmtDay = (d: any) =>
+      d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : null
 
     const firstSeen = rates.reduce((min: any, r: any) => {
       const d = r.first_seen || null
       return !min || (d && d < min) ? d : min
     }, null)
+    const sinceBoundary = rates[0]?.since_boundary || null
 
-    const started = firstSeen
-      ? new Date(firstSeen).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-      : 'Today'
+    const windows = [
+      { key: 'since', label: `Since Home B ended${sinceBoundary ? ` (${fmtDay(sinceBoundary)})` : ''}`, ...buildWindow('_since') },
+      { key: 'all', label: `All time${firstSeen ? ` (since ${fmtDay(firstSeen)})` : ''}`, ...buildWindow('') },
+    ]
 
+    // Legacy top-level fields mirror the default (post-Home-B) window.
+    const def = windows[0]
     const experiments = [{
       id: 'hero-variant',
       name: 'Hero Headline A/B Test',
       status: 'running',
-      started,
-      variants,
-      significance,
-      winner: significance >= 90 ? winner?.name : null,
+      started: fmtDay(firstSeen) || 'Today',
+      variants: def.variants,
+      significance: def.significance,
+      winner: def.winner,
+      windows,
+      defaultWindow: 'since',
     }]
 
     return NextResponse.json({ live: true, experiments })

@@ -690,6 +690,9 @@ function ABPanel() {
   const [liveLoading, setLiveLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [toastMsg, setToastMsg] = useState(null);
+  // Which results window each experiment card shows. The API's defaultWindow
+  // ('since' = after the Home B layout test ended) wins until the user clicks.
+  const [expWindow, setExpWindow] = useState({});
 
   useEffect(() => {
     fetch("/api/ab-data")
@@ -748,12 +751,20 @@ function ABPanel() {
           </div>
         )}
         <div style={{ display: "grid", gap: 16 }}>
-          {experiments.map(exp => (
+          {experiments.map(exp => {
+            const wins = exp.windows || null;
+            const wk = expWindow[exp.id] ?? exp.defaultWindow ?? (wins ? wins[0].key : null);
+            const win = wins ? (wins.find(w => w.key === wk) || wins[0]) : null;
+            const variants = win ? win.variants : exp.variants;
+            const significance = win ? win.significance : exp.significance;
+            const winner = win ? win.winner : exp.winner;
+            const maxRate = Math.max(...variants.map(v => v.rate || 0), 0.01);
+            return (
             <div key={exp.id} style={{
               background: C.bgSubtle, border: `1px solid ${C.border}`,
               borderRadius: 6, padding: 16,
             }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                 <div>
                   <span style={{ fontWeight: 600, fontSize: 14, color: C.textPrimary }}>{exp.name}</span>
                   <span style={{ fontSize: 12, color: C.textMuted, marginLeft: 10 }}>started {exp.started}</span>
@@ -761,15 +772,33 @@ function ABPanel() {
                 <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
                   <span style={{
                     fontSize: 12,
-                    color: exp.significance >= 95 ? C.success
-                         : exp.significance >= 70 ? C.warning
+                    color: significance >= 95 ? C.success
+                         : significance >= 70 ? C.warning
                          : C.textMuted,
                   }}>
-                    {exp.significance}% confidence
+                    {significance}% confidence
                   </span>
                   <Badge variant={statusVariant(exp.status)}>{statusLabel(exp.status)}</Badge>
                 </div>
               </div>
+
+              {wins && (
+                <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
+                  {wins.map(w => (
+                    <button
+                      key={w.key}
+                      onClick={() => setExpWindow(s => ({ ...s, [exp.id]: w.key }))}
+                      style={{
+                        fontSize: 12, padding: "4px 10px", borderRadius: 999, cursor: "pointer",
+                        border: `1px solid ${w.key === wk ? C.blue : C.border}`,
+                        background: w.key === wk ? "#e3f2fd" : C.bgSurface,
+                        color: w.key === wk ? C.blue : C.textMuted,
+                        fontWeight: w.key === wk ? 600 : 400,
+                      }}
+                    >{w.label}</button>
+                  ))}
+                </div>
+              )}
 
               {/* The variant row scrolls INSIDE the card — with many variants
                   a bare repeat(N, 1fr) grid (min-width:auto) used to force the
@@ -780,51 +809,60 @@ function ABPanel() {
               <div style={{ overflowX: "auto", paddingBottom: 4 }}>
                 <div style={{
                   display: "grid",
-                  gridTemplateColumns: `repeat(${exp.variants.length}, minmax(200px, 1fr))`,
+                  gridTemplateColumns: `repeat(${variants.length}, minmax(200px, 1fr))`,
                   gap: 10,
                 }}>
-                {exp.variants.map((v, i) => (
+                {variants.map((v, i) => (
                   <div key={i} style={{
                     padding: 12, borderRadius: 6,
                     background: C.bgSurface,
-                    border: exp.winner === v.name
+                    border: winner === v.name
                       ? `2px solid ${C.blue}`
                       : `1px solid ${C.border}`,
                   }}>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
                       <span style={{ fontSize: 14, fontWeight: 500, color: C.textPrimary }}>{v.name}</span>
-                      {exp.winner === v.name && <Badge variant="info">Winner</Badge>}
+                      {winner === v.name && <Badge variant="info">Winner</Badge>}
                     </div>
                     <div style={{
                       fontSize: 24, fontWeight: 600,
-                      color: exp.winner === v.name ? C.blue : C.textPrimary,
+                      color: winner === v.name ? C.blue : C.textPrimary,
                       marginBottom: 6,
                     }}>
                       {v.rate}%
                     </div>
                     <MiniBar
-                      pct={(v.rate / 6) * 100}
-                      color={exp.winner === v.name ? C.blue : C.blueLight}
+                      pct={(v.rate / maxRate) * 100}
+                      color={winner === v.name ? C.blue : C.blueLight}
                     />
                     <div style={{ fontSize: 12, color: C.textMuted, marginTop: 6 }}>
-                      {v.conversions} / {v.visitors.toLocaleString()} visitors
+                      {v.conversions} confirmed signups
+                      {typeof v.submits === "number" ? ` · ${v.submits} form submits` : ""}
+                      {" / "}{v.visitors.toLocaleString()} impressions
                     </div>
                   </div>
                 ))}
                 </div>
               </div>
 
-              {exp.winner && exp.significance >= 90 && (
+              <div style={{ fontSize: 11, color: C.textMuted, marginTop: 10 }}>
+                Rate = confirmed signups / hero impressions (from marketing_leads, retroactive).
+                Caveat: a visitor's first pageview always renders Personalized (render fallback);
+                the assigned arm only shows from the second pageview on.
+              </div>
+
+              {winner && significance >= 90 && (
                 <div style={{
                   marginTop: 12, padding: "10px 14px", borderRadius: 6,
                   background: "#e8f5e9", border: `1px solid #c8e6c9`,
                   fontSize: 13, color: "#2e7d32",
                 }}>
-                  Recommendation: Deploy "{exp.winner}" as new control — {exp.significance}% statistical confidence reached.
+                  Recommendation: Deploy "{winner}" as new control — {significance}% statistical confidence reached.
                 </div>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
       </Card>
     </>
