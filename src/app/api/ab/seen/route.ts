@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { rateLimit } from '@/lib/rate-limit'
 import {
   AB_HOME_COOKIE, AB_SEEN_COOKIE, AB_INTERNAL_COOKIE,
-  incrementAbHomeStat, parseBucket,
+  abHomeOff, incrementAbHomeStat, parseBucket,
 } from '@/lib/ab-home'
 import { abIsBot } from '@/lib/ab-bot'
 
@@ -33,6 +33,7 @@ export async function POST(req: NextRequest) {
   if (!rateLimit(`abseen:${ip}`, 10, 60_000)) return done
 
   if (abIsBot(req.headers.get('user-agent'), req.headers.get('accept-language'))) return done
+  if (abHomeOff()) return done // experiment ended — counters stay frozen
 
   const bucket = parseBucket(req.cookies.get(AB_HOME_COOKIE)?.value)
   if (!bucket) return done                                   // no assignment → nothing to count

@@ -153,12 +153,22 @@ export async function middleware(request: NextRequest) {
     }
 
     if (!isBot) {
-      const existing = request.cookies.get(AB_HOME_COOKIE)?.value
-      if (existing === 'A' || existing === 'B') {
-        abHome = existing
+      // AB_HOME_B_PCT=0 = the experiment is off (ended or not started): every
+      // non-team browser sees the control, INCLUDING ones still carrying an old
+      // B cookie, and nothing is assigned or counted — the recorded results
+      // stay frozen. Team browsers (da_ab_internal, set by ?variant= previews)
+      // keep cookie behavior so /?variant=B still previews Home B.
+      const internal = request.cookies.get('da_ab_internal')?.value === '1'
+      if (abHomeBPct() === 0 && !internal) {
+        abHome = 'A'
       } else {
-        abHome = Math.random() * 100 < abHomeBPct() ? 'B' : 'A'
-        abHomeAssigned = true
+        const existing = request.cookies.get(AB_HOME_COOKIE)?.value
+        if (existing === 'A' || existing === 'B') {
+          abHome = existing
+        } else {
+          abHome = Math.random() * 100 < abHomeBPct() ? 'B' : 'A'
+          abHomeAssigned = true
+        }
       }
     }
     // Bots: abHome stays 'A', no cookie, no visitor count.

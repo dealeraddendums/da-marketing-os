@@ -25,15 +25,22 @@ export async function GET() {
   const buckets: Record<'A' | 'B', BucketStats> = { A: empty(), B: empty() }
   let live = false
   let startDate: string | null = null
+  let endDate: string | null = null
+  let decision: string | null = null
+  let notes: string | null = null
 
   try {
-    // Experiment registry row — the card's "Running since" date.
+    // Experiment registry row — the card's dates, ended state, and final note.
     const { data: exp } = await supabase
       .from('channel_experiments')
-      .select('start_date')
+      .select('start_date, end_date, decision, notes')
       .eq('name', 'home_b_layout')
       .maybeSingle()
-    startDate = (exp as { start_date?: string } | null)?.start_date ?? null
+    const row = exp as { start_date?: string; end_date?: string | null; decision?: string; notes?: string | null } | null
+    startDate = row?.start_date ?? null
+    endDate = row?.end_date ?? null
+    decision = row?.decision ?? null
+    notes = row?.notes ?? null
     const { data: stats, error: statsErr } = await supabase
       .from('ab_home_stats')
       .select('bucket, metric, count')
@@ -68,5 +75,5 @@ export async function GET() {
     console.error('ab-home stats error:', e)
   }
 
-  return NextResponse.json({ live, pct: abHomeBPct(), startDate, buckets })
+  return NextResponse.json({ live, pct: abHomeBPct(), startDate, endDate, decision, notes, buckets })
 }

@@ -631,9 +631,11 @@ function HomeBCard() {
         action={
           loading
             ? <Badge variant="neutral">Loading…</Badge>
-            : pct > 0
-              ? <Badge variant="success">Running — {pct}/{100 - pct}{data?.startDate ? ` since ${data.startDate}` : ""}</Badge>
-              : <Badge variant="neutral">Draft — AB_HOME_B_PCT=0, everyone sees A</Badge>
+            : data?.endDate
+              ? <Badge variant="neutral">Ended {data.endDate}{data?.startDate ? ` (ran from ${data.startDate})` : ""} — 100% to A</Badge>
+              : pct > 0
+                ? <Badge variant="success">Running — {pct}/{100 - pct}{data?.startDate ? ` since ${data.startDate}` : ""}</Badge>
+                : <Badge variant="neutral">Draft — AB_HOME_B_PCT=0, everyone sees A</Badge>
         }
       >Home B Layout Test</SectionTitle>
       <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12 }}>
@@ -642,6 +644,16 @@ function HomeBCard() {
         once per 24h); Assigned (raw) = every middleware assignment — the gap between them is bots
         that pass the UA gate. Judge the test on Visitors.
       </div>
+      {data?.endDate && (
+        <div style={{
+          fontSize: 12.5, color: C.textPrimary, marginBottom: 12, padding: "8px 10px",
+          background: C.bgSubtle, border: `1px solid ${C.border}`, borderRadius: 6, whiteSpace: "pre-wrap",
+        }}>
+          {data?.notes?.includes("FINAL")
+            ? data.notes.slice(data.notes.indexOf("FINAL"))
+            : "Ended — the numbers below are the final results. Home B code and the /?variant=B preview are kept; raise AB_HOME_B_PCT to restart."}
+        </div>
+      )}
       {/* minmax(0,1fr): grid items default to min-width:auto, so without this
           wide content in either bucket could force the pair past the card and
           render as effectively stacked (one column per screen). */}

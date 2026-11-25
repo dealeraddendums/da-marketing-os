@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { rateLimit } from '@/lib/rate-limit'
 import { sendGa4Event } from '@/lib/ga4-mp'
-import { AB_HOME_COOKIE, incrementAbHomeStat, parseBucket } from '@/lib/ab-home'
+import { AB_HOME_COOKIE, abHomeOff, incrementAbHomeStat, parseBucket } from '@/lib/ab-home'
 
 export const dynamic = 'force-dynamic'
 
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
   // visitors who have not hit "/" (e.g. a form start on an /lp page); those
   // simply carry no ab_home and are not counted in the first-party split.
   const abHome = parseBucket(req.cookies.get(AB_HOME_COOKIE)?.value)
-  if (abHome) void incrementAbHomeStat(abHome, 'form_start')
+  if (abHome && !abHomeOff()) void incrementAbHomeStat(abHome, 'form_start')
 
   await sendGa4Event({
     // NOT `form_start` — GA4 enhanced measurement already emits that for every

@@ -40,6 +40,15 @@ export function abHomeBPct(): number {
   return Math.min(100, Math.max(0, n))
 }
 
+/** The experiment is OFF (ended, or never started): AB_HOME_B_PCT=0.
+ *  Middleware serves every non-team browser the control (old B cookies
+ *  included), and the beacon / form-start / lead-stamp paths below no-op so
+ *  the recorded counters stay frozen at the final numbers. Raising the env
+ *  knob again restarts the test with sticky cookies intact. */
+export function abHomeOff(): boolean {
+  return abHomeBPct() === 0
+}
+
 /**
  * First-party counter (table `ab_home_stats`, migration 027). Atomic via the
  * `increment_ab_home_stat` SQL function; fire-and-forget and swallow-on-error

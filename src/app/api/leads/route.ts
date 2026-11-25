@@ -7,7 +7,7 @@ import { trackServerEvent } from '@/lib/analytics'
 import { verifyTurnstile } from '@/lib/turnstile'
 import { provisionInDaPlatform, type ProvisionOutcome } from '@/lib/lead-confirm'
 import { normalizeWebsiteUrl } from '@/lib/website-url'
-import { AB_HOME_COOKIE, parseBucket } from '@/lib/ab-home'
+import { AB_HOME_COOKIE, abHomeOff, parseBucket } from '@/lib/ab-home'
 import { AB_EVENT_VARIANTS, inSet } from '@/lib/ab-variants'
 
 const ATTR_FIELDS = [
@@ -176,7 +176,9 @@ Based on the dealership name and email domain, provide a brief intelligence summ
     // never the body. Persisted here because the trial_signup conversion fires
     // at setup-code verification, a different session where the cookie may be
     // gone; the lead row is what carries the bucket to that moment.
-    ab_home: parseBucket(req.cookies.get(AB_HOME_COOKIE)?.value),
+    // null while the experiment is off (ended): a late submit from a browser
+    // still carrying an old cookie must not grow the frozen final counts.
+    ab_home: abHomeOff() ? null : parseBucket(req.cookies.get(AB_HOME_COOKIE)?.value),
   }
   const _leadPayloadReady = true
   void _leadPayloadReady
