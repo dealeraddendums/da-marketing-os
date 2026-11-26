@@ -217,6 +217,24 @@ export async function middleware(request: NextRequest) {
     if (abHomeAssigned) requestHeaders.set('x-ab-home-new', '1')
   }
 
+  // Sticky copy A/B variant via cookie (generic / personalized / dealertype).
+  // The cookie is attacker-controlled input: only the defined arms are
+  // accepted. A present-but-unrecognized value (scanner probes were persisted
+  // as "variants" via this path until 2026-11-15) falls back to CONTROL and
+  // the cookie is overwritten, so the junk value never propagates anywhere.
+  // Computed BEFORE the response exists so the assigned arm rides a REQUEST
+  // header: the page cannot read this response's own Set-Cookie during the
+  // same render, so without the header every visitor's FIRST pageview fell
+  // back to 'personalized' regardless of assignment, inflating that arm.
+  const abCookieRaw = request.cookies.get('da_hero_ab')?.value
+  const abCookie    = parseHeroVariant(abCookieRaw)
+  const abVariant   = abCookie ?? (abCookieRaw ? HERO_CONTROL : weightedPick(
+    ['generic', 'personalized', 'dealertype'],
+    [0.33, 0.34, 0.33]
+  ))
+  requestHeaders.delete('x-ab-hero')
+  requestHeaders.set('x-ab-hero', abVariant)
+
   const response = NextResponse.next({ request: { headers: requestHeaders } })
 
   if (isHome && abHomeAssigned) {
@@ -261,17 +279,7 @@ export async function middleware(request: NextRequest) {
     })
   }
 
-  // Sticky copy A/B variant via cookie (generic / personalized / dealertype).
-  // The cookie is attacker-controlled input: only the defined arms are
-  // accepted. A present-but-unrecognized value (scanner probes were persisted
-  // as "variants" via this path until 2026-11-15) falls back to CONTROL and
-  // the cookie is overwritten, so the junk value never propagates anywhere.
-  const abCookieRaw = request.cookies.get('da_hero_ab')?.value
-  const abCookie    = parseHeroVariant(abCookieRaw)
-  const abVariant   = abCookie ?? (abCookieRaw ? HERO_CONTROL : weightedPick(
-    ['generic', 'personalized', 'dealertype'],
-    [0.33, 0.34, 0.33]
-  ))
+  // Persist the arm assigned above (header block before the response).
   if (!abCookie) {
     response.cookies.set('da_hero_ab', abVariant, {
       maxAge: 60 * 60 * 24 * 30,

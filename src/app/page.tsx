@@ -97,10 +97,15 @@ export default async function HomePage({ searchParams }: PageProps) {
     )
   }
 
-  // Cookie is attacker-controlled: unknown values fall back to control
-  // (mirrors middleware); a missing cookie keeps the legacy default.
+  // The middleware assigns the arm and forwards it on x-ab-hero (deleting any
+  // client-sent copy first), so the FIRST pageview renders its assigned arm —
+  // the response cookie set on that same request is not readable here, and the
+  // old cookie-only read made every first view render 'personalized'.
+  // Cookie remains the fallback for middleware-less renders; both are
+  // validated, unknown values fall back to control.
+  const abHeader      = parseHeroVariant(h.get('x-ab-hero') ?? undefined)
   const abCookieRaw   = cookieStore.get('da_hero_ab')?.value
-  const abVariant     = parseHeroVariant(abCookieRaw) ?? (abCookieRaw ? HERO_CONTROL : 'personalized')
+  const abVariant     = abHeader ?? parseHeroVariant(abCookieRaw) ?? (abCookieRaw ? HERO_CONTROL : 'personalized')
   // Layout test retired 2026-06-12 — everyone gets the new hero regardless of
   // stale da_layout cookies. LayoutA stays in the repo for a future
   // strong-vs-strong test; to re-enable, read the cookie here again.
